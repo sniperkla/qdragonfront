@@ -14,7 +14,12 @@ import {
 const debugLogger = {
   log: (message, data = {}) => {
     const timestamp = new Date().toISOString()
-    const logEntry = { timestamp, message, data, url: typeof window !== 'undefined' ? window.location.href : 'server' }
+    const logEntry = {
+      timestamp,
+      message,
+      data,
+      url: typeof window !== 'undefined' ? window.location.href : 'server'
+    }
     console.log('🔍 DEBUG:', logEntry)
     if (process.env.NODE_ENV === 'production') {
       try {
@@ -29,7 +34,13 @@ const debugLogger = {
   },
   error: (message, error = {}) => {
     const timestamp = new Date().toISOString()
-    const logEntry = { timestamp, level: 'ERROR', message, error: { message: error.message, stack: error.stack }, url: typeof window !== 'undefined' ? window.location.href : 'server' }
+    const logEntry = {
+      timestamp,
+      level: 'ERROR',
+      message,
+      error: { message: error.message, stack: error.stack },
+      url: typeof window !== 'undefined' ? window.location.href : 'server'
+    }
     console.error('❌ ERROR:', logEntry)
     if (process.env.NODE_ENV === 'production') {
       try {
@@ -196,34 +207,35 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-yellow-900 to-black flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-yellow-900 to-black flex items-center justify-center p-4 sm:p-6 lg:p-8">
       {/* Background Pattern */}
       <div className="absolute inset-0 bg-black bg-opacity-50"></div>
       <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/10 to-amber-500/10"></div>
-
       {/* Register Card */}
       <div className="relative z-10 max-w-md w-full bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-yellow-200">
         {/* Header */}
-        <div className="text-center pt-8 pb-6 px-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-yellow-400 to-amber-500 rounded-full mb-4 shadow-lg">
-            <span className="text-2xl font-bold text-white">Q</span>
+        <div className="text-center pt-6 sm:pt-8 pb-4 sm:pb-6 px-6 sm:px-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-r from-yellow-400 to-amber-500 rounded-full mb-3 sm:mb-4 shadow-lg">
+            <span className="text-xl sm:text-2xl font-bold text-white">Q</span>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
             Join Q-DRAGON
           </h1>
-          <p className="text-gray-600">Start Your Gold Trading Journey</p>
-          <p className="text-sm text-yellow-600 font-medium">
+          <p className="text-gray-600 text-sm sm:text-base">
+            Start Your Gold Trading Journey
+          </p>
+          <p className="text-xs sm:text-sm text-yellow-600 font-medium">
             Professional XAU/USD Trading Platform
           </p>
         </div>
 
         {/* Register Form */}
-        <div className="px-8 pb-8">
+        <div className="px-6 sm:px-8 pb-6 sm:pb-8">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label
                 htmlFor="username"
-                className="block text-sm font-medium text-gray-700 mb-2"
+                className="block text-xs sm:text-sm font-medium text-gray-700 mb-2"
               >
                 Username
               </label>
@@ -235,7 +247,7 @@ export default function RegisterPage() {
                   value={formData.username}
                   onChange={handleInputChange}
                   required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12 text-sm sm:text-base"
                   placeholder="Choose a username"
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -259,7 +271,7 @@ export default function RegisterPage() {
             <div>
               <label
                 htmlFor="email"
-                className="block text-sm font-medium text-gray-700 mb-2"
+                className="block text-xs sm:text-sm font-medium text-gray-700 mb-2"
               >
                 Email Address
               </label>
@@ -271,7 +283,7 @@ export default function RegisterPage() {
                   value={formData.email}
                   onChange={handleInputChange}
                   required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12 text-sm sm:text-base"
                   placeholder="Enter your email address"
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -295,7 +307,7 @@ export default function RegisterPage() {
             <div>
               <label
                 htmlFor="password"
-                className="block text-sm font-medium text-gray-700 mb-2"
+                className="block text-xs sm:text-sm font-medium text-gray-700 mb-2"
               >
                 Password
               </label>
@@ -307,7 +319,7 @@ export default function RegisterPage() {
                   value={formData.password}
                   onChange={handleInputChange}
                   required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12 text-sm sm:text-base"
                   placeholder="Create a secure password"
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -332,7 +344,7 @@ export default function RegisterPage() {
             <div>
               <label
                 htmlFor="confirmPassword"
-                className="block text-sm font-medium text-gray-700 mb-2"
+                className="block text-xs sm:text-sm font-medium text-gray-700 mb-2"
               >
                 Confirm Password
               </label>
@@ -344,7 +356,7 @@ export default function RegisterPage() {
                   value={formData.confirmPassword}
                   onChange={handleInputChange}
                   required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12 text-sm sm:text-base"
                   placeholder="Confirm your password"
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -385,7 +397,7 @@ export default function RegisterPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 disabled:from-gray-400 disabled:to-gray-500 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 flex items-center justify-center shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+              className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 disabled:from-gray-400 disabled:to-gray-500 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 flex items-center justify-center shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 text-sm sm:text-base"
             >
               {isLoading ? (
                 <>
@@ -433,12 +445,12 @@ export default function RegisterPage() {
           </form>
 
           {/* Action Buttons */}
-          <div className="mt-6 space-y-4">
+          <div className="mt-4 sm:mt-6 space-y-4">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-gray-300"></div>
               </div>
-              <div className="relative flex justify-center text-sm">
+              <div className="relative flex justify-center text-xs sm:text-sm">
                 <span className="px-2 bg-white text-gray-500">
                   Already a trader?
                 </span>
@@ -447,7 +459,7 @@ export default function RegisterPage() {
 
             <button
               onClick={handleLogin}
-              className="w-full bg-white hover:bg-gray-50 text-gray-700 font-semibold py-3 px-4 rounded-lg border-2 border-gray-300 hover:border-yellow-400 transition duration-200 flex items-center justify-center"
+              className="w-full bg-white hover:bg-gray-50 text-gray-700 font-semibold py-3 px-4 rounded-lg border-2 border-gray-300 hover:border-yellow-400 transition duration-200 flex items-center justify-center text-sm sm:text-base"
             >
               <svg
                 className="w-5 h-5 mr-2"
@@ -467,7 +479,7 @@ export default function RegisterPage() {
           </div>
 
           {/* Footer */}
-          <div className="mt-8 text-center text-xs text-gray-500">
+          <div className="mt-6 sm:mt-8 text-center text-xs text-gray-500">
             <p>By creating an account, you agree to our Terms of Service</p>
             <p className="mt-1">
               Email verification required • Secure Trading Platform
@@ -478,17 +490,21 @@ export default function RegisterPage() {
       </div>
 
       {/* Decorative Elements */}
-      <div className="absolute top-10 left-10 w-20 h-20 bg-yellow-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse"></div>
-      <div className="absolute top-10 right-10 w-20 h-20 bg-amber-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse animation-delay-2000"></div>
-      <div className="absolute bottom-10 left-20 w-20 h-20 bg-yellow-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse animation-delay-4000"></div>
+      <div className="absolute top-10 left-10 w-12 h-12 sm:w-20 sm:h-20 bg-yellow-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse"></div>
+      <div className="absolute top-10 right-10 w-12 h-12 sm:w-20 sm:h-20 bg-amber-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse animation-delay-2000"></div>
+      <div className="absolute bottom-10 left-20 w-12 h-12 sm:w-20 sm:h-20 bg-yellow-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse animation-delay-4000"></div>
 
       {/* Debug Button */}
-      {(process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && window.location.search.includes('debug=true'))) && (
+      {(process.env.NODE_ENV === 'development' ||
+        (typeof window !== 'undefined' &&
+          window.location.search.includes('debug=true'))) && (
         <button
           onClick={() => {
             const logs = JSON.parse(localStorage.getItem('debug_logs') || '[]')
             console.log('📋 Debug Logs:', logs)
-            alert(`Debug logs (${logs.length} entries) - Check browser console for details`)
+            alert(
+              `Debug logs (${logs.length} entries) - Check browser console for details`
+            )
           }}
           className="fixed bottom-4 right-4 z-50 bg-red-500 text-white px-3 py-2 rounded-lg text-sm font-mono hover:bg-red-600 transition-colors"
           title="Show Debug Logs"

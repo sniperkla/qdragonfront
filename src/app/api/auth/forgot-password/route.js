@@ -24,30 +24,43 @@ export async function POST(req) {
 
     const user = await User.findOne({ email })
 
-    // Always return success to prevent email enumeration attacks
+    // Check if user exists - be explicit about this requirement
     if (!user) {
       console.log('Password reset requested for non-existent email:', email)
       return new Response(
         JSON.stringify({
-          message:
-            'If an account with that email exists, we have sent a password reset link.'
+          error:
+            'No account found with this email address. Please register first.',
+          requiresRegistration: true
         }),
-        { status: 200 }
+        { status: 404 }
       )
     }
 
+    console.log('Password reset request for existing user:', user.username)
+
     // Check if user's email is verified
     if (!user.isEmailVerified) {
+      console.log(
+        'Password reset blocked - email not verified for user:',
+        user.username
+      )
       return new Response(
         JSON.stringify({
           error:
-            'Please verify your email address before requesting a password reset.',
+            'Your email address is not verified. Please verify your email before requesting a password reset.',
           requiresVerification: true,
-          email: user.email
+          email: user.email,
+          username: user.username
         }),
         { status: 403 }
       )
     }
+
+    console.log(
+      'User email verified, proceeding with password reset for:',
+      user.username
+    )
 
     // Generate password reset token
     const resetToken = crypto.randomBytes(32).toString('hex')

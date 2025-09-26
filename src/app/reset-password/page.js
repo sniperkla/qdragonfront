@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 // Inline debug logger
@@ -47,7 +47,7 @@ const debugLogger = {
   }
 }
 
-export default function ResetPasswordPage() {
+function ResetPasswordContent() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [token, setToken] = useState('')
@@ -179,27 +179,29 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-yellow-900 to-black flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-yellow-900 to-black flex items-center justify-center p-4 sm:p-6 lg:p-8">
       {/* Background Pattern */}
       <div className="absolute inset-0 bg-black bg-opacity-50"></div>
       <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/10 to-amber-500/10"></div>
 
       {/* Reset Password Card */}
-      <div className="relative z-10 max-w-md w-full bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-yellow-200">
+      <div className="relative z-10 max-w-md w-full bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-yellow-200 mx-auto">
         {/* Header */}
-        <div className="text-center pt-8 pb-6 px-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-yellow-400 to-amber-500 rounded-full mb-4 shadow-lg">
-            <span className="text-2xl font-bold text-white">Q</span>
+        <div className="text-center pt-6 sm:pt-8 pb-4 sm:pb-6 px-6 sm:px-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-r from-yellow-400 to-amber-500 rounded-full mb-3 sm:mb-4 shadow-lg">
+            <span className="text-xl sm:text-2xl font-bold text-white">Q</span>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Q-DRAGON</h1>
-          <p className="text-gray-600">Reset Password</p>
-          <p className="text-sm text-yellow-600 font-medium">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
+            Q-DRAGON
+          </h1>
+          <p className="text-gray-600 text-sm sm:text-base">Reset Password</p>
+          <p className="text-xs sm:text-sm text-yellow-600 font-medium mt-1 sm:mt-2">
             Create Your New Password
           </p>
         </div>
 
         {/* Form Content */}
-        <div className="px-8 pb-8">
+        <div className="px-6 sm:px-8 pb-6 sm:pb-8">
           {!isSuccess ? (
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
@@ -216,7 +218,7 @@ export default function ResetPasswordPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12 text-sm sm:text-base"
                     placeholder="Enter new password"
                   />
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -251,7 +253,7 @@ export default function ResetPasswordPage() {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     required
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12 text-sm sm:text-base"
                     placeholder="Confirm new password"
                   />
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -273,11 +275,11 @@ export default function ResetPasswordPage() {
               </div>
 
               {/* Password Requirements */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="text-sm font-medium text-blue-700 mb-2">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
+                <h4 className="text-xs sm:text-sm font-medium text-blue-700 mb-2">
                   Password Requirements:
                 </h4>
-                <ul className="text-sm text-blue-600 space-y-1">
+                <ul className="text-xs sm:text-sm text-blue-600 space-y-1">
                   <li className="flex items-center">
                     <span
                       className={`mr-2 ${
@@ -331,7 +333,7 @@ export default function ResetPasswordPage() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 disabled:from-gray-400 disabled:to-gray-500 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 flex items-center justify-center shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 disabled:from-gray-400 disabled:to-gray-500 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 flex items-center justify-center shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 text-sm sm:text-base"
               >
                 {isLoading ? (
                   <>
@@ -380,9 +382,9 @@ export default function ResetPasswordPage() {
           ) : (
             /* Success Message */
             <div className="text-center">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
+              <div className="inline-flex items-center justify-center w-12 h-12 sm:w-16 sm:h-16 bg-green-100 rounded-full mb-3 sm:mb-4">
                 <svg
-                  className="w-8 h-8 text-green-500"
+                  className="w-6 h-6 sm:w-8 sm:h-8 text-green-500"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -395,18 +397,20 @@ export default function ResetPasswordPage() {
                   ></path>
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">
                 Password Reset Successfully!
               </h3>
-              <p className="text-gray-600 mb-6">{message}</p>
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-                <p className="text-sm text-green-700">
+              <p className="text-gray-600 mb-4 sm:mb-6 text-sm sm:text-base">
+                {message}
+              </p>
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
+                <p className="text-xs sm:text-sm text-green-700">
                   Redirecting to login page in 3 seconds...
                 </p>
               </div>
               <button
                 onClick={handleBackToLogin}
-                className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-white font-semibold py-3 px-4 rounded-lg transition duration-200"
+                className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 text-sm sm:text-base"
               >
                 Login Now
               </button>
@@ -414,7 +418,7 @@ export default function ResetPasswordPage() {
           )}
 
           {/* Footer */}
-          <div className="mt-8 text-center text-xs text-gray-500">
+          <div className="mt-6 sm:mt-8 text-center text-xs text-gray-500">
             <p>Secure Password Reset • Q-DRAGON Trading Platform</p>
             <p className="mt-1">© 2025 Q-Dragon Trading Platform</p>
           </div>
@@ -445,5 +449,29 @@ export default function ResetPasswordPage() {
       <div className="absolute top-10 right-10 w-20 h-20 bg-amber-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse animation-delay-2000"></div>
       <div className="absolute bottom-10 left-20 w-20 h-20 bg-yellow-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse animation-delay-4000"></div>
     </div>
+  )
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gradient-to-br from-gray-900 via-yellow-900 to-black flex items-center justify-center">
+          <div className="relative z-10 max-w-md w-full bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-yellow-200 p-8">
+            <div className="text-center">
+              <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-yellow-400 to-amber-500 rounded-full mb-4 shadow-lg">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+              </div>
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">
+                Loading...
+              </h1>
+              <p className="text-gray-600">Preparing password reset form</p>
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <ResetPasswordContent />
+    </Suspense>
   )
 }

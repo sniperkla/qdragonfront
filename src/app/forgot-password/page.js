@@ -53,12 +53,14 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
+  const [needsRegistration, setNeedsRegistration] = useState(false)
   const router = useRouter()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     setMessage('')
+    setNeedsRegistration(false)
     setIsLoading(true)
 
     debugLogger.log('Forgot password request started', { email })
@@ -77,13 +79,19 @@ export default function ForgotPasswordPage() {
       debugLogger.log('Forgot password API response', {
         status: res.status,
         success: res.ok,
-        requiresVerification: data.requiresVerification
+        requiresVerification: data.requiresVerification,
+        requiresRegistration: data.requiresRegistration
       })
 
       if (res.ok) {
         setMessage(data.message)
         setIsSuccess(true)
         debugLogger.log('Password reset email request successful')
+      } else if (res.status === 404 && data.requiresRegistration) {
+        setError('No account found with this email address.')
+        setNeedsRegistration(true)
+        setIsSuccess(false)
+        debugLogger.log('User attempted password reset for unregistered email')
       } else if (res.status === 403 && data.requiresVerification) {
         setError(
           'Please verify your email address first before requesting a password reset.'
@@ -106,32 +114,39 @@ export default function ForgotPasswordPage() {
     }
   }
 
+  const handleCreateAccount = () => {
+    debugLogger.log('Create account button clicked from forgot password')
+    router.push('/register')
+  }
+
   const handleBackToLogin = () => {
     router.push('/login')
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-yellow-900 to-black flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-yellow-900 to-black flex items-center justify-center p-4 sm:p-6 lg:p-8">
       {/* Background Pattern */}
       <div className="absolute inset-0 bg-black bg-opacity-50"></div>
       <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/10 to-amber-500/10"></div>
 
       {/* Forgot Password Card */}
-      <div className="relative z-10 max-w-md w-full bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-yellow-200">
+      <div className="relative z-10 max-w-md w-full bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-yellow-200 mx-auto">
         {/* Header */}
-        <div className="text-center pt-8 pb-6 px-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-yellow-400 to-amber-500 rounded-full mb-4 shadow-lg">
-            <span className="text-2xl font-bold text-white">Q</span>
+        <div className="text-center pt-6 sm:pt-8 pb-4 sm:pb-6 px-6 sm:px-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-r from-yellow-400 to-amber-500 rounded-full mb-3 sm:mb-4 shadow-lg">
+            <span className="text-xl sm:text-2xl font-bold text-white">Q</span>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Q-DRAGON</h1>
-          <p className="text-gray-600">Forgot Password</p>
-          <p className="text-sm text-yellow-600 font-medium">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
+            Q-DRAGON
+          </h1>
+          <p className="text-gray-600 text-sm sm:text-base">Forgot Password</p>
+          <p className="text-xs sm:text-sm text-yellow-600 font-medium mt-1 sm:mt-2">
             Reset Your Trading Account Password
           </p>
         </div>
 
         {/* Form Content */}
-        <div className="px-8 pb-8">
+        <div className="px-6 sm:px-8 pb-6 sm:pb-8">
           {!isSuccess ? (
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
@@ -148,7 +163,7 @@ export default function ForgotPasswordPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12"
+                    className="w-full px-4 py-3 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12 text-sm sm:text-base"
                     placeholder="Enter your email address"
                   />
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -167,32 +182,57 @@ export default function ForgotPasswordPage() {
                     </svg>
                   </div>
                 </div>
-                <p className="text-sm text-gray-500 mt-2">
+                <p className="text-xs sm:text-sm text-gray-500 mt-2 leading-relaxed">
                   Enter the email address associated with your Q-DRAGON account
                 </p>
               </div>
 
               {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center">
-                  <svg
-                    className="w-5 h-5 mr-2"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                      clipRule="evenodd"
-                    ></path>
-                  </svg>
-                  {error}
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+                  <div className="flex items-center mb-2">
+                    <svg
+                      className="w-5 h-5 mr-2"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                        clipRule="evenodd"
+                      ></path>
+                    </svg>
+                    {error}
+                  </div>
+                  {needsRegistration && (
+                    <div className="mt-3">
+                      <button
+                        onClick={handleCreateAccount}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 sm:py-3 px-4 rounded-lg transition duration-200 flex items-center justify-center text-sm sm:text-base"
+                      >
+                        <svg
+                          className="w-4 h-4 mr-2"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
+                          ></path>
+                        </svg>
+                        Create New Account
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 disabled:from-gray-400 disabled:to-gray-500 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 flex items-center justify-center shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 disabled:from-gray-400 disabled:to-gray-500 text-white font-semibold py-3 sm:py-3 px-4 rounded-lg transition duration-200 flex items-center justify-center shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 text-sm sm:text-base"
               >
                 {isLoading ? (
                   <>
@@ -291,7 +331,7 @@ export default function ForgotPasswordPage() {
 
             <button
               onClick={handleBackToLogin}
-              className="w-full mt-4 bg-white hover:bg-gray-50 text-gray-700 font-semibold py-3 px-4 rounded-lg border-2 border-gray-300 hover:border-yellow-400 transition duration-200 flex items-center justify-center"
+              className="w-full mt-4 bg-white hover:bg-gray-50 text-gray-700 font-semibold py-3 px-4 rounded-lg border-2 border-gray-300 hover:border-yellow-400 transition duration-200 flex items-center justify-center text-sm sm:text-base"
             >
               <svg
                 className="w-5 h-5 mr-2"
@@ -311,8 +351,10 @@ export default function ForgotPasswordPage() {
           </div>
 
           {/* Footer */}
-          <div className="mt-8 text-center text-xs text-gray-500">
-            <p>Secure Password Reset • Q-DRAGON Trading Platform</p>
+          <div className="mt-6 sm:mt-8 text-center text-xs text-gray-500">
+            <p className="leading-relaxed">
+              Secure Password Reset • Q-DRAGON Trading Platform
+            </p>
             <p className="mt-1">© 2025 Q-Dragon Trading Platform</p>
           </div>
         </div>
@@ -338,9 +380,9 @@ export default function ForgotPasswordPage() {
       )}
 
       {/* Decorative Elements */}
-      <div className="absolute top-10 left-10 w-20 h-20 bg-yellow-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse"></div>
-      <div className="absolute top-10 right-10 w-20 h-20 bg-amber-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse animation-delay-2000"></div>
-      <div className="absolute bottom-10 left-20 w-20 h-20 bg-yellow-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse animation-delay-4000"></div>
+      <div className="absolute top-4 sm:top-10 left-4 sm:left-10 w-12 h-12 sm:w-20 sm:h-20 bg-yellow-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse"></div>
+      <div className="absolute top-4 sm:top-10 right-4 sm:right-10 w-12 h-12 sm:w-20 sm:h-20 bg-amber-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse animation-delay-2000"></div>
+      <div className="absolute bottom-4 sm:bottom-10 left-8 sm:left-20 w-12 h-12 sm:w-20 sm:h-20 bg-yellow-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse animation-delay-4000"></div>
     </div>
   )
 }

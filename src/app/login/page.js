@@ -133,7 +133,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-yellow-900 to-black flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-yellow-900 to-black flex items-center justify-center p-4 sm:p-6 lg:p-8">
       {/* Background Pattern */}
       <div className="absolute inset-0 bg-black bg-opacity-50"></div>
       <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/10 to-amber-500/10"></div>
@@ -141,24 +141,28 @@ export default function LoginPage() {
       {/* Login Card */}
       <div className="relative z-10 max-w-md w-full bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-yellow-200">
         {/* Header */}
-        <div className="text-center pt-8 pb-6 px-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-yellow-400 to-amber-500 rounded-full mb-4 shadow-lg">
-            <span className="text-2xl font-bold text-white">Q</span>
+        <div className="text-center pt-6 sm:pt-8 pb-4 sm:pb-6 px-6 sm:px-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-r from-yellow-400 to-amber-500 rounded-full mb-3 sm:mb-4 shadow-lg">
+            <span className="text-xl sm:text-2xl font-bold text-white">Q</span>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Q-DRAGON</h1>
-          <p className="text-gray-600">Gold Trading Platform</p>
-          <p className="text-sm text-yellow-600 font-medium">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
+            Q-DRAGON
+          </h1>
+          <p className="text-gray-600 text-sm sm:text-base">
+            Gold Trading Platform
+          </p>
+          <p className="text-xs sm:text-sm text-yellow-600 font-medium">
             XAU/USD Professional Trading
           </p>
         </div>
 
         {/* Login Form */}
-        <div className="px-8 pb-8">
+        <div className="px-6 sm:px-8 pb-6 sm:pb-8">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label
                 htmlFor="username"
-                className="block text-sm font-medium text-gray-700 mb-2"
+                className="block text-xs sm:text-sm font-medium text-gray-700 mb-2"
               >
                 Username
               </label>
@@ -169,7 +173,7 @@ export default function LoginPage() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12 text-sm sm:text-base"
                   placeholder="Enter your username"
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -193,7 +197,7 @@ export default function LoginPage() {
             <div>
               <label
                 htmlFor="password"
-                className="block text-sm font-medium text-gray-700 mb-2"
+                className="block text-xs sm:text-sm font-medium text-gray-700 mb-2"
               >
                 Password
               </label>
@@ -204,7 +208,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12 text-sm sm:text-base"
                   placeholder="Enter your password"
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -245,7 +249,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 disabled:from-gray-400 disabled:to-gray-500 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 flex items-center justify-center shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+              className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 disabled:from-gray-400 disabled:to-gray-500 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 flex items-center justify-center shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 text-sm sm:text-base"
             >
               {isLoading ? (
                 <>
@@ -293,12 +297,12 @@ export default function LoginPage() {
           </form>
 
           {/* Action Buttons */}
-          <div className="mt-6 space-y-4">
+          <div className="mt-4 sm:mt-6 space-y-4">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-gray-300"></div>
               </div>
-              <div className="relative flex justify-center text-sm">
+              <div className="relative flex justify-center text-xs sm:text-sm">
                 <span className="px-2 bg-white text-gray-500">
                   New to Q-Dragon?
                 </span>
@@ -307,7 +311,7 @@ export default function LoginPage() {
 
             <button
               onClick={handleRegister}
-              className="w-full bg-white hover:bg-gray-50 text-gray-700 font-semibold py-3 px-4 rounded-lg border-2 border-gray-300 hover:border-yellow-400 transition duration-200 flex items-center justify-center"
+              className="w-full bg-white hover:bg-gray-50 text-gray-700 font-semibold py-3 px-4 rounded-lg border-2 border-gray-300 hover:border-yellow-400 transition duration-200 flex items-center justify-center text-sm sm:text-base"
             >
               <svg
                 className="w-5 h-5 mr-2"
@@ -327,7 +331,7 @@ export default function LoginPage() {
 
             <button
               onClick={handleForgotPassword}
-              className="w-full text-yellow-600 hover:text-yellow-700 font-medium py-2 transition duration-200 flex items-center justify-center"
+              className="w-full text-yellow-600 hover:text-yellow-700 font-medium py-2 transition duration-200 flex items-center justify-center text-sm sm:text-base"
             >
               <svg
                 className="w-4 h-4 mr-2"
@@ -347,7 +351,7 @@ export default function LoginPage() {
           </div>
 
           {/* Footer */}
-          <div className="mt-8 text-center text-xs text-gray-500">
+          <div className="mt-6 sm:mt-8 text-center text-xs text-gray-500">
             <p>Secure • Professional • Reliable</p>
             <p className="mt-1">© 2025 Q-Dragon Trading Platform</p>
           </div>
@@ -355,9 +359,9 @@ export default function LoginPage() {
       </div>
 
       {/* Decorative Elements */}
-      <div className="absolute top-10 left-10 w-20 h-20 bg-yellow-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse"></div>
-      <div className="absolute top-10 right-10 w-20 h-20 bg-amber-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse animation-delay-2000"></div>
-      <div className="absolute bottom-10 left-20 w-20 h-20 bg-yellow-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse animation-delay-4000"></div>
+      <div className="absolute top-10 left-10 w-12 h-12 sm:w-20 sm:h-20 bg-yellow-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse"></div>
+      <div className="absolute top-10 right-10 w-12 h-12 sm:w-20 sm:h-20 bg-amber-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse animation-delay-2000"></div>
+      <div className="absolute bottom-10 left-20 w-12 h-12 sm:w-20 sm:h-20 bg-yellow-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse animation-delay-4000"></div>
 
       {/* Debug Button */}
       {(process.env.NODE_ENV === 'development' ||
