@@ -2,19 +2,46 @@ import nodemailer from 'nodemailer';
 
 // Create email transporter
 const createTransporter = () => {
+  // Check if environment variables are set
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+    throw new Error('Email configuration missing: EMAIL_USER and EMAIL_PASSWORD must be set');
+  }
+
   return nodemailer.createTransport({
     service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false, // true for 465, false for other ports
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASSWORD
-    }
+    },
+    // Production specific settings
+    pool: true, // use pooled connections
+    maxConnections: 1, // limit to 1 connection
+    maxMessages: 3, // limit to 3 messages per connection
+    rateDelta: 20000, // limit to 3 messages per 20 seconds
+    rateLimit: 3
   });
 };
 
 // Send verification email
 export const sendVerificationEmail = async (email, username, verificationToken) => {
   try {
+    console.log('Attempting to send verification email to:', email);
+    console.log('Email user configured:', process.env.EMAIL_USER ? 'Yes' : 'No');
+    console.log('Email password configured:', process.env.EMAIL_PASSWORD ? 'Yes' : 'No');
+    
     const transporter = createTransporter();
+    
+    // Verify transporter configuration
+    try {
+      await transporter.verify();
+      console.log('Email transporter verified successfully');
+    } catch (verifyError) {
+      console.error('Email transporter verification failed:', verifyError);
+      throw new Error(`Email configuration invalid: ${verifyError.message}`);
+    }
     
     const mailOptions = {
       from: {
@@ -102,11 +129,27 @@ export const sendVerificationEmail = async (email, username, verificationToken) 
       `
     };
 
+    console.log('Sending email with options:', {
+      from: mailOptions.from,
+      to: mailOptions.to,
+      subject: mailOptions.subject
+    });
+
     const result = await transporter.sendMail(mailOptions);
     console.log('Verification email sent successfully:', result.messageId);
+    
+    // Close the transporter
+    transporter.close();
+    
     return { success: true, messageId: result.messageId };
   } catch (error) {
     console.error('Error sending verification email:', error);
+    console.error('Error details:', {
+      code: error.code,
+      command: error.command,
+      response: error.response,
+      responseCode: error.responseCode
+    });
     return { success: false, error: error.message };
   }
 };
