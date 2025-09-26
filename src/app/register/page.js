@@ -247,7 +247,7 @@ export default function RegisterPage() {
                   value={formData.username}
                   onChange={handleInputChange}
                   required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12 text-sm sm:text-base"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12 text-sm sm:text-base text-gray-900 placeholder-gray-500"
                   placeholder="Choose a username"
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -283,7 +283,7 @@ export default function RegisterPage() {
                   value={formData.email}
                   onChange={handleInputChange}
                   required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12 text-sm sm:text-base"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12 text-sm sm:text-base text-gray-900 placeholder-gray-500"
                   placeholder="Enter your email address"
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -319,7 +319,7 @@ export default function RegisterPage() {
                   value={formData.password}
                   onChange={handleInputChange}
                   required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12 text-sm sm:text-base"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12 text-sm sm:text-base text-gray-900 placeholder-gray-500"
                   placeholder="Create a secure password"
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -356,7 +356,7 @@ export default function RegisterPage() {
                   value={formData.confirmPassword}
                   onChange={handleInputChange}
                   required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12 text-sm sm:text-base"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12 text-sm sm:text-base text-gray-900 placeholder-gray-500"
                   placeholder="Confirm your password"
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
