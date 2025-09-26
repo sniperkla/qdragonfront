@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 
 const CustomerAccountSchema = new mongoose.Schema({
   user: { type: String, required: true },
-  license: { type: String, required: true, unique: true },
+  license: { type: String, required: true },
   expireDate: { type: String, required: true }, // Format: "MM/DD/YYYY HH:mm"
   status: { type: String, default: 'valid', enum: ['valid', 'expired', 'suspended'] },
   platform: { type: String, required: true },
@@ -15,7 +15,7 @@ const CustomerAccountSchema = new mongoose.Schema({
 });
 
 // Index for faster queries
-CustomerAccountSchema.index({ license: 1 });
+CustomerAccountSchema.index({ license: 1 }, { unique: true });
 CustomerAccountSchema.index({ user: 1 });
 CustomerAccountSchema.index({ status: 1 });
 CustomerAccountSchema.index({ expireDate: 1 });

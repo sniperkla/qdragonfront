@@ -6,7 +6,7 @@ const CodeRequestSchema = new mongoose.Schema({
   accountNumber: { type: String, required: true },
   platform: { type: String, required: true },
   plan: { type: Number, required: true }, // 30, 60, or 90 days
-  code: { type: String, required: true, unique: true },
+  code: { type: String, required: true },
   price: { type: Number, required: true },
   currency: { type: String, default: 'USD' },
   status: { 
@@ -25,7 +25,7 @@ const CodeRequestSchema = new mongoose.Schema({
 });
 
 // Index for faster queries
-CodeRequestSchema.index({ code: 1 });
+CodeRequestSchema.index({ code: 1 }, { unique: true });
 CodeRequestSchema.index({ userId: 1 });
 CodeRequestSchema.index({ status: 1 });
 
