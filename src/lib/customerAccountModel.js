@@ -1,0 +1,23 @@
+import mongoose from 'mongoose';
+
+const CustomerAccountSchema = new mongoose.Schema({
+  user: { type: String, required: true },
+  license: { type: String, required: true, unique: true },
+  expireDate: { type: String, required: true }, // Format: "MM/DD/YYYY HH:mm"
+  status: { type: String, default: 'valid', enum: ['valid', 'expired', 'suspended'] },
+  platform: { type: String, required: true },
+  accountNumber: { type: String, required: true },
+  plan: { type: Number, required: true }, // 30, 60, or 90 days
+  activatedAt: { type: Date, default: Date.now },
+  createdAt: { type: Date, default: Date.now }
+}, {
+  timestamps: true
+});
+
+// Index for faster queries
+CustomerAccountSchema.index({ license: 1 });
+CustomerAccountSchema.index({ user: 1 });
+CustomerAccountSchema.index({ status: 1 });
+CustomerAccountSchema.index({ expireDate: 1 });
+
+export default mongoose.models.CustomerAccount || mongoose.model('CustomerAccount', CustomerAccountSchema);
