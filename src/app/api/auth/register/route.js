@@ -1,7 +1,7 @@
 import { connectToDatabase } from '@/lib/mongodb'
 import User from '@/lib/userModel'
 import bcrypt from 'bcryptjs'
-import { sendVerificationEmail } from '@/lib/emailService_new'
+import { sendVerificationEmail } from '@/lib/emailService'
 
 export async function POST(req) {
   try {
