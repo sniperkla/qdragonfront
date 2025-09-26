@@ -1,33 +1,21 @@
-import nodemailer from 'nodemailer'
+import { Resend } from 'resend'
 
-// Create email transporter
-const createTransporter = () => {
-  // Check if environment variables are set
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+// Initialize Resend client
+const resend = new Resend(process.env.RESEND_API_KEY)
+
+// Validate configuration
+const validateEmailConfig = () => {
+  if (!process.env.RESEND_API_KEY) {
     throw new Error(
-      'Email configuration missing: EMAIL_USER and EMAIL_PASSWORD must be set'
+      'Email configuration missing: RESEND_API_KEY must be set'
     )
   }
-
-  return nodemailer.createTransport({
-    service: 'gmail',
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false, // true for 465, false for other ports
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASSWORD
-    },
-    tls: {
-      ciphers: 'SSLv3'
-    },
-    // Production specific settings
-    pool: true, // use pooled connections
-    maxConnections: 1, // limit to 1 connection
-    maxMessages: 3, // limit to 3 messages per connection
-    rateDelta: 20000, // limit to 3 messages per 20 seconds
-    rateLimit: 3
-  })
+  
+  if (!process.env.EMAIL_FROM) {
+    throw new Error(
+      'Email configuration missing: EMAIL_FROM must be set (e.g., noreply@yourdomain.com)'
+    )
+  }
 }
 
 // Send verification email
@@ -38,29 +26,15 @@ export const sendVerificationEmail = async (
 ) => {
   try {
     console.log('Attempting to send verification email to:', email)
-    console.log('Email user configured:', process.env.EMAIL_USER ? 'Yes' : 'No')
-    console.log(
-      'Email password configured:',
-      process.env.EMAIL_PASSWORD ? 'Yes' : 'No'
-    )
+    console.log('Resend API Key configured:', process.env.RESEND_API_KEY ? 'Yes' : 'No')
+    console.log('Email FROM configured:', process.env.EMAIL_FROM ? 'Yes' : 'No')
 
-    const transporter = createTransporter()
+    // Validate configuration
+    validateEmailConfig()
 
-    // Verify transporter configuration
-    try {
-      await transporter.verify()
-      console.log('Email transporter verified successfully')
-    } catch (verifyError) {
-      console.error('Email transporter verification failed:', verifyError)
-      throw new Error(`Email configuration invalid: ${verifyError.message}`)
-    }
-
-    const mailOptions = {
-      from: {
-        name: 'Q-DRAGON Trading Platform',
-        address: process.env.EMAIL_USER
-      },
-      to: email,
+    const emailData = {
+      from: `Q-DRAGON Trading Platform <${process.env.EMAIL_FROM}>`,
+      to: [email],
       subject: 'Verify Your Q-DRAGON Trading Account',
       html: `
         <!DOCTYPE html>
@@ -141,29 +115,22 @@ export const sendVerificationEmail = async (
       `
     }
 
-    console.log('Sending email with options:', {
-      from: mailOptions.from,
-      to: mailOptions.to,
-      subject: mailOptions.subject
+    console.log('Sending email with Resend:', {
+      from: emailData.from,
+      to: emailData.to,
+      subject: emailData.subject
     })
 
-    const result = await new Promise((resolve, reject) => {
-      transporter.sendMail(mailOptions, (err, info) => {
-        if (err) {
-          console.error(err)
-          reject(err)
-        } else {
-          resolve(info)
-        }
-      })
-    })
+    const result = await resend.emails.send(emailData)
 
-    console.log('Verification email sent successfully:', result.messageId)
+    if (result.error) {
+      console.error('Resend API error:', result.error)
+      throw new Error(`Failed to send email: ${result.error.message}`)
+    }
 
-    // Close the transporter
-    transporter.close()
+    console.log('Verification email sent successfully:', result.data?.id)
 
-    return { success: true, messageId: result.messageId }
+    return { success: true, messageId: result.data?.id }
   } catch (error) {
     console.error('Error sending verification email:', error)
     console.error('Error details:', {
