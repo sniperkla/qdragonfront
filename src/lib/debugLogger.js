@@ -7,11 +7,12 @@ export const debugLogger = {
       message,
       data,
       url: typeof window !== 'undefined' ? window.location.href : 'server',
-      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown'
+      userAgent:
+        typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown'
     }
-    
+
     console.log('🔍 DEBUG:', logEntry)
-    
+
     // In production, you might want to send this to an external logging service
     if (process.env.NODE_ENV === 'production') {
       try {
@@ -26,7 +27,7 @@ export const debugLogger = {
       }
     }
   },
-  
+
   error: (message, error = {}) => {
     const timestamp = new Date().toISOString()
     const logEntry = {
@@ -40,9 +41,9 @@ export const debugLogger = {
       },
       url: typeof window !== 'undefined' ? window.location.href : 'server'
     }
-    
+
     console.error('❌ ERROR:', logEntry)
-    
+
     if (process.env.NODE_ENV === 'production') {
       try {
         const logs = JSON.parse(localStorage.getItem('debug_logs') || '[]')
@@ -54,7 +55,7 @@ export const debugLogger = {
       }
     }
   },
-  
+
   getLogs: () => {
     if (typeof window === 'undefined') return []
     try {
@@ -64,7 +65,7 @@ export const debugLogger = {
       return []
     }
   },
-  
+
   clearLogs: () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('debug_logs')
