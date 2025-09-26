@@ -6,11 +6,11 @@ import CustomerAccount from '../../../../lib/customerAccountModel'
 const verifyAdmin = async (request) => {
   try {
     const adminSession = request.cookies.get('admin-session')?.value
-    
+
     if (!adminSession || adminSession !== 'authenticated') {
       return false
     }
-    
+
     return true
   } catch (error) {
     console.error('Admin verification error:', error)
@@ -22,7 +22,7 @@ const verifyAdmin = async (request) => {
 const generateLicenseKey = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
   let result = ''
-  
+
   // Format: XXXX-XXXX-XXXX-XXXX
   for (let i = 0; i < 16; i++) {
     if (i > 0 && i % 4 === 0) {
@@ -30,21 +30,21 @@ const generateLicenseKey = () => {
     }
     result += chars.charAt(Math.floor(Math.random() * chars.length))
   }
-  
+
   return result
 }
 
 // Calculate expiry date
 const calculateExpiryDate = (planDays) => {
   const now = new Date()
-  
+
   if (planDays === 'lifetime') {
     // Set to a very far future date for lifetime plans
     const lifetimeDate = new Date(now)
     lifetimeDate.setFullYear(now.getFullYear() + 100)
     return lifetimeDate.toISOString().split('T')[0]
   }
-  
+
   const expiryDate = new Date(now)
   expiryDate.setDate(now.getDate() + parseInt(planDays))
   return expiryDate.toISOString().split('T')[0]
@@ -53,21 +53,18 @@ const calculateExpiryDate = (planDays) => {
 export async function POST(request) {
   try {
     console.log('Admin create account API called')
-    
+
     // Verify admin authentication
     if (!(await verifyAdmin(request))) {
       console.log('Admin authentication failed')
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    
+
     const body = await request.json()
     console.log('Request body received:', { ...body, password: '[REDACTED]' })
-    
+
     const { username, platform, accountNumber, plan } = body
-    
+
     // Validate required fields
     if (!username || !platform || !accountNumber || !plan) {
       return NextResponse.json(
@@ -75,12 +72,12 @@ export async function POST(request) {
         { status: 400 }
       )
     }
-    
+
     // Connect to MongoDB
     if (!mongoose.connections[0].readyState) {
       await mongoose.connect(process.env.MONGODB_URI)
     }
-    
+
     // Check if account number already exists
     const existingAccount = await CustomerAccount.findOne({ accountNumber })
     if (existingAccount) {
@@ -89,21 +86,23 @@ export async function POST(request) {
         { status: 400 }
       )
     }
-    
+
     // Generate license key
     let licenseKey
     let licenseExists = true
-    
+
     // Ensure unique license key
     while (licenseExists) {
       licenseKey = generateLicenseKey()
-      const existingLicense = await CustomerAccount.findOne({ license: licenseKey })
+      const existingLicense = await CustomerAccount.findOne({
+        license: licenseKey
+      })
       licenseExists = !!existingLicense
     }
-    
+
     // Calculate expiry date
     const expireDate = calculateExpiryDate(plan)
-    
+
     // Create customer account
     const customerAccount = new CustomerAccount({
       user: username,
@@ -115,10 +114,10 @@ export async function POST(request) {
       status: 'valid', // Manual accounts are immediately valid
       activatedAt: new Date()
     })
-    
+
     await customerAccount.save()
     console.log('License generated successfully:', customerAccount._id)
-    
+
     // Return success response
     return NextResponse.json({
       success: true,
@@ -135,7 +134,6 @@ export async function POST(request) {
         activatedAt: customerAccount.activatedAt
       }
     })
-    
   } catch (error) {
     console.error('Error generating license:', error)
     return NextResponse.json(
