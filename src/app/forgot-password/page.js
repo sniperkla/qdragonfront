@@ -124,23 +124,44 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-yellow-900 to-black flex items-center justify-center p-4 sm:p-6 lg:p-8">
-      {/* Background Pattern */}
-      <div className="absolute inset-0 bg-black bg-opacity-50"></div>
-      <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/10 to-amber-500/10"></div>
+    <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 lg:p-8 relative overflow-hidden">
+      {/* Background Image */}
+      <div className="absolute inset-0">
+        <img
+          src="/qdragon1.jpg"
+          alt="Q-Dragon Background"
+          className="w-full h-full object-cover object-center"
+          style={{
+            minHeight: '100vh',
+            minWidth: '100vw'
+          }}
+        />
+        {/* Dark overlay for better text readability */}
+        <div className="absolute inset-0 bg-black/50"></div>
+        {/* Subtle gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/10 via-transparent to-amber-500/10"></div>
+      </div>
 
       {/* Forgot Password Card */}
-      <div className="relative z-10 max-w-md w-full bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-yellow-200 mx-auto">
+      <div className="relative z-10 max-w-md w-full bg-white/5 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/30 ring-1 ring-white/20">
         {/* Header */}
         <div className="text-center pt-6 sm:pt-8 pb-4 sm:pb-6 px-6 sm:px-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-r from-yellow-400 to-amber-500 rounded-full mb-3 sm:mb-4 shadow-lg">
-            <span className="text-xl sm:text-2xl font-bold text-white">Q</span>
+          <div className="inline-flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32  rounded-full mb-3 sm:mb-4 shadow-lg overflow-hidden">
+            {/* Logo Image */}
+            <img
+              src="/logo.png"
+              alt="Q-DRAGON Logo"
+              onError={(e) => {
+                // Fallback to dragon emoji if image fails to load
+                e.target.style.display = 'none'
+                e.target.nextElementSibling.style.display = 'block'
+              }}
+            />
+            {/* Fallback Dragon Icon */}
+            <span className="text-3xl sm:text-4xl hidden">🐉</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
-            Q-DRAGON
-          </h1>
-          <p className="text-gray-600 text-sm sm:text-base">Forgot Password</p>
-          <p className="text-xs sm:text-sm text-yellow-600 font-medium mt-1 sm:mt-2">
+          <p className="text-white/90 text-sm sm:text-base">Forgot Password</p>
+          <p className="text-xs sm:text-sm text-yellow-300 font-medium mt-1 sm:mt-2">
             Reset Your Trading Account Password
           </p>
         </div>
@@ -152,7 +173,7 @@ export default function ForgotPasswordPage() {
               <div>
                 <label
                   htmlFor="email"
-                  className="block text-sm font-medium text-gray-700 mb-2"
+                  className="block text-sm font-medium text-white/90 mb-2"
                 >
                   Email Address
                 </label>
@@ -163,7 +184,7 @@ export default function ForgotPasswordPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    className="w-full px-4 py-3 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12 text-sm sm:text-base text-gray-900 placeholder-gray-500"
+                    className="w-full px-4 py-3 sm:py-3 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition duration-200 pl-12 text-sm sm:text-base text-white placeholder-white/60 bg-white/10 backdrop-blur-sm"
                     placeholder="Enter your email address"
                   />
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -182,7 +203,7 @@ export default function ForgotPasswordPage() {
                     </svg>
                   </div>
                 </div>
-                <p className="text-xs sm:text-sm text-gray-500 mt-2 leading-relaxed">
+                <p className="text-xs sm:text-sm text-white/50 mt-2 leading-relaxed">
                   Enter the email address associated with your Q-DRAGON account
                 </p>
               </div>
@@ -322,11 +343,11 @@ export default function ForgotPasswordPage() {
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-gray-300"></div>
               </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">
+              {/* <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-white text-gray-500 font-bold">
                   Remember your password?
                 </span>
-              </div>
+              </div> */}
             </div>
 
             <button
@@ -351,7 +372,7 @@ export default function ForgotPasswordPage() {
           </div>
 
           {/* Footer */}
-          <div className="mt-6 sm:mt-8 text-center text-xs text-gray-500">
+          <div className="mt-6 sm:mt-8 text-center text-xs text-white/70">
             <p className="leading-relaxed">
               Secure Password Reset • Q-DRAGON Trading Platform
             </p>
