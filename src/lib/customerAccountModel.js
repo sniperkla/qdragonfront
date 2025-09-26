@@ -14,7 +14,9 @@ const CustomerAccountSchema = new mongoose.Schema(
     accountNumber: { type: String, required: true },
     plan: { type: Number, required: true }, // 30, 60, or 90 days
     activatedAt: { type: Date, default: Date.now },
-    createdAt: { type: Date, default: Date.now }
+    createdAt: { type: Date, default: Date.now },
+    createdBy: { type: String, default: 'user' }, // 'user' or 'admin'
+    adminGenerated: { type: Boolean, default: false } // true if created by admin
   },
   {
     timestamps: true
