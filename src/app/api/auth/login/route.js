@@ -28,6 +28,16 @@ export async function POST(req) {
       return new Response(JSON.stringify({ error: 'Invalid credentials' }), { status: 401 });
     }
 
+    // Check if email is verified
+    if (!user.isEmailVerified) {
+      return new Response(JSON.stringify({ 
+        error: 'Email not verified',
+        requiresVerification: true,
+        email: user.email,
+        username: user.username
+      }), { status: 403 });
+    }
+
     // Create JWT token
     const token = jwt.sign(
       { userId: user._id, username: user.username },

@@ -2,19 +2,92 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
+// Inline debug logger to avoid import issues
+const debugLogger = {
+  log: (message, data = {}) => {
+    const timestamp = new Date().toISOString()
+    const logEntry = { timestamp, message, data, url: typeof window !== 'undefined' ? window.location.href : 'server' }
+    console.log('🔍 DEBUG:', logEntry)
+    if (process.env.NODE_ENV === 'production') {
+      try {
+        const logs = JSON.parse(localStorage.getItem('debug_logs') || '[]')
+        logs.push(logEntry)
+        if (logs.length > 50) logs.shift()
+        localStorage.setItem('debug_logs', JSON.stringify(logs))
+      } catch (error) {
+        console.warn('Failed to store debug log:', error)
+      }
+    }
+  },
+  error: (message, error = {}) => {
+    const timestamp = new Date().toISOString()
+    const logEntry = { timestamp, level: 'ERROR', message, error: { message: error.message, stack: error.stack }, url: typeof window !== 'undefined' ? window.location.href : 'server' }
+    console.error('❌ ERROR:', logEntry)
+    if (process.env.NODE_ENV === 'production') {
+      try {
+        const logs = JSON.parse(localStorage.getItem('debug_logs') || '[]')
+        logs.push(logEntry)
+        if (logs.length > 50) logs.shift()
+        localStorage.setItem('debug_logs', JSON.stringify(logs))
+      } catch (err) {
+        console.warn('Failed to store error log:', err)
+      }
+    }
+  }
+}
+
 function VerifyEmailContent() {
   const [email, setEmail] = useState('')
   const [verificationCode, setVerificationCode] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [fromLogin, setFromLogin] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
 
   useEffect(() => {
-    const emailParam = searchParams.get('email')
-    if (emailParam) {
-      setEmail(decodeURIComponent(emailParam))
+    debugLogger.log('Verify email page loaded', {
+      currentUrl: window.location.href,
+      searchParams: window.location.search,
+      pathname: window.location.pathname,
+      referrer: document.referrer
+    })
+    
+    try {
+      const emailParam = searchParams.get('email')
+      const usernameParam = searchParams.get('username')
+      
+      debugLogger.log('Processing URL parameters', { 
+        emailParam,
+        usernameParam,
+        allParams: Object.fromEntries(searchParams.entries())
+      })
+      
+      // Check if user came from login (has both email and username parameters)
+      if (emailParam && usernameParam) {
+        setFromLogin(true)
+        debugLogger.log('User came from login - email verification required')
+      }
+      
+      if (emailParam) {
+        const decodedEmail = decodeURIComponent(emailParam)
+        debugLogger.log('Email successfully decoded', { 
+          original: emailParam,
+          decoded: decodedEmail 
+        })
+        setEmail(decodedEmail)
+      } else {
+        debugLogger.error('No email parameter found in URL', {
+          searchParamsString: searchParams.toString(),
+          windowSearch: window.location.search,
+          allParams: Object.fromEntries(searchParams.entries())
+        })
+        setError('No email address provided. Please register again.')
+      }
+    } catch (error) {
+      debugLogger.error('Error processing URL parameters', error)
+      setError('Error loading verification page. Please try again.')
     }
   }, [searchParams])
 
@@ -39,10 +112,17 @@ function VerifyEmailContent() {
       const data = await response.json()
 
       if (response.ok) {
-        setMessage('Email verified successfully! Redirecting to login...')
-        setTimeout(() => {
-          router.push('/login')
-        }, 2000)
+        if (fromLogin) {
+          setMessage('Email verified successfully! You can now log in.')
+          setTimeout(() => {
+            router.push('/login')
+          }, 2000)
+        } else {
+          setMessage('Email verified successfully! Redirecting to login...')
+          setTimeout(() => {
+            router.push('/login')
+          }, 2000)
+        }
       } else {
         setError(data.error || 'Verification failed')
       }
@@ -97,8 +177,17 @@ function VerifyEmailContent() {
             </svg>
           </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Verify Your Email</h1>
-          <p className="text-gray-600">Complete your Q-DRAGON account setup</p>
-          <p className="text-sm text-yellow-600 font-medium mt-2">Check your email for the verification code</p>
+          {fromLogin ? (
+            <>
+              <p className="text-gray-600">Email verification required to access your account</p>
+              <p className="text-sm text-amber-600 font-medium mt-2">⚠️ You must verify your email before logging in</p>
+            </>
+          ) : (
+            <>
+              <p className="text-gray-600">Complete your Q-DRAGON account setup</p>
+              <p className="text-sm text-yellow-600 font-medium mt-2">Check your email for the verification code</p>
+            </>
+          )}
         </div>
 
         {/* Verification Form */}
@@ -237,6 +326,20 @@ export default function VerifyEmailPage() {
       </div>
     }>
       <VerifyEmailContent />
+      {/* Debug Button */}
+      {(process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && window.location.search.includes('debug=true'))) && (
+        <button
+          onClick={() => {
+            const logs = JSON.parse(localStorage.getItem('debug_logs') || '[]')
+            console.log('📋 Debug Logs:', logs)
+            alert(`Debug logs (${logs.length} entries) - Check browser console for details`)
+          }}
+          className="fixed bottom-4 right-4 z-50 bg-red-500 text-white px-3 py-2 rounded-lg text-sm font-mono hover:bg-red-600 transition-colors"
+          title="Show Debug Logs"
+        >
+          🔍 DEBUG
+        </button>
+      )}
     </Suspense>
   )
 }

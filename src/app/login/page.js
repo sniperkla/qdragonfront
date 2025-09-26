@@ -4,6 +4,40 @@ import { useRouter } from 'next/navigation'
 import { useDispatch } from 'react-redux'
 import { loginSuccess } from '../../store/slices/authSlice'
 
+// Inline debug logger
+const debugLogger = {
+  log: (message, data = {}) => {
+    const timestamp = new Date().toISOString()
+    const logEntry = { timestamp, message, data, url: typeof window !== 'undefined' ? window.location.href : 'server' }
+    console.log('🔍 DEBUG:', logEntry)
+    if (process.env.NODE_ENV === 'production') {
+      try {
+        const logs = JSON.parse(localStorage.getItem('debug_logs') || '[]')
+        logs.push(logEntry)
+        if (logs.length > 50) logs.shift()
+        localStorage.setItem('debug_logs', JSON.stringify(logs))
+      } catch (error) {
+        console.warn('Failed to store debug log:', error)
+      }
+    }
+  },
+  error: (message, error = {}) => {
+    const timestamp = new Date().toISOString()
+    const logEntry = { timestamp, level: 'ERROR', message, error: { message: error.message, stack: error.stack }, url: typeof window !== 'undefined' ? window.location.href : 'server' }
+    console.error('❌ ERROR:', logEntry)
+    if (process.env.NODE_ENV === 'production') {
+      try {
+        const logs = JSON.parse(localStorage.getItem('debug_logs') || '[]')
+        logs.push(logEntry)
+        if (logs.length > 50) logs.shift()
+        localStorage.setItem('debug_logs', JSON.stringify(logs))
+      } catch (err) {
+        console.warn('Failed to store error log:', err)
+      }
+    }
+  }
+}
+
 export default function LoginPage() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -16,6 +50,8 @@ export default function LoginPage() {
     e.preventDefault()
     setError('')
     setIsLoading(true)
+    
+    debugLogger.log('Login attempt started', { username })
     
     try {
       const res = await fetch('/api/auth/login', {
@@ -30,6 +66,13 @@ export default function LoginPage() {
       })
       const data = await res.json()
       
+      debugLogger.log('Login API response received', { 
+        status: res.status, 
+        ok: res.ok, 
+        requiresVerification: data.requiresVerification,
+        hasEmail: !!data.email
+      })
+      
       if (res.ok) {
         // Update Redux state with user data
         const userData = {
@@ -38,11 +81,23 @@ export default function LoginPage() {
           email: username // Using username as email for now
         }
         dispatch(loginSuccess(userData))
+        debugLogger.log('Login successful, redirecting to landing')
         router.push('/landing') // Redirect to landing page after successful login
+      } else if (res.status === 403 && data.requiresVerification) {
+        // User needs to verify email - redirect to verification page
+        debugLogger.log('Email verification required, redirecting to verify-email', {
+          email: data.email,
+          username: data.username
+        })
+        const verifyUrl = `/verify-email?email=${encodeURIComponent(data.email)}&username=${encodeURIComponent(data.username)}`
+        debugLogger.log('Verify URL created', { verifyUrl })
+        router.push(verifyUrl)
       } else {
+        debugLogger.error('Login failed', { status: res.status, error: data.error })
         setError(data.error || 'Username or password incorrect')
       }
     } catch (error) {
+      debugLogger.error('Login network error', error)
       setError('Network error. Please try again.')
     } finally {
       setIsLoading(false)
@@ -200,6 +255,21 @@ export default function LoginPage() {
       <div className="absolute top-10 left-10 w-20 h-20 bg-yellow-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse"></div>
       <div className="absolute top-10 right-10 w-20 h-20 bg-amber-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse animation-delay-2000"></div>
       <div className="absolute bottom-10 left-20 w-20 h-20 bg-yellow-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse animation-delay-4000"></div>
+      
+      {/* Debug Button */}
+      {(process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && window.location.search.includes('debug=true'))) && (
+        <button
+          onClick={() => {
+            const logs = JSON.parse(localStorage.getItem('debug_logs') || '[]')
+            console.log('📋 Debug Logs:', logs)
+            alert(`Debug logs (${logs.length} entries) - Check browser console for details`)
+          }}
+          className="fixed bottom-4 right-4 z-50 bg-red-500 text-white px-3 py-2 rounded-lg text-sm font-mono hover:bg-red-600 transition-colors"
+          title="Show Debug Logs"
+        >
+          🔍 DEBUG
+        </button>
+      )}
     </div>
   )
 }
