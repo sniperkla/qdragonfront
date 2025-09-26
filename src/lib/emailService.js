@@ -135,7 +135,19 @@ export const sendVerificationEmail = async (email, username, verificationToken) 
       subject: mailOptions.subject
     });
 
-    const result = await transporter.sendMail(mailOptions);
+    // Use Promise wrapper for better Next.js compatibility
+    const result = await new Promise((resolve, reject) => {
+      transporter.sendMail(mailOptions, (err, info) => {
+        if (err) {
+          console.error('Promise sendMail error:', err);
+          reject(err);
+        } else {
+          console.log('Promise sendMail success:', info.messageId);
+          resolve(info);
+        }
+      });
+    });
+    
     console.log('Verification email sent successfully:', result.messageId);
     
     // Close the transporter
