@@ -142,3 +142,121 @@ export const sendVerificationEmail = async (
     return { success: false, error: error.message }
   }
 }
+
+// Send password reset email
+export const sendPasswordResetEmail = async (
+  email,
+  username,
+  resetToken
+) => {
+  try {
+    console.log('Attempting to send password reset email to:', email)
+    
+    // Validate configuration
+    validateEmailConfig()
+
+    // Create reset URL
+    const resetUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`
+
+    const emailData = {
+      from: `Q-DRAGON Trading Platform <${process.env.EMAIL_FROM}>`,
+      to: [email],
+      subject: 'Reset Your Q-DRAGON Password',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Reset Your Q-DRAGON Password</title>
+        </head>
+        <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f5f5f5;">
+          <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 20px;">
+            <!-- Header -->
+            <div style="text-align: center; padding: 30px 0; background: linear-gradient(135deg, #fbbf24, #f59e0b); border-radius: 10px; margin-bottom: 30px;">
+              <div style="display: inline-block; width: 60px; height: 60px; background-color: white; border-radius: 50%; line-height: 60px; font-size: 24px; font-weight: bold; color: #f59e0b; margin-bottom: 10px;">
+                Q
+              </div>
+              <h1 style="color: white; margin: 0; font-size: 28px;">Q-DRAGON</h1>
+              <p style="color: rgba(255,255,255,0.9); margin: 5px 0 0 0; font-size: 14px;">Gold Trading Platform</p>
+            </div>
+            
+            <!-- Content -->
+            <div style="padding: 0 20px;">
+              <h2 style="color: #333; margin-bottom: 20px;">Password Reset Request</h2>
+              
+              <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
+                Hello ${username},<br><br>
+                We received a request to reset your password for your Q-DRAGON trading account. 
+                If you made this request, click the button below to reset your password.
+              </p>
+              
+              <!-- Reset Button -->
+              <div style="text-align: center; margin: 40px 0;">
+                <a href="${resetUrl}" style="display: inline-block; background: linear-gradient(135deg, #fbbf24, #f59e0b); color: white; text-decoration: none; padding: 15px 30px; border-radius: 8px; font-weight: bold; font-size: 16px;">
+                  Reset Password
+                </a>
+              </div>
+              
+              <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
+                Or copy and paste this link into your browser:
+              </p>
+              
+              <div style="background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; margin: 20px 0; word-break: break-all;">
+                <a href="${resetUrl}" style="color: #f59e0b; text-decoration: none;">${resetUrl}</a>
+              </div>
+              
+              <!-- Security Info -->
+              <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 15px; margin: 30px 0;">
+                <h3 style="color: #991b1b; margin: 0 0 10px 0; font-size: 16px;">Security Information</h3>
+                <ul style="color: #991b1b; margin: 0; padding-left: 20px; font-size: 14px;">
+                  <li>This password reset link expires in 1 hour</li>
+                  <li>If you didn't request this reset, please ignore this email</li>
+                  <li>Never share your password reset link with anyone</li>
+                  <li>Contact support if you have concerns about your account security</li>
+                </ul>
+              </div>
+              
+              <p style="color: #666; line-height: 1.6; margin-bottom: 30px; font-size: 14px;">
+                If you didn't request a password reset, you can safely ignore this email. 
+                Your password will remain unchanged.
+              </p>
+            </div>
+            
+            <!-- Footer -->
+            <div style="text-align: center; padding: 30px 20px; border-top: 1px solid #e5e7eb; margin-top: 40px;">
+              <p style="color: #9ca3af; font-size: 14px; margin: 0;">
+                © 2025 Q-DRAGON Trading Platform<br>
+                Professional • Secure • Reliable
+              </p>
+              <p style="color: #9ca3af; font-size: 12px; margin: 10px 0 0 0;">
+                This email was sent to ${email}. If you didn't request this, please ignore this email.
+              </p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    }
+
+    console.log('Sending password reset email with Resend:', {
+      from: emailData.from,
+      to: emailData.to,
+      subject: emailData.subject
+    })
+
+    const result = await resend.emails.send(emailData)
+
+    if (result.error) {
+      console.error('Resend API error:', result.error)
+      throw new Error(`Failed to send email: ${result.error.message}`)
+    }
+
+    console.log('Password reset email sent successfully:', result.data?.id)
+
+    return { success: true, messageId: result.data?.id }
+  } catch (error) {
+    console.error('Error sending password reset email:', error)
+    return { success: false, error: error.message }
+  }
+}
