@@ -162,39 +162,61 @@ function VerifyEmailContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-yellow-900 to-black flex items-center justify-center p-4">
-      {/* Background Pattern */}
-      <div className="absolute inset-0 bg-black bg-opacity-50"></div>
-      <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/10 to-amber-500/10"></div>
+    <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 lg:p-8 relative overflow-hidden">
+      {/* Background Image */}
+      <div className="absolute inset-0">
+        <img
+          src="/qdragon1.jpg"
+          alt="Q-Dragon Background"
+          className="w-full h-full object-cover object-center"
+          style={{
+            minHeight: '100vh',
+            minWidth: '100vw'
+          }}
+        />
+        {/* Dark overlay for better text readability */}
+        <div className="absolute inset-0 bg-black/50"></div>
+        {/* Subtle gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/10 via-transparent to-amber-500/10"></div>
+      </div>
       
       {/* Verification Card */}
-      <div className="relative z-10 max-w-md w-full bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-yellow-200">
+      <div className="relative z-10 max-w-md w-full bg-white/5 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/30 ring-1 ring-white/20">
         {/* Header */}
-        <div className="text-center pt-8 pb-6 px-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-yellow-400 to-amber-500 rounded-full mb-4 shadow-lg">
-            <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"></path>
-            </svg>
+        <div className="text-center pt-6 sm:pt-8 pb-4 sm:pb-6 px-6 sm:px-8">
+          <div className="inline-flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32  rounded-full mb-3 sm:mb-4 shadow-lg overflow-hidden">
+            {/* Logo Image */}
+            <img
+              src="/logo.png"
+              alt="Q-DRAGON Logo"
+              onError={(e) => {
+                // Fallback to dragon emoji if image fails to load
+                e.target.style.display = 'none'
+                e.target.nextElementSibling.style.display = 'block'
+              }}
+            />
+            {/* Fallback Dragon Icon */}
+            <span className="text-3xl sm:text-4xl hidden">🐉</span>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Verify Your Email</h1>
+          <p className="text-white/90 text-sm sm:text-base mb-2">Verify Your Email</p>
           {fromLogin ? (
             <>
-              <p className="text-gray-600">Email verification required to access your account</p>
-              <p className="text-sm text-amber-600 font-medium mt-2">⚠️ You must verify your email before logging in</p>
+              <p className="text-white/80 text-xs sm:text-sm">Email verification required to access your account</p>
+              <p className="text-xs sm:text-sm text-yellow-300 font-medium mt-1 sm:mt-2">⚠️ You must verify your email before logging in</p>
             </>
           ) : (
             <>
-              <p className="text-gray-600">Complete your Q-DRAGON account setup</p>
-              <p className="text-sm text-yellow-600 font-medium mt-2">Check your email for the verification code</p>
+              <p className="text-white/80 text-xs sm:text-sm">Complete your account setup</p>  
+              <p className="text-xs sm:text-sm text-yellow-300 font-medium mt-1 sm:mt-2">Check your email for the verification code</p>
             </>
           )}
         </div>
 
         {/* Verification Form */}
-        <div className="px-8 pb-8">
-          <form onSubmit={handleVerify} className="space-y-6">
+        <div className="px-6 sm:px-8 pb-6 sm:pb-8">
+          <form onSubmit={handleVerify} className="space-y-4 sm:space-y-6">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="email" className="block text-sm font-medium text-white/90 mb-2">
                 Email Address
               </label>
               <div className="relative">
@@ -204,12 +226,12 @@ function VerifyEmailContent() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12 bg-gray-50"
+                  className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition duration-200 pl-12 text-white placeholder-white/60"
                   placeholder="Your email address"
                   readOnly
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-5 w-5 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"></path>
                   </svg>
                 </div>
@@ -217,7 +239,7 @@ function VerifyEmailContent() {
             </div>
 
             <div>
-              <label htmlFor="verificationCode" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="verificationCode" className="block text-sm font-medium text-white/90 mb-2">
                 Verification Code
               </label>
               <div className="relative">
@@ -227,16 +249,16 @@ function VerifyEmailContent() {
                   value={verificationCode}
                   onChange={(e) => setVerificationCode(e.target.value)}
                   required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12"
+                  className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition duration-200 pl-12 text-white placeholder-white/60"
                   placeholder="Enter verification code"
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-5 w-5 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m-2-2a2 2 0 00-2 2m2-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-6a2 2 0 01-2-2V9a2 2 0 012-2h2z"></path>
                   </svg>
                 </div>
               </div>
-              <p className="text-xs text-gray-500 mt-1">Check your email inbox and spam folder</p>
+              <p className="text-xs text-white/70 mt-1">Check your email inbox and spam folder</p>
             </div>
 
             {message && (
@@ -283,11 +305,11 @@ function VerifyEmailContent() {
 
           {/* Resend Button */}
           <div className="mt-6 text-center">
-            <p className="text-gray-600 mb-4">Didn't receive the code?</p>
+            <p className="text-white/80 mb-4">Didn't receive the code?</p>
             <button
               onClick={handleResendVerification}
               disabled={isLoading}
-              className="text-yellow-600 hover:text-yellow-700 font-medium py-2 transition duration-200 disabled:opacity-50"
+              className="text-yellow-300 hover:text-yellow-200 font-medium py-2 transition duration-200 disabled:opacity-50"
             >
               Resend Verification Email
             </button>
@@ -297,14 +319,14 @@ function VerifyEmailContent() {
           <div className="mt-6 text-center">
             <button
               onClick={() => router.push('/login')}
-              className="text-gray-600 hover:text-gray-700 font-medium py-2 transition duration-200"
+              className="text-white/80 hover:text-white font-medium py-2 transition duration-200"
             >
               ← Back to Login
             </button>
           </div>
 
           {/* Footer */}
-          <div className="mt-8 text-center text-xs text-gray-500">
+          <div className="mt-8 text-center text-xs text-white/60">
             <p>Verification link expires in 24 hours</p>
             <p className="mt-1">© 2025 Q-Dragon Trading Platform</p>
           </div>
@@ -312,8 +334,9 @@ function VerifyEmailContent() {
       </div>
 
       {/* Decorative Elements */}
-      <div className="absolute top-10 left-10 w-20 h-20 bg-yellow-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse"></div>
-      <div className="absolute top-10 right-10 w-20 h-20 bg-amber-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse animation-delay-2000"></div>
+      <div className="absolute top-4 sm:top-10 left-4 sm:left-10 w-12 h-12 sm:w-20 sm:h-20 bg-yellow-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse"></div>
+      <div className="absolute top-4 sm:top-10 right-4 sm:right-10 w-12 h-12 sm:w-20 sm:h-20 bg-amber-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse animation-delay-2000"></div>
+      <div className="absolute bottom-4 sm:bottom-10 left-8 sm:left-20 w-12 h-12 sm:w-20 sm:h-20 bg-yellow-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse animation-delay-4000"></div>
     </div>
   )
 }
