@@ -40,10 +40,47 @@ export default function AdminPage() {
     username: '',
     platform: 'mt4',
     accountNumber: '',
-    plan: '30'
+    plan: 'lifetime',
+    extendDays: ''
   })
   const [creatingAccount, setCreatingAccount] = useState(false)
+  
+  // Extension requests state
+  const [extensionRequests, setExtensionRequests] = useState([])
+  const [loadingExtensions, setLoadingExtensions] = useState(false)
+  const [extensionFilter, setExtensionFilter] = useState('all')
+  const [processingExtension, setProcessingExtension] = useState({})
+  const [rejectionModal, setRejectionModal] = useState({
+    show: false,
+    requestId: '',
+    licenseCode: '',
+    reason: ''
+  })
+  
+  // Extend modal state
+  const [extendModal, setExtendModal] = useState({
+    show: false,
+    customerId: '',
+    licenseCode: '',
+    currentExpiry: '',
+    selectedPlan: '30',
+    customDays: '',
+    extendingCode: false
+  })
+  
   const router = useRouter()
+
+  // Format date to Thai Buddhist Era format with time
+  const formatThaiDateTime = (dateString) => {
+    const d = new Date(dateString)
+    const day = d.getDate().toString().padStart(2, '0')
+    const month = (d.getMonth() + 1).toString().padStart(2, '0')
+    const yearBE = d.getFullYear() + 543 // Convert to Buddhist Era
+    const hours = d.getHours().toString().padStart(2, '0')
+    const minutes = d.getMinutes().toString().padStart(2, '0')
+    
+    return `${day}/${month}/${yearBE} ${hours}:${minutes}`
+  }
 
   // Check admin authentication
   useEffect(() => {
@@ -56,6 +93,7 @@ export default function AdminPage() {
           setIsAuthenticated(true)
           fetchAllCodes()
           fetchAllCustomers()
+          fetchExtensionRequests()
         }
       } catch (error) {
         console.error('Admin auth check failed:', error)
@@ -188,6 +226,7 @@ export default function AdminPage() {
         setAdminKey('')
         fetchAllCodes()
         fetchAllCustomers()
+        fetchExtensionRequests()
       } else {
         showToast('Invalid admin key', 'error')
       }
@@ -387,6 +426,159 @@ export default function AdminPage() {
     setConfirmText('')
   }
 
+  // Extension request functions
+  const fetchExtensionRequests = async () => {
+    setLoadingExtensions(true)
+    try {
+      const response = await fetch('/api/admin/extension-requests', {
+        credentials: 'include'
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setExtensionRequests(data.requests)
+      }
+    } catch (error) {
+      console.error('Error fetching extension requests:', error)
+    } finally {
+      setLoadingExtensions(false)
+    }
+  }
+
+  const approveExtension = async (requestId) => {
+    setProcessingExtension(prev => ({ ...prev, [requestId]: true }))
+    try {
+      const response = await fetch('/api/admin/extension-requests', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          requestId,
+          action: 'approve'
+        })
+      })
+
+      const data = await response.json()
+      if (response.ok) {
+        showToast(`Extension approved! ${data.licenseCode} extended by ${data.extendedDays} days`, 'success')
+        fetchExtensionRequests()
+        fetchAllCustomers() // Refresh customer list
+      } else {
+        showToast(data.error || 'Failed to approve extension', 'error')
+      }
+    } catch (error) {
+      console.error('Error approving extension:', error)
+      showToast('Failed to approve extension', 'error')
+    } finally {
+      setProcessingExtension(prev => ({ ...prev, [requestId]: false }))
+    }
+  }
+
+  const showRejectModal = (requestId, licenseCode) => {
+    setRejectionModal({
+      show: true,
+      requestId,
+      licenseCode,
+      reason: ''
+    })
+  }
+
+  const rejectExtension = async () => {
+    if (!rejectionModal.reason.trim()) {
+      showToast('Please provide a rejection reason', 'error')
+      return
+    }
+
+    setProcessingExtension(prev => ({ ...prev, [rejectionModal.requestId]: true }))
+    try {
+      const response = await fetch('/api/admin/extension-requests', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          requestId: rejectionModal.requestId,
+          action: 'reject',
+          rejectionReason: rejectionModal.reason
+        })
+      })
+
+      const data = await response.json()
+      if (response.ok) {
+        showToast(`Extension rejected for ${data.licenseCode}`, 'success')
+        setRejectionModal({ show: false, requestId: '', licenseCode: '', reason: '' })
+        fetchExtensionRequests()
+      } else {
+        showToast(data.error || 'Failed to reject extension', 'error')
+      }
+    } catch (error) {
+      console.error('Error rejecting extension:', error)
+      showToast('Failed to reject extension', 'error')
+    } finally {
+      setProcessingExtension(prev => ({ ...prev, [rejectionModal.requestId]: false }))
+    }
+  }
+
+  // Admin extend functions
+  const showExtendModal = (customer) => {
+    setExtendModal({
+      show: true,
+      customerId: customer._id,
+      licenseCode: customer.license,
+      currentExpiry: customer.expireDate || 'Unknown',
+      selectedPlan: '', // Start with custom option
+      customDays: '',
+      extendingCode: false
+    })
+  }
+
+  const handleAdminExtendCode = async () => {
+    // Determine which days to use - custom or preset plan
+    let daysToExtend
+    if (extendModal.customDays && extendModal.customDays.trim() !== '') {
+      daysToExtend = parseInt(extendModal.customDays)
+      if (isNaN(daysToExtend) || daysToExtend <= 0) {
+        showToast('Please enter a valid number of days', 'error')
+        return
+      }
+    } else if (extendModal.selectedPlan) {
+      daysToExtend = parseInt(extendModal.selectedPlan)
+    } else {
+      showToast('Please select an extension plan or enter custom days', 'error')
+      return
+    }
+
+    setExtendModal(prev => ({ ...prev, extendingCode: true }))
+
+    try {
+      const response = await fetch('/api/admin/extend-customer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          customerId: extendModal.customerId,
+          extendDays: daysToExtend
+        })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        const extendType = extendModal.customDays ? 'custom' : 'preset'
+        showToast(`License ${extendModal.licenseCode} extended by ${daysToExtend} days (${extendType})! New expiry: ${data.newExpiry}`, 'success')
+        setExtendModal({ show: false, customerId: '', licenseCode: '', currentExpiry: '', selectedPlan: '30', customDays: '', extendingCode: false })
+        
+        // Refresh customer list
+        fetchAllCustomers()
+      } else {
+        showToast(data.error || 'Failed to extend license', 'error')
+      }
+    } catch (error) {
+      console.error('Error extending license:', error)
+      showToast('Network error. Please try again.', 'error')
+    } finally {
+      setExtendModal(prev => ({ ...prev, extendingCode: false }))
+    }
+  }
+
   const createManualAccount = async (e) => {
     e.preventDefault()
     setCreatingAccount(true)
@@ -402,8 +594,16 @@ export default function AdminPage() {
       const data = await response.json()
 
       if (response.ok) {
+        const extendMessage = manualAccountForm.extendDays 
+          ? ` (${manualAccountForm.plan === 'lifetime' ? 'Lifetime' : `${manualAccountForm.plan} days`}${manualAccountForm.extendDays ? ` + ${manualAccountForm.extendDays} extra days` : ''})`
+          : ''
+        
+        const expiryMessage = data.license.expireDateThai 
+          ? ` | Expires: ${data.license.expireDateThai}`
+          : ''
+        
         showToast(
-          `License generated successfully! License Key: ${data.license.license}`,
+          `License generated successfully! License Key: ${data.license.license}${extendMessage}${expiryMessage}`,
           'success'
         )
 
@@ -412,7 +612,8 @@ export default function AdminPage() {
           username: '',
           platform: 'mt4',
           accountNumber: '',
-          plan: '30'
+          plan: 'lifetime',
+          extendDays: ''
         })
 
         // Refresh customer list
@@ -609,6 +810,16 @@ export default function AdminPage() {
               >
                 Generate License
               </button>
+              <button
+                onClick={() => setActiveTab('extension-requests')}
+                className={`py-4 px-6 text-sm font-medium border-b-2 ${
+                  activeTab === 'extension-requests'
+                    ? 'border-yellow-500 text-yellow-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Extension Requests ({extensionRequests.filter(r => r.status === 'pending').length})
+              </button>
             </nav>
           </div>
         </div>
@@ -777,7 +988,7 @@ export default function AdminPage() {
                           </span>
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-500">
-                          {new Date(code.createdAt).toLocaleDateString()}
+                          {formatThaiDateTime(code.createdAt)}
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex gap-2">
@@ -981,6 +1192,9 @@ export default function AdminPage() {
                         Status
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
+                        Source
+                      </th>
+                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
                         Activated
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
@@ -1022,7 +1236,7 @@ export default function AdminPage() {
                             {customer.plan} days
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-900">
-                            {customer.expireDate}
+                            {customer.plan === 999999 ? 'Lifetime' : customer.expireDate}
                           </td>
                           <td className="px-6 py-4">
                             <span
@@ -1037,13 +1251,31 @@ export default function AdminPage() {
                               {customer.status.toUpperCase()}
                             </span>
                           </td>
+                          <td className="px-6 py-4">
+                            <span
+                              className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                customer.adminGenerated || customer.createdBy === 'admin'
+                                  ? 'bg-purple-100 text-purple-800'
+                                  : 'bg-blue-100 text-blue-800'
+                              }`}
+                            >
+                              {customer.adminGenerated || customer.createdBy === 'admin' ? 'ADMIN' : 'USER'}
+                            </span>
+                          </td>
                           <td className="px-6 py-4 text-sm text-gray-500">
-                            {new Date(
-                              customer.activatedAt
-                            ).toLocaleDateString()}
+                            {formatThaiDateTime(customer.activatedAt)}
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex gap-2">
+                              {(customer.status === 'valid' || customer.status === 'expired') && (
+                                <button
+                                  onClick={() => showExtendModal(customer)}
+                                  disabled={updating[customer._id]}
+                                  className="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
+                                >
+                                  {updating[customer._id] ? '...' : 'Extend'}
+                                </button>
+                              )}
                               {customer.status === 'valid' && (
                                 <button
                                   onClick={() =>
@@ -1243,6 +1475,30 @@ export default function AdminPage() {
                     <option value="lifetime">Lifetime</option>
                   </select>
                 </div>
+
+                <div>
+                  <label
+                    htmlFor="extendDays"
+                    className="block text-sm font-medium text-gray-700 mb-2"
+                  >
+                    Extend Days (Optional)
+                  </label>
+                  <input
+                    type="number"
+                    id="extendDays"
+                    value={manualAccountForm.extendDays}
+                    onChange={(e) =>
+                      handleFormChange('extendDays', e.target.value)
+                    }
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                    placeholder="Additional days (e.g., 15)"
+                    min="0"
+                    max="9999"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Add extra days on top of the selected plan duration
+                  </p>
+                </div>
               </div>
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -1275,7 +1531,7 @@ export default function AdminPage() {
                         </li>
                         <li>
                           Expiry date will be calculated from today + plan
-                          duration
+                          duration + extend days (if specified)
                         </li>
                         <li>
                           No user account creation required - license only
@@ -1283,6 +1539,9 @@ export default function AdminPage() {
                         <li>
                           Customer can use the license key directly for trading
                           access
+                        </li>
+                        <li>
+                          <strong>Extend Days:</strong> Optionally add extra days on top of the selected plan
                         </li>
                       </ul>
                     </div>
@@ -1346,7 +1605,8 @@ export default function AdminPage() {
                       username: '',
                       platform: 'mt4',
                       accountNumber: '',
-                      plan: '30'
+                      plan: 'lifetime',
+                      extendDays: ''
                     })
                   }
                   className="bg-gray-500 hover:bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg transition duration-200"
@@ -1357,7 +1617,348 @@ export default function AdminPage() {
             </form>
           </div>
         )}
+
+        {activeTab === 'extension-requests' && (
+          <>
+            {/* Extension Request Controls */}
+            <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
+              <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+                <div className="flex gap-4 items-center">
+                  <button
+                    onClick={fetchExtensionRequests}
+                    disabled={loadingExtensions}
+                    className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg flex items-center"
+                  >
+                    {loadingExtensions ? (
+                      <svg className="animate-spin w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                      </svg>
+                    )}
+                    Refresh
+                  </button>
+
+                  <select
+                    value={extensionFilter}
+                    onChange={(e) => setExtensionFilter(e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500"
+                  >
+                    <option value="all">All Requests</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Extension Request Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+              {['all', 'pending', 'approved', 'rejected'].map((status) => {
+                const count = status === 'all' 
+                  ? extensionRequests.length 
+                  : extensionRequests.filter(r => r.status === status).length
+                return (
+                  <div key={status} className="bg-white rounded-xl shadow-lg p-6">
+                    <div className="text-2xl font-bold text-gray-900">{count}</div>
+                    <div className="text-sm text-gray-600 capitalize">
+                      {status === 'all' ? 'Total Requests' : status}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Extension Requests Table */}
+            <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">User</th>
+                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">License</th>
+                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Current Expiry</th>
+                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Requested Extension</th>
+                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Status</th>
+                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Requested</th>
+                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {extensionRequests
+                      .filter(request => extensionFilter === 'all' || request.status === extensionFilter)
+                      .map((request) => (
+                        <tr key={request._id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                            {request.username}
+                          </td>
+                          <td className="px-6 py-4 font-mono text-sm text-blue-600 font-bold">
+                            {request.licenseCode}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900">
+                            {request.currentExpiry}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900">
+                            {request.requestedDays} days ({request.requestedPlan} plan)
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              request.status === 'pending' 
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : request.status === 'approved'
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-red-100 text-red-800'
+                            }`}>
+                              {request.status.toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-500">
+                            {formatThaiDateTime(request.requestedAt)}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex gap-2">
+                              {request.status === 'pending' && (
+                                <>
+                                  <button
+                                    onClick={() => approveExtension(request._id)}
+                                    disabled={processingExtension[request._id]}
+                                    className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
+                                  >
+                                    {processingExtension[request._id] ? '...' : 'Approve'}
+                                  </button>
+                                  <button
+                                    onClick={() => showRejectModal(request._id, request.licenseCode)}
+                                    disabled={processingExtension[request._id]}
+                                    className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
+                                  >
+                                    {processingExtension[request._id] ? '...' : 'Reject'}
+                                  </button>
+                                </>
+                              )}
+                              {request.status === 'rejected' && request.rejectionReason && (
+                                <span className="text-xs text-red-600" title={request.rejectionReason}>
+                                  Reason: {request.rejectionReason.substring(0, 20)}...
+                                </span>
+                              )}
+                              {request.status === 'approved' && (
+                                <span className="text-xs text-green-600">
+                                  Processed by {request.processedBy}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {extensionRequests.filter(request => extensionFilter === 'all' || request.status === extensionFilter).length === 0 && (
+                <div className="text-center py-12 text-gray-500">
+                  <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                  </svg>
+                  <p className="text-lg font-medium">No extension requests found</p>
+                  <p className="text-sm">No extension requests match your current filter</p>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
+
+      {/* Rejection Reason Modal */}
+      {rejectionModal.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full mx-4">
+            <div className="text-center mb-6">
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+                <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Reject Extension Request</h3>
+              <p className="text-gray-600 mb-4">
+                License: <span className="font-mono font-bold text-red-600">{rejectionModal.licenseCode}</span>
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="rejectionReason" className="block text-sm font-medium text-gray-700 mb-2">
+                  Rejection Reason *
+                </label>
+                <textarea
+                  id="rejectionReason"
+                  value={rejectionModal.reason}
+                  onChange={(e) => setRejectionModal(prev => ({ ...prev, reason: e.target.value }))}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  placeholder="Please provide a reason for rejection..."
+                  rows="3"
+                  required
+                />
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setRejectionModal({ show: false, requestId: '', licenseCode: '', reason: '' })}
+                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-4 rounded-lg transition duration-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={rejectExtension}
+                  disabled={processingExtension[rejectionModal.requestId] || !rejectionModal.reason.trim()}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                >
+                  {processingExtension[rejectionModal.requestId] ? (
+                    <>
+                      <svg className="animate-spin w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Rejecting...
+                    </>
+                  ) : (
+                    'Reject Request'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Extend Modal */}
+      {extendModal.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full mx-4">
+            <div className="text-center mb-6">
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-purple-100 mb-4">
+                <svg className="h-6 w-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Extend License</h3>
+              <p className="text-gray-600 mb-2">
+                License: <span className="font-mono font-bold text-purple-600">{extendModal.licenseCode}</span>
+              </p>
+              <p className="text-sm text-gray-500">
+                Current Expiry: {extendModal.currentExpiry}
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="extensionPlan" className="block text-sm font-medium text-gray-700 mb-2">
+                  Preset Extension Plans
+                </label>
+                <select
+                  id="extensionPlan"
+                  value={extendModal.selectedPlan}
+                  onChange={(e) => setExtendModal(prev => ({ ...prev, selectedPlan: e.target.value, customDays: '' }))}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                >
+                  <option value="">-- Select Custom Days Instead --</option>
+                  <option value="7">7 Days (Trial Extension)</option>
+                  <option value="30">30 Days (Monthly)</option>
+                  <option value="60">60 Days (2 Months)</option>
+                  <option value="90">90 Days (Quarterly)</option>
+                  <option value="180">180 Days (6 Months)</option>
+                  <option value="365">365 Days (Annual)</option>
+                </select>
+              </div>
+
+              <div className="flex items-center">
+                <div className="flex-1 border-t border-gray-300"></div>
+                <div className="px-4 text-sm text-gray-500 bg-white">OR</div>
+                <div className="flex-1 border-t border-gray-300"></div>
+              </div>
+
+              <div>
+                <label htmlFor="customDays" className="block text-sm font-medium text-gray-700 mb-2">
+                  Custom Extension Days
+                </label>
+                <input
+                  type="number"
+                  id="customDays"
+                  value={extendModal.customDays}
+                  onChange={(e) => setExtendModal(prev => ({ ...prev, customDays: e.target.value, selectedPlan: '' }))}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  placeholder="Enter custom days (e.g., 45)"
+                  min="1"
+                  max="9999"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Enter any number of days for custom extension. This will clear the preset selection above.
+                </p>
+              </div>
+
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <div className="flex items-start">
+                  <svg className="w-5 h-5 text-purple-400 mt-0.5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
+                  <div>
+                    <h3 className="text-sm font-medium text-purple-800 mb-1">Admin Extension Options</h3>
+                    <div className="text-sm text-purple-700">
+                      <ul className="list-disc list-inside space-y-1">
+                        <li><strong>Preset Plans:</strong> Choose from predefined extension periods</li>
+                        <li><strong>Custom Days:</strong> Enter any specific number of days (1-9999)</li>
+                        <li>License will be extended immediately - no approval needed</li>
+                        <li>New expiry date calculated from current expiry (or today if expired)</li>
+                        <li>Automatically reactivates expired licenses to valid status</li>
+                        <li>No payment required - admin override with audit trail</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setExtendModal({ show: false, customerId: '', licenseCode: '', currentExpiry: '', selectedPlan: '', customDays: '', extendingCode: false })}
+                  disabled={extendModal.extendingCode}
+                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAdminExtendCode}
+                  disabled={extendModal.extendingCode || (!extendModal.selectedPlan && !extendModal.customDays)}
+                  className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                >
+                  {extendModal.extendingCode ? (
+                    <>
+                      <svg className="animate-spin w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Extending...
+                    </>
+                  ) : (
+                    (() => {
+                      const days = extendModal.customDays && extendModal.customDays.trim() !== '' 
+                        ? extendModal.customDays 
+                        : extendModal.selectedPlan
+                      const type = extendModal.customDays && extendModal.customDays.trim() !== '' 
+                        ? 'Custom' 
+                        : 'Preset'
+                      return `Extend by ${days} Days (${type})`
+                    })()
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmation.show && (

@@ -1,6 +1,7 @@
 import { connectToDatabase } from '@/lib/mongodb';
 import CodeRequest from '@/lib/codeRequestModel';
 import CustomerAccount from '@/lib/customerAccountModel';
+import User from '@/lib/userModel';
 
 // Get all code requests (admin only)
 export async function GET(req) {
@@ -105,11 +106,13 @@ export async function PUT(req) {
         const customerAccount = new CustomerAccount({
           user: codeRequest.userId?.username || codeRequest.username,
           license: codeRequest.code,
-          expireDate: formattedExpireDate,
+          expireDate: formattedExpireDate, // Store Thai formatted date
           status: 'valid',
           platform: codeRequest.platform,
           accountNumber: codeRequest.accountNumber,
-          plan: codeRequest.plan
+          plan: codeRequest.plan,
+          createdBy: 'user',
+          adminGenerated: false
         });
 
         await customerAccount.save();

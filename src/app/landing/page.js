@@ -22,6 +22,15 @@ export default function LandingPage() {
   const [generatedCode, setGeneratedCode] = useState('')
   const [myCodes, setMyCodes] = useState([])
   const [loadingCodes, setLoadingCodes] = useState(false)
+  
+  // Extend code state
+  const [showExtendModal, setShowExtendModal] = useState(false)
+  const [selectedCode, setSelectedCode] = useState(null)
+  const [extendPlan, setExtendPlan] = useState('30')
+  const [extendingCode, setExtendingCode] = useState(false)
+  
+  // Real-time countdown state
+  const [currentTime, setCurrentTime] = useState(new Date())
 
   useEffect(() => {
     // Check if user is authenticated via cookie on page load
@@ -58,16 +67,46 @@ export default function LandingPage() {
     }
   }, [isAuthenticated, dispatch, router])
 
-  // Fetch user's codes
+  // Fetch user's codes with customer account data
   const fetchMyCodes = async () => {
     setLoadingCodes(true)
     try {
-      const response = await fetch('/api/my-codes', {
+      // Fetch codes
+      const codesResponse = await fetch('/api/my-codes', {
         credentials: 'include'
       })
-      const data = await response.json()
-      if (response.ok) {
-        setMyCodes(data.codes)
+      const codesData = await codesResponse.json()
+      
+      if (codesResponse.ok && codesData.codes) {
+        // Fetch customer accounts for activated codes
+        const customerAccountsResponse = await fetch('/api/my-customer-accounts', {
+          credentials: 'include'
+        })
+        
+        let customerAccounts = []
+        if (customerAccountsResponse.ok) {
+          const customerData = await customerAccountsResponse.json()
+          customerAccounts = customerData.accounts || []
+        }
+        
+        // Merge codes with customer account data
+        const enrichedCodes = codesData.codes.map(code => {
+          // Find matching customer account by license code
+          const customerAccount = customerAccounts.find(account => 
+            account.license === code.code
+          )
+          
+          return {
+            ...code,
+            // Use customer account data if available
+            customerAccount: customerAccount,
+            expireDate: customerAccount?.expireDate || code.expiresAt,
+            accountStatus: customerAccount?.status || 'unknown'
+          }
+        })
+        
+        console.log('Enriched codes with customer accounts:', enrichedCodes)
+        setMyCodes(enrichedCodes)
       }
     } catch (error) {
       console.error('Error fetching codes:', error)
@@ -76,12 +115,212 @@ export default function LandingPage() {
     }
   }
 
-  // Load codes when authenticated
+    // Load codes when authenticated
   useEffect(() => {
-    if (isAuthenticated && !isLoading) {
+    if (isAuthenticated) {
       fetchMyCodes()
     }
-  }, [isAuthenticated, isLoading])
+  }, [isAuthenticated])
+
+  // Real-time countdown timer
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date())
+    }, 1000) // Update every second
+
+    return () => clearInterval(timer)
+  }, [])
+
+  // Parse Thai date format to JavaScript Date with fallback handling
+  const parseThaiDate = (dateString) => {
+    if (!dateString) {
+      console.warn('Empty date string provided to parseThaiDate')
+      return null
+    }
+
+    try {
+      console.log('Parsing date string:', dateString)
+      
+      // Check if it's already a valid ISO date string
+      if (dateString.includes('T') || dateString.includes('Z')) {
+        const isoDate = new Date(dateString)
+        if (!isNaN(isoDate.getTime())) {
+          console.log('Parsed as ISO date:', isoDate)
+          return isoDate
+        }
+      }
+      
+      // Try Thai Buddhist Era format: "DD/MM/YYYY HH:mm"
+      if (dateString.includes('/')) {
+        const dateParts = dateString.split(' ')
+        const [day, month, thaiYear] = dateParts[0].split('/')
+        const [hours, minutes] = dateParts[1] ? dateParts[1].split(':') : ['23', '59']
+        
+        // Validate parts
+        if (!day || !month || !thaiYear) {
+          throw new Error('Missing date parts')
+        }
+        
+        const dayNum = parseInt(day)
+        const monthNum = parseInt(month)
+        const yearNum = parseInt(thaiYear)
+        const hourNum = parseInt(hours) || 23
+        const minNum = parseInt(minutes) || 59
+        
+        // Validate ranges
+        if (dayNum < 1 || dayNum > 31 || monthNum < 1 || monthNum > 12) {
+          throw new Error('Invalid day/month values')
+        }
+        
+        // Convert Thai Buddhist year to Gregorian year
+        let gregorianYear = yearNum
+        if (yearNum > 2500) { // Likely Thai Buddhist Era
+          gregorianYear = yearNum - 543
+          console.log(`Converting Thai year ${yearNum} to Gregorian ${gregorianYear}`)
+        }
+        
+        const result = new Date(gregorianYear, monthNum - 1, dayNum, hourNum, minNum)
+        console.log('Parsed Thai date:', { input: dateString, output: result, isValid: !isNaN(result.getTime()) })
+        
+        if (isNaN(result.getTime())) {
+          throw new Error('Invalid date created')
+        }
+        
+        return result
+      }
+      
+      // Try as regular date string
+      const fallbackDate = new Date(dateString)
+      if (!isNaN(fallbackDate.getTime())) {
+        console.log('Parsed as regular date:', fallbackDate)
+        return fallbackDate
+      }
+      
+      throw new Error('Unable to parse date in any format')
+      
+    } catch (error) {
+      console.error('Error parsing date:', { input: dateString, error: error.message })
+      return null
+    }
+  }
+
+  // Calculate time remaining for a code using customer account data
+  const getTimeRemaining = (code) => {
+    if (code.status !== 'activated') {
+      return { expired: false, text: 'Not activated', color: 'text-gray-500' }
+    }
+
+    // Prioritize customer account expiry date over code expiry date
+    let expiryDate = null
+    
+    if (code.customerAccount?.expireDate) {
+      // Use customer account expiry date (Thai format)
+      expiryDate = parseThaiDate(code.customerAccount.expireDate)
+      console.log('Using customer account expiry:', code.customerAccount.expireDate, '→', expiryDate)
+    } else if (code.expireDate) {
+      // Fallback to code's expireDate (Thai format)
+      expiryDate = parseThaiDate(code.expireDate)
+      console.log('Using code expiry date:', code.expireDate, '→', expiryDate)
+    } else if (code.expiresAt) {
+      // Last fallback to original expiresAt (ISO format)
+      expiryDate = new Date(code.expiresAt)
+      console.log('Using original expiresAt:', code.expiresAt, '→', expiryDate)
+    }
+
+    if (!expiryDate || isNaN(expiryDate.getTime())) {
+      console.warn('Invalid expiry date for code:', code.code, { 
+        customerAccount: code.customerAccount?.expireDate, 
+        expireDate: code.expireDate, 
+        expiresAt: code.expiresAt,
+        parsedDate: expiryDate
+      })
+      
+      // Try to show which date source had the issue
+      let problemSource = 'Unknown'
+      if (code.customerAccount?.expireDate) problemSource = 'Customer Account'
+      else if (code.expireDate) problemSource = 'Code'
+      else if (code.expiresAt) problemSource = 'Original'
+      
+      return { expired: false, text: `Invalid (${problemSource})`, color: 'text-red-500' }
+    }
+
+    const now = currentTime
+    const timeDiff = expiryDate.getTime() - now.getTime()
+
+    if (timeDiff <= 0) {
+      return { expired: true, text: 'Expired', color: 'text-red-600 font-semibold' }
+    }
+
+    // Calculate time components
+    const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24))
+    const hours = Math.floor((timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+    const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60))
+    const seconds = Math.floor((timeDiff % (1000 * 60)) / 1000)
+
+    // Format the display
+    let timeText = ''
+    let colorClass = ''
+
+    if (days > 0) {
+      timeText = `${days}d ${hours}h ${minutes}m`
+      colorClass = days > 7 ? 'text-green-600' : days > 3 ? 'text-yellow-600' : 'text-orange-600'
+    } else if (hours > 0) {
+      timeText = `${hours}h ${minutes}m ${seconds}s`
+      colorClass = hours > 12 ? 'text-yellow-600' : 'text-orange-600'
+    } else if (minutes > 0) {
+      timeText = `${minutes}m ${seconds}s`
+      colorClass = 'text-red-500'
+    } else {
+      timeText = `${seconds}s`
+      colorClass = 'text-red-600 font-bold animate-pulse'
+    }
+
+    return { expired: false, text: timeText, color: colorClass, expiryDate, source: code.customerAccount ? 'customer-account' : 'code' }
+  }
+
+  // Extend code functionality
+  const handleExtendCode = (code) => {
+    setSelectedCode(code)
+    setExtendPlan('30')
+    setShowExtendModal(true)
+  }
+
+  const submitExtendCode = async (e) => {
+    e.preventDefault()
+    if (!selectedCode || !extendPlan) {
+      alert('Please select an extension plan')
+      return
+    }
+
+    setExtendingCode(true)
+    try {
+      const response = await fetch('/api/extend-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          codeId: selectedCode._id,
+          extendPlan: extendPlan
+        })
+      })
+
+      const data = await response.json()
+      if (response.ok) {
+        alert(`Extension request submitted successfully!\n\nLicense: ${data.licenseCode}\nCurrent expiry: ${data.currentExpiry}\nRequested extension: ${data.requestedDays} days\nStatus: Pending admin approval\n\nPlease wait for admin verification before the extension takes effect.`)
+        setShowExtendModal(false)
+        setSelectedCode(null)
+        setExtendPlan('30')
+        fetchMyCodes() // Refresh the codes list
+      } else {
+        alert(data.error || 'Failed to submit extension request')
+      }
+    } catch (error) {
+      console.error('Error extending code:', error)
+      alert('Failed to extend code')
+    } finally {
+      setExtendingCode(false)
+    }
+  }
 
   const handleLogout = async () => {
     try {
@@ -330,6 +569,55 @@ export default function LandingPage() {
             </button>
           </div>
 
+          {/* Quick Status Overview */}
+          {myCodes.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div className="bg-green-50 rounded-lg p-4">
+                <div className="text-2xl font-bold text-green-600">
+                  {myCodes.filter(code => code.status === 'activated' && !getTimeRemaining(code).expired).length}
+                </div>
+                <div className="text-sm text-green-700">Active Codes</div>
+              </div>
+              <div className="bg-yellow-50 rounded-lg p-4">
+                <div className="text-2xl font-bold text-yellow-600">
+                  {myCodes.filter(code => code.status === 'pending_payment').length}
+                </div>
+                <div className="text-sm text-yellow-700">Pending Payment</div>
+              </div>
+              <div className="bg-red-50 rounded-lg p-4">
+                <div className="text-2xl font-bold text-red-600">
+                  {myCodes.filter(code => {
+                    if (code.status !== 'activated') return false
+                    
+                    // Prioritize customer account expiry date
+                    let expiryDate = null
+                    if (code.customerAccount?.expireDate) {
+                      expiryDate = parseThaiDate(code.customerAccount.expireDate)
+                    } else if (code.expireDate) {
+                      expiryDate = parseThaiDate(code.expireDate)
+                    } else if (code.expiresAt) {
+                      expiryDate = new Date(code.expiresAt)
+                    }
+                    
+                    if (!expiryDate) return false
+                    
+                    const timeDiff = expiryDate.getTime() - currentTime.getTime()
+                    const daysLeft = Math.floor(timeDiff / (1000 * 60 * 60 * 24))
+                    
+                    return timeDiff > 0 && daysLeft <= 7
+                  }).length}
+                </div>
+                <div className="text-sm text-red-700">Expiring Soon</div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="text-2xl font-bold text-gray-600">
+                  {myCodes.filter(code => getTimeRemaining(code).expired || code.status === 'expired').length}
+                </div>
+                <div className="text-sm text-gray-700">Expired</div>
+              </div>
+            </div>
+          )}
+
           {myCodes.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -349,12 +637,37 @@ export default function LandingPage() {
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Plan</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Price</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Status</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Time Left</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Expires</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Created</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {myCodes.map((code) => (
-                    <tr key={code._id} className="hover:bg-gray-50">
+                  {myCodes.map((code) => {
+                    const timeRemaining = getTimeRemaining(code)
+                    
+                    // Check if urgent using customer account data priority
+                    let isUrgent = false
+                    if (code.status === 'activated' && !timeRemaining.expired) {
+                      let expiryDate = null
+                      if (code.customerAccount?.expireDate) {
+                        expiryDate = parseThaiDate(code.customerAccount.expireDate)
+                      } else if (code.expireDate) {
+                        expiryDate = parseThaiDate(code.expireDate)
+                      } else if (code.expiresAt) {
+                        expiryDate = new Date(code.expiresAt)
+                      }
+                      
+                      if (expiryDate) {
+                        const timeDiff = expiryDate.getTime() - currentTime.getTime()
+                        const daysLeft = Math.floor(timeDiff / (1000 * 60 * 60 * 24))
+                        isUrgent = timeDiff > 0 && daysLeft <= 7
+                      }
+                    }
+                    
+                    return (
+                    <tr key={code._id} className={`hover:bg-gray-50 ${isUrgent ? 'bg-red-50 border-l-4 border-red-400' : ''}`}>
                       <td className="px-4 py-3 font-mono text-sm text-blue-600 font-bold">
                         {code.code}
                       </td>
@@ -383,11 +696,122 @@ export default function LandingPage() {
                           {code.status.replace('_', ' ').toUpperCase()}
                         </span>
                       </td>
+                      <td className="px-4 py-3 text-sm">
+                        {(() => {
+                          const timeRemaining = getTimeRemaining(code)
+                          const dataSource = code.customerAccount?.expireDate ? 'CA' : 
+                                           code.expireDate ? 'Code' : 
+                                           code.expiresAt ? 'Orig' : 'None'
+                          return (
+                            <div>
+                              <span className={timeRemaining.color}>
+                                {timeRemaining.text}
+                              </span>
+                              {code.status === 'activated' && (
+                                <div className="text-xs text-gray-400">
+                                  {dataSource === 'CA' && '📊 Customer Account'}
+                                  {dataSource === 'Code' && '🔖 Code Data'}
+                                  {dataSource === 'Orig' && '📅 Original'}
+                                  {dataSource === 'None' && '❌ No Data'}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })()}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-500">
+                        {code.status === 'activated' 
+                          ? (() => {
+                              // Prioritize customer account expiry date with better error handling
+                              let expiryDate = null
+                              let dateSource = ''
+                              let rawDate = ''
+                              
+                              if (code.customerAccount?.expireDate) {
+                                rawDate = code.customerAccount.expireDate
+                                expiryDate = parseThaiDate(rawDate)
+                                dateSource = '(Customer Account)'
+                              } else if (code.expireDate) {
+                                rawDate = code.expireDate
+                                expiryDate = parseThaiDate(rawDate)
+                                dateSource = '(Code)'
+                              } else if (code.expiresAt) {
+                                rawDate = code.expiresAt
+                                expiryDate = new Date(rawDate)
+                                dateSource = '(Original)'
+                              }
+                              
+                              let displayDate = 'No date available'
+                              if (expiryDate && !isNaN(expiryDate.getTime())) {
+                                displayDate = expiryDate.toLocaleDateString()
+                              } else if (rawDate) {
+                                displayDate = `Invalid: ${rawDate.substring(0, 20)}...`
+                              }
+                              
+                              return (
+                                <div>
+                                  <div className={expiryDate && !isNaN(expiryDate.getTime()) ? '' : 'text-red-500'}>{displayDate}</div>
+                                  {dateSource && <div className="text-xs text-gray-400">{dateSource}</div>}
+                                  {(!expiryDate || isNaN(expiryDate.getTime())) && rawDate && (
+                                    <div className="text-xs text-red-400" title={rawDate}>Raw: {rawDate}</div>
+                                  )}
+                                </div>
+                              )
+                            })()
+                          : code.status === 'pending_payment'
+                          ? 'Pay to activate'
+                          : '-'
+                        }
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-500">
                         {new Date(code.createdAt).toLocaleDateString()}
                       </td>
+                      <td className="px-4 py-3">
+                        {code.status === 'activated' && (() => {
+                          const timeRemaining = getTimeRemaining(code)
+                          
+                          // Check if urgent using customer account data priority
+                          let isUrgent = false
+                          if (!timeRemaining.expired) {
+                            let expiryDate = null
+                            if (code.customerAccount?.expireDate) {
+                              expiryDate = parseThaiDate(code.customerAccount.expireDate)
+                            } else if (code.expireDate) {
+                              expiryDate = parseThaiDate(code.expireDate)
+                            } else if (code.expiresAt) {
+                              expiryDate = new Date(code.expiresAt)
+                            }
+                            
+                            if (expiryDate) {
+                              const timeDiff = expiryDate.getTime() - currentTime.getTime()
+                              const daysLeft = Math.floor(timeDiff / (1000 * 60 * 60 * 24))
+                              isUrgent = timeDiff > 0 && daysLeft <= 7
+                            }
+                          }
+                          
+                          return (
+                            <button
+                              onClick={() => handleExtendCode(code)}
+                              className={`px-3 py-1 rounded text-xs transition duration-200 ${
+                                isUrgent 
+                                  ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse' 
+                                  : 'bg-green-500 hover:bg-green-600 text-white'
+                              }`}
+                            >
+                              {isUrgent ? '⚠️ Extend Now' : 'Extend'}
+                            </button>
+                          )
+                        })()}
+                        {code.status === 'pending_payment' && (
+                          <span className="text-xs text-gray-400">Pay to extend</span>
+                        )}
+                        {code.status === 'expired' && (
+                          <span className="text-xs text-red-400">Expired</span>
+                        )}
+                      </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -462,6 +886,103 @@ export default function LandingPage() {
           </div>
         </div> */}
       </div>
+
+      {/* Extend Code Modal */}
+      {showExtendModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full mx-4">
+            <div className="text-center mb-6">
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4">
+                <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Extend Trading Code</h3>
+              <p className="text-gray-600 mb-4">
+                Code: <span className="font-mono font-bold text-blue-600">{selectedCode?.code}</span>
+              </p>
+              <p className="text-sm text-gray-500 mb-4">
+                Current Plan: {selectedCode?.plan} days
+              </p>
+            </div>
+
+            <form onSubmit={submitExtendCode} className="space-y-6">
+              <div>
+                <label htmlFor="extendPlan" className="block text-sm font-medium text-gray-700 mb-2">
+                  Extension Plan *
+                </label>
+                <select
+                  id="extendPlan"
+                  value={extendPlan}
+                  onChange={(e) => setExtendPlan(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  required
+                >
+                  <option value="7">7 Days (Trial Extension)</option>
+                  <option value="30">30 Days (Monthly Extension)</option>
+                  <option value="90">90 Days (Quarterly Extension)</option>
+                  <option value="180">180 Days (Semi-Annual Extension)</option>
+                  <option value="365">365 Days (Annual Extension)</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Select extension plan to add to your current trading code validity
+                </p>
+              </div>
+
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                <div className="flex items-start">
+                  <svg className="w-5 h-5 text-orange-400 mt-0.5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.996-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                  </svg>
+                  <div>
+                    <h3 className="text-sm font-medium text-orange-800 mb-1">Admin Approval Required</h3>
+                    <div className="text-sm text-orange-700">
+                      <ul className="list-disc list-inside space-y-1">
+                        <li>Extension request requires admin verification</li>
+                        <li>Request will be submitted for admin approval</li>
+                        <li>Extension takes effect only after admin approval</li>
+                        <li>You will receive notification once processed</li>
+                        <li>Extended codes maintain the same license key</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowExtendModal(false)
+                    setSelectedCode(null)
+                    setExtendPlan('30')
+                  }}
+                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-4 rounded-lg transition duration-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={extendingCode || !extendPlan}
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                >
+                  {extendingCode ? (
+                    <>
+                      <svg className="animate-spin w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Extending...
+                    </>
+                  ) : (
+                    'Submit Extension Request'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -35,7 +35,7 @@ const generateLicenseKey = () => {
 }
 
 // Calculate expiry date
-const calculateExpiryDate = (planDays) => {
+const calculateExpiryDate = (planDays, extendDays = 0) => {
   const now = new Date()
 
   if (planDays === 'lifetime') {
@@ -46,8 +46,21 @@ const calculateExpiryDate = (planDays) => {
   }
 
   const expiryDate = new Date(now)
-  expiryDate.setDate(now.getDate() + parseInt(planDays))
+  const totalDays = parseInt(planDays) + parseInt(extendDays || 0)
+  expiryDate.setDate(now.getDate() + totalDays)
   return expiryDate.toISOString().split('T')[0]
+}
+
+// Format date to Thai Buddhist Era format with time
+const formatThaiDateTime = (date) => {
+  const d = new Date(date)
+  const day = d.getDate().toString().padStart(2, '0')
+  const month = (d.getMonth() + 1).toString().padStart(2, '0')
+  const yearBE = d.getFullYear() + 543 // Convert to Buddhist Era
+  const hours = d.getHours().toString().padStart(2, '0')
+  const minutes = d.getMinutes().toString().padStart(2, '0')
+  
+  return `${day}/${month}/${yearBE} ${hours}:${minutes}`
 }
 
 export async function POST(request) {
@@ -63,12 +76,20 @@ export async function POST(request) {
     const body = await request.json()
     console.log('Request body received:', { ...body, password: '[REDACTED]' })
 
-    const { username, platform, accountNumber, plan } = body
+    const { username, platform, accountNumber, plan, extendDays } = body
 
     // Validate required fields
     if (!username || !platform || !accountNumber || !plan) {
       return NextResponse.json(
         { error: 'All fields are required' },
+        { status: 400 }
+      )
+    }
+
+    // Validate extendDays if provided
+    if (extendDays && (isNaN(extendDays) || parseInt(extendDays) < 0)) {
+      return NextResponse.json(
+        { error: 'Extend days must be a valid positive number' },
         { status: 400 }
       )
     }
@@ -100,8 +121,22 @@ export async function POST(request) {
       licenseExists = !!existingLicense
     }
 
-    // Calculate expiry date
-    const expireDate = calculateExpiryDate(plan)
+    // Create expiry date object for Thai format
+    const expiryDateTime = new Date()
+    if (plan !== 'lifetime') {
+      const totalDays = parseInt(plan) + parseInt(extendDays || 0)
+      expiryDateTime.setDate(expiryDateTime.getDate() + totalDays)
+    } else {
+      expiryDateTime.setFullYear(expiryDateTime.getFullYear() + 100)
+    }
+
+    // Format expiry date in Thai Buddhist Era format for database storage
+    const expireDateThai = formatThaiDateTime(expiryDateTime)
+
+    // Calculate total plan days for database storage
+    const totalPlanDays = plan === 'lifetime' 
+      ? 999999 
+      : parseInt(plan) + parseInt(extendDays || 0)
 
     // Create customer account
     const customerAccount = new CustomerAccount({
@@ -109,10 +144,12 @@ export async function POST(request) {
       license: licenseKey,
       platform,
       accountNumber,
-      plan: plan === 'lifetime' ? 999999 : parseInt(plan), // Use large number for lifetime
-      expireDate,
+      plan: totalPlanDays,
+      expireDate: expireDateThai, // Store Thai formatted date
       status: 'valid', // Manual accounts are immediately valid
-      activatedAt: new Date()
+      activatedAt: new Date(),
+      createdBy: 'admin',
+      adminGenerated: true
     })
 
     await customerAccount.save()
@@ -130,6 +167,7 @@ export async function POST(request) {
         accountNumber: customerAccount.accountNumber,
         plan: customerAccount.plan,
         expireDate: customerAccount.expireDate,
+        expireDateThai: customerAccount.expireDate, // Already in Thai format
         status: customerAccount.status,
         activatedAt: customerAccount.activatedAt
       }
