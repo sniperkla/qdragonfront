@@ -1,4 +1,8 @@
-import { emitAdminNotification, emitBroadcastNotification, emitNotificationToAdminAndClient } from '@/lib/websocket'
+import {
+  emitAdminNotification,
+  emitBroadcastNotification,
+  emitNotificationToAdminAndClient
+} from '@/lib/websocket'
 
 // Admin authentication middleware
 const verifyAdmin = async (request) => {
@@ -32,26 +36,35 @@ export async function POST(request) {
       console.log('⚠️ WebSocket server not initialized, initializing now...')
       // Try to initialize by making a request to the socketio endpoint
       try {
-        await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/socketio`)
+        await fetch(
+          `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/socketio`
+        )
       } catch (initError) {
         console.error('❌ Failed to initialize WebSocket server:', initError)
       }
     }
 
     console.log('🚀 Attempting to emit test notifications...')
-    
+
     // Emit test admin notification
-    const adminResult = await emitAdminNotification('🧪 This is a test admin notification!', 'info')
-    
+    const adminResult = await emitAdminNotification(
+      '🧪 This is a test admin notification!',
+      'info'
+    )
+
     // Emit test broadcast notification to all clients
-    const broadcastResult = await emitBroadcastNotification('📢 This is a test broadcast notification to all clients!', 'info')
-    
+    const broadcastResult = await emitBroadcastNotification(
+      '📢 This is a test broadcast notification to all clients!',
+      'info'
+    )
+
     if (adminResult && broadcastResult) {
       console.log('✅ Test notifications emitted successfully')
       return new Response(
         JSON.stringify({
           success: true,
-          message: 'Test WebSocket notifications sent successfully (admin + broadcast)',
+          message:
+            'Test WebSocket notifications sent successfully (admin + broadcast)',
           socketInitialized: !!global.__socketIO
         }),
         { status: 200 }
@@ -72,7 +85,7 @@ export async function POST(request) {
   } catch (error) {
     console.error('❌ Error in test WebSocket API:', error)
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         error: 'Failed to send test notification',
         details: error.message,
         socketInitialized: !!global.__socketIO

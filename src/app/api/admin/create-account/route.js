@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server'
 import mongoose from 'mongoose'
 import CustomerAccount from '../../../../lib/customerAccountModel'
-import { emitCustomerAccountUpdate, emitNotificationToAdminAndClient } from '@/lib/websocket'
+import {
+  emitCustomerAccountUpdate,
+  emitNotificationToAdminAndClient
+} from '@/lib/websocket'
 
 // Admin authentication middleware
 const verifyAdmin = async (request) => {
@@ -160,7 +163,7 @@ export async function POST(request) {
       // Find user ID to emit to correct user
       const User = (await import('@/lib/userModel')).default
       const user = await User.findOne({ username })
-      
+
       if (user) {
         await emitCustomerAccountUpdate(user._id.toString(), {
           accountId: customerAccount._id,

@@ -2,7 +2,11 @@ import { connectToDatabase } from '@/lib/mongodb'
 import CodeRequest from '@/lib/codeRequestModel'
 import CustomerAccount from '@/lib/customerAccountModel'
 import User from '@/lib/userModel'
-import { emitCodesUpdate, emitCustomerAccountUpdate, emitNotificationToAdminAndClient } from '@/lib/websocket'
+import {
+  emitCodesUpdate,
+  emitCustomerAccountUpdate,
+  emitNotificationToAdminAndClient
+} from '@/lib/websocket'
 
 // Get all code requests (admin only)
 export async function GET(req) {
@@ -185,7 +189,7 @@ export async function PUT(req) {
       // Emit notification to both admin and client
       let clientMessage = ''
       let notificationType = 'info'
-      
+
       switch (status) {
         case 'activated':
           clientMessage = `🎉 Your trading code ${codeRequest.code} has been activated! You can now start trading.`
@@ -207,7 +211,7 @@ export async function PUT(req) {
           clientMessage = `📋 Your trading code ${codeRequest.code} status has been updated to ${status}.`
           notificationType = 'info'
       }
-      
+
       await emitNotificationToAdminAndClient(
         codeRequest.userId.toString(),
         clientMessage,

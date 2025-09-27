@@ -4,7 +4,10 @@ import CodeRequest from '@/lib/codeRequestModel'
 import CustomerAccount from '@/lib/customerAccountModel'
 import User from '@/lib/userModel'
 import mongoose from 'mongoose'
-import { emitAdminNotification, emitExtensionRequestUpdate } from '@/lib/websocket'
+import {
+  emitAdminNotification,
+  emitExtensionRequestUpdate
+} from '@/lib/websocket'
 
 // Extension Request Schema
 const ExtensionRequestSchema = new mongoose.Schema({
@@ -316,8 +319,11 @@ export async function POST(request) {
 
     // Emit WebSocket updates to admin
     try {
-      await emitAdminNotification(`New extension request: ${codeRequest.code} (${actualExtendDays} days) from ${user.username}`, 'info')
-      
+      await emitAdminNotification(
+        `New extension request: ${codeRequest.code} (${actualExtendDays} days) from ${user.username}`,
+        'info'
+      )
+
       await emitExtensionRequestUpdate({
         requestId: extensionRequest._id,
         licenseCode: codeRequest.code,

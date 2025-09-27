@@ -123,7 +123,10 @@ export default function AdminPage() {
   }, [])
 
   // WebSocket connection
-  const { isConnected: wsConnected } = useAdminWebSocket(handleExtensionUpdate, handleAdminNotification)
+  const { isConnected: wsConnected } = useAdminWebSocket(
+    handleExtensionUpdate,
+    handleAdminNotification
+  )
 
   // Format date to Thai Buddhist Era format with time
   const formatThaiDateTime = (dateString) => {
@@ -814,9 +817,15 @@ export default function AdminPage() {
               </p>
               <div className="flex items-center justify-between mt-2">
                 <div className="flex items-center">
-                  <div className={`w-2 h-2 rounded-full mr-2 ${wsConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></div>
-                  <span className={`text-sm ${wsConnected ? 'text-green-600' : 'text-red-600'}`}>
-                    {wsConnected ? 'WebSocket connected - Live updates' : 'WebSocket disconnected'}
+                  <div
+                    className={`w-2 h-2 rounded-full mr-2 ${wsConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}
+                  ></div>
+                  <span
+                    className={`text-sm ${wsConnected ? 'text-green-600' : 'text-red-600'}`}
+                  >
+                    {wsConnected
+                      ? 'WebSocket connected - Live updates'
+                      : 'WebSocket disconnected'}
                   </span>
                 </div>
                 <div className="flex gap-2">
@@ -829,10 +838,15 @@ export default function AdminPage() {
                   <button
                     onClick={async () => {
                       try {
-                        const response = await fetch('/api/debug/websocket', { method: 'GET' })
+                        const response = await fetch('/api/debug/websocket', {
+                          method: 'GET'
+                        })
                         const data = await response.json()
                         console.log('WebSocket Debug Info:', data)
-                        showToast(`WebSocket Debug: ${data.websocketExists ? 'Connected' : 'Not Connected'} - ${data.connectedClients || 0} clients`, 'info')
+                        showToast(
+                          `WebSocket Debug: ${data.websocketExists ? 'Connected' : 'Not Connected'} - ${data.connectedClients || 0} clients`,
+                          'info'
+                        )
                       } catch (error) {
                         console.error('Debug error:', error)
                         showToast('Debug request failed', 'error')
@@ -845,7 +859,9 @@ export default function AdminPage() {
                   <button
                     onClick={async () => {
                       try {
-                        const response = await fetch('/api/debug/websocket', { method: 'POST' })
+                        const response = await fetch('/api/debug/websocket', {
+                          method: 'POST'
+                        })
                         const data = await response.json()
                         console.log('WebSocket Test Emission:', data)
                         showToast('Test emissions sent - check console', 'info')
@@ -864,7 +880,10 @@ export default function AdminPage() {
                         const response = await fetch('/api/init/socketio')
                         const data = await response.json()
                         console.log('Socket.IO Initialization:', data)
-                        showToast(`Socket.IO: ${data.initialized ? 'Initialized' : 'Not Initialized'} - ${data.connectedClients} clients`, data.initialized ? 'success' : 'warning')
+                        showToast(
+                          `Socket.IO: ${data.initialized ? 'Initialized' : 'Not Initialized'} - ${data.connectedClients} clients`,
+                          data.initialized ? 'success' : 'warning'
+                        )
                       } catch (error) {
                         console.error('Init check error:', error)
                         showToast('Init check failed', 'error')
@@ -877,10 +896,16 @@ export default function AdminPage() {
                   <button
                     onClick={async () => {
                       try {
-                        const response = await fetch('/api/force-init/socketio', { method: 'POST' })
+                        const response = await fetch(
+                          '/api/force-init/socketio',
+                          { method: 'POST' }
+                        )
                         const data = await response.json()
                         console.log('Force Socket.IO Initialization:', data)
-                        showToast(`Force Init: ${data.initialized ? 'Success' : 'Failed'} - ${data.connectedClients} clients`, data.initialized ? 'success' : 'error')
+                        showToast(
+                          `Force Init: ${data.initialized ? 'Success' : 'Failed'} - ${data.connectedClients} clients`,
+                          data.initialized ? 'success' : 'error'
+                        )
                       } catch (error) {
                         console.error('Force init error:', error)
                         showToast('Force init failed', 'error')
@@ -898,16 +923,31 @@ export default function AdminPage() {
                         if (customers && customers.length > 0) {
                           testUserId = customers[0].userId || customers[0]._id
                         }
-                        
-                        const response = await fetch('/api/test/websocket-communication', { 
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ testType: 'all', userId: testUserId })
-                        })
+
+                        const response = await fetch(
+                          '/api/test/websocket-communication',
+                          {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              testType: 'all',
+                              userId: testUserId
+                            })
+                          }
+                        )
                         const data = await response.json()
                         console.log('WebSocket Communication Test:', data)
-                        const successRate = data.results ? (data.results.summary.successful / data.results.summary.total * 100).toFixed(1) : 0
-                        showToast(`Communication Test: ${successRate}% success rate (${data.results?.summary.successful || 0}/${data.results?.summary.total || 0})`, successRate >= 80 ? 'success' : 'warning')
+                        const successRate = data.results
+                          ? (
+                              (data.results.summary.successful /
+                                data.results.summary.total) *
+                              100
+                            ).toFixed(1)
+                          : 0
+                        showToast(
+                          `Communication Test: ${successRate}% success rate (${data.results?.summary.successful || 0}/${data.results?.summary.total || 0})`,
+                          successRate >= 80 ? 'success' : 'warning'
+                        )
                       } catch (error) {
                         console.error('Communication test error:', error)
                         showToast('Communication test failed', 'error')

@@ -8,21 +8,24 @@ export function useWebSocket(userId = null, isAdmin = false) {
 
   useEffect(() => {
     console.log('🔧 Setting up WebSocket connection...', { userId, isAdmin })
-    
+
     // Initialize socket connection
-    socketRef.current = io(process.env.NODE_ENV === 'production' 
-      ? process.env.NEXT_PUBLIC_APP_URL 
-      : 'http://localhost:3000', {
-      path: '/api/socketio',
-      transports: ['websocket', 'polling'],
-      forceNew: true,
-      reconnection: true,
-      timeout: 20000,
-      reconnectionDelay: 1000,
-      reconnectionAttempts: 5,
-      maxReconnectionAttempts: 5,
-      reconnectionDelayMax: 5000
-    })
+    socketRef.current = io(
+      process.env.NODE_ENV === 'production'
+        ? process.env.NEXT_PUBLIC_APP_URL
+        : 'http://localhost:3000',
+      {
+        path: '/api/socketio',
+        transports: ['websocket', 'polling'],
+        forceNew: true,
+        reconnection: true,
+        timeout: 20000,
+        reconnectionDelay: 1000,
+        reconnectionAttempts: 5,
+        maxReconnectionAttempts: 5,
+        reconnectionDelayMax: 5000
+      }
+    )
 
     const socket = socketRef.current
 
@@ -30,7 +33,7 @@ export function useWebSocket(userId = null, isAdmin = false) {
     socket.on('connect', () => {
       console.log('🔌 WebSocket connected:', socket.id)
       setIsConnected(true)
-      
+
       // Small delay to ensure server is ready
       setTimeout(() => {
         // Join appropriate rooms
@@ -69,11 +72,13 @@ export function useWebSocket(userId = null, isAdmin = false) {
     socket.on('disconnect', (reason) => {
       console.log('🔌 WebSocket disconnected, reason:', reason)
       setIsConnected(false)
-      
+
       // Handle specific disconnect reasons
       if (reason === 'io server disconnect') {
         // The disconnection was initiated by the server, reconnect manually
-        console.log('🔌 Server initiated disconnect, attempting manual reconnect...')
+        console.log(
+          '🔌 Server initiated disconnect, attempting manual reconnect...'
+        )
         socket.connect()
       }
     })
@@ -82,15 +87,15 @@ export function useWebSocket(userId = null, isAdmin = false) {
     socket.on('debug-test', (data) => {
       console.log('🔍 Received debug-test:', data)
     })
-    
+
     socket.on('test-broadcast', (data) => {
       console.log('🔍 Received test-broadcast:', data)
     })
-    
+
     socket.on('test-admin', (data) => {
       console.log('🔍 Received test-admin:', data)
     })
-    
+
     socket.on('general-notification', (data) => {
       console.log('🔍 Received general-notification:', data)
     })
@@ -100,7 +105,12 @@ export function useWebSocket(userId = null, isAdmin = false) {
       if (data.success) {
         console.log('✅ Successfully joined room:', data.room)
       } else {
-        console.error('❌ Failed to join room:', data.room, 'Error:', data.error)
+        console.error(
+          '❌ Failed to join room:',
+          data.room,
+          'Error:',
+          data.error
+        )
       }
     })
 
@@ -162,7 +172,10 @@ export function useCustomerAccountWebSocket(userId, onUpdate) {
       return
     }
 
-    console.log('🎧 Setting up customer account WebSocket listener for user:', userId)
+    console.log(
+      '🎧 Setting up customer account WebSocket listener for user:',
+      userId
+    )
 
     const unsubscribe = subscribe('customer-account-updated', (data) => {
       console.log('📨 Customer account update received:', data)
@@ -227,7 +240,9 @@ export function useClientNotifications(userId, onNotification) {
 
   useEffect(() => {
     if (!subscribe || !userId) {
-      console.log('⚠️ Client notifications WebSocket subscribe not available or no userId')
+      console.log(
+        '⚠️ Client notifications WebSocket subscribe not available or no userId'
+      )
       return
     }
 
@@ -243,15 +258,21 @@ export function useClientNotifications(userId, onNotification) {
       }
     })
 
-    const unsubBroadcastNotification = subscribe('broadcast-notification', (data) => {
-      console.log('📨 Broadcast notification received via WebSocket:', data)
-      if (onNotification) {
-        console.log('🔄 Calling client notification handler with broadcast:', data)
-        onNotification(data)
-      } else {
-        console.log('⚠️ No client notification handler provided')
+    const unsubBroadcastNotification = subscribe(
+      'broadcast-notification',
+      (data) => {
+        console.log('📨 Broadcast notification received via WebSocket:', data)
+        if (onNotification) {
+          console.log(
+            '🔄 Calling client notification handler with broadcast:',
+            data
+          )
+          onNotification(data)
+        } else {
+          console.log('⚠️ No client notification handler provided')
+        }
       }
-    })
+    )
 
     return () => {
       console.log('🧹 Cleaning up client notification listeners')

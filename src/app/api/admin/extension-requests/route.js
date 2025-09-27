@@ -1,6 +1,10 @@
 import { connectToDatabase } from '@/lib/mongodb'
 import mongoose from 'mongoose'
-import { emitCustomerAccountUpdate, emitNotificationToAdminAndClient, emitExtensionRequestUpdate } from '@/lib/websocket'
+import {
+  emitCustomerAccountUpdate,
+  emitNotificationToAdminAndClient,
+  emitExtensionRequestUpdate
+} from '@/lib/websocket'
 
 // Extension Request Schema (same as in extend-code route)
 const ExtensionRequestSchema = new mongoose.Schema({

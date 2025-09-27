@@ -4,7 +4,11 @@ import { useSelector, useDispatch } from 'react-redux'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { logout, loginSuccess } from '../../store/slices/authSlice'
-import { useCodesWebSocket, useCustomerAccountWebSocket, useClientNotifications } from '../../hooks/useWebSocket'
+import {
+  useCodesWebSocket,
+  useCustomerAccountWebSocket,
+  useClientNotifications
+} from '../../hooks/useWebSocket'
 
 export default function LandingPage() {
   const { user, isAuthenticated } = useSelector((state) => state.auth)
@@ -31,22 +35,22 @@ export default function LandingPage() {
 
   // Notification state
   const [notifications, setNotifications] = useState([])
-  
+
   const showNotification = (message, type = 'info') => {
     const id = Date.now()
     const notification = { id, message, type }
-    setNotifications(prev => [...prev, notification])
-    
+    setNotifications((prev) => [...prev, notification])
+
     // Auto-remove after 5 seconds
     setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== id))
+      setNotifications((prev) => prev.filter((n) => n.id !== id))
     }, 5000)
   }
   const [extendingCode, setExtendingCode] = useState(false)
 
   // Real-time countdown state
   const [currentTime, setCurrentTime] = useState(new Date())
-  
+
   // WebSocket connection status
   const [wsConnected, setWsConnected] = useState(false)
 
@@ -55,12 +59,12 @@ export default function LandingPage() {
     console.log('Received code update via WebSocket:', data)
     // Refresh codes when we receive an update
     fetchMyCodes()
-    
+
     // Show notification based on action and status
     if (data.action === 'status-updated') {
       let message = ''
       let type = 'info'
-      
+
       switch (data.status) {
         case 'activated':
           message = `🎉 Your trading code ${data.code} has been activated!`
@@ -82,7 +86,7 @@ export default function LandingPage() {
           message = `📋 Your trading code ${data.code} status updated to ${data.status}.`
           type = 'info'
       }
-      
+
       showNotification(message, type)
     }
   }
@@ -91,7 +95,7 @@ export default function LandingPage() {
     console.log('Received customer account update via WebSocket:', data)
     // Refresh codes to get updated customer account data
     fetchMyCodes()
-    
+
     // Show notification to user based on action
     switch (data.action) {
       case 'extended':
@@ -107,16 +111,10 @@ export default function LandingPage() {
         )
         break
       case 'created':
-        showNotification(
-          `🎉 New license created: ${data.license}`,
-          'success'
-        )
+        showNotification(`🎉 New license created: ${data.license}`, 'success')
         break
       default:
-        showNotification(
-          `📋 Your account has been updated.`,
-          'info'
-        )
+        showNotification(`📋 Your account has been updated.`, 'info')
     }
   }
 
@@ -144,14 +142,25 @@ export default function LandingPage() {
     initWebSocket()
   }, [])
 
-  // WebSocket connections  
-  const { isConnected: codesWsConnected } = useCodesWebSocket(user?.id, handleCodeUpdate)
-  const { isConnected: accountsWsConnected } = useCustomerAccountWebSocket(user?.id, handleCustomerAccountUpdate)
-  const { isConnected: notificationsWsConnected } = useClientNotifications(user?.id, handleClientNotification)
+  // WebSocket connections
+  const { isConnected: codesWsConnected } = useCodesWebSocket(
+    user?.id,
+    handleCodeUpdate
+  )
+  const { isConnected: accountsWsConnected } = useCustomerAccountWebSocket(
+    user?.id,
+    handleCustomerAccountUpdate
+  )
+  const { isConnected: notificationsWsConnected } = useClientNotifications(
+    user?.id,
+    handleClientNotification
+  )
 
   // Update WebSocket connection status
   useEffect(() => {
-    setWsConnected(codesWsConnected && accountsWsConnected && notificationsWsConnected)
+    setWsConnected(
+      codesWsConnected && accountsWsConnected && notificationsWsConnected
+    )
   }, [codesWsConnected, accountsWsConnected, notificationsWsConnected])
 
   useEffect(() => {
@@ -591,18 +600,29 @@ export default function LandingPage() {
             <div className="flex items-center space-x-4">
               {/* WebSocket Status Indicator */}
               <div className="flex items-center space-x-2">
-                <div className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></div>
+                <div
+                  className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}
+                ></div>
                 <span className="text-xs text-gray-500">
                   {wsConnected ? 'Live Updates' : 'Connecting...'}
                 </span>
                 <button
                   onClick={async () => {
                     try {
-                      const response = await fetch('/api/debug/websocket', { method: 'GET' })
+                      const response = await fetch('/api/debug/websocket', {
+                        method: 'GET'
+                      })
                       const data = await response.json()
                       console.log('Client WebSocket Debug Info:', data)
-                      console.log('Local connection states:', { codesWsConnected, accountsWsConnected, notificationsWsConnected })
-                      showNotification(`WS Debug: ${data.connectedClients || 0} clients connected`, 'info')
+                      console.log('Local connection states:', {
+                        codesWsConnected,
+                        accountsWsConnected,
+                        notificationsWsConnected
+                      })
+                      showNotification(
+                        `WS Debug: ${data.connectedClients || 0} clients connected`,
+                        'info'
+                      )
                     } catch (error) {
                       console.error('Debug error:', error)
                     }
@@ -622,7 +642,10 @@ export default function LandingPage() {
                       })
                       const data = await response.json()
                       console.log('Test notifications response:', data)
-                      showNotification('Test notifications sent - check console for details', 'info')
+                      showNotification(
+                        'Test notifications sent - check console for details',
+                        'info'
+                      )
                     } catch (error) {
                       console.error('Test notifications error:', error)
                       showNotification('Test notifications failed', 'error')
@@ -1427,14 +1450,18 @@ export default function LandingPage() {
               notification.type === 'success'
                 ? 'bg-green-500 text-white'
                 : notification.type === 'error'
-                ? 'bg-red-500 text-white'
-                : 'bg-blue-500 text-white'
+                  ? 'bg-red-500 text-white'
+                  : 'bg-blue-500 text-white'
             }`}
           >
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium">{notification.message}</p>
               <button
-                onClick={() => setNotifications(prev => prev.filter(n => n.id !== notification.id))}
+                onClick={() =>
+                  setNotifications((prev) =>
+                    prev.filter((n) => n.id !== notification.id)
+                  )
+                }
                 className="ml-2 text-white hover:text-gray-200"
               >
                 ×
