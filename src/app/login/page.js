@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useDispatch } from 'react-redux'
 import { loginSuccess } from '../../store/slices/authSlice'
@@ -54,8 +54,55 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [checkingAuth, setCheckingAuth] = useState(true)
   const router = useRouter()
   const dispatch = useDispatch()
+
+  // Check if user is already authenticated
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        debugLogger.log('Checking existing authentication')
+        const response = await fetch('/api/auth/me', {
+          credentials: 'include'
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          debugLogger.log(
+            'User already authenticated, redirecting to landing',
+            {
+              username: data.user.username
+            }
+          )
+
+          // Update Redux state with user data from cookie
+          dispatch(
+            loginSuccess({
+              id: data.user.id,
+              name: data.user.username,
+              email: data.user.username
+            })
+          )
+
+          // Redirect to landing page since user is already logged in
+          router.push('/landing')
+          return
+        } else {
+          debugLogger.log(
+            'No existing authentication found, showing login form'
+          )
+        }
+      } catch (error) {
+        debugLogger.error('Auth check error', error)
+        // If there's an error checking auth, just show the login form
+      } finally {
+        setCheckingAuth(false)
+      }
+    }
+
+    checkAuth()
+  }, [router, dispatch])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -132,8 +179,20 @@ export default function LoginPage() {
     router.push('/forgot-password')
   }
 
+  // Show loading while checking authentication
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="bg-white rounded-lg p-8 w-full max-w-md text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">กำลังตรวจสอบการเข้าสู่ระบบ...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 lg:p-8 relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-blue-900 to-purple-900 flex items-center justify-center p-4">
       {/* Background Image */}
       <div className="absolute inset-0">
         <img

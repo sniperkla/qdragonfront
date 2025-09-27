@@ -67,23 +67,23 @@ export default function LandingPage() {
 
       switch (data.status) {
         case 'activated':
-          message = `🎉 Your trading code ${data.code} has been activated!`
+          message = `🎉 Your trading license ${data.code} has been activated!`
           type = 'success'
           break
         case 'completed':
-          message = `✅ Your trading code ${data.code} has been completed.`
+          message = `✅ Your trading license ${data.code} has been completed.`
           type = 'success'
           break
         case 'cancelled':
-          message = `❌ Your trading code ${data.code} has been cancelled.`
+          message = `❌ Your trading license ${data.code} has been cancelled.`
           type = 'error'
           break
         case 'expired':
-          message = `⏰ Your trading code ${data.code} has expired.`
+          message = `⏰ Your trading license ${data.code} has expired.`
           type = 'warning'
           break
         default:
-          message = `📋 Your trading code ${data.code} status updated to ${data.status}.`
+          message = `📋 Your trading license ${data.code} status updated to ${data.status}.`
           type = 'info'
       }
 
@@ -200,52 +200,26 @@ export default function LandingPage() {
     }
   }, [isAuthenticated, dispatch, router])
 
-  // Fetch user's codes with customer account data
+  // Fetch user's licenses (unified view)
   const fetchMyCodes = async () => {
     setLoadingCodes(true)
     try {
-      // Fetch codes
-      const codesResponse = await fetch('/api/my-codes', {
+      // Fetch unified licenses
+      const licensesResponse = await fetch('/api/my-licenses', {
         credentials: 'include'
       })
-      const codesData = await codesResponse.json()
+      const licensesData = await licensesResponse.json()
 
-      if (codesResponse.ok && codesData.codes) {
-        // Fetch customer accounts for activated codes
-        const customerAccountsResponse = await fetch(
-          '/api/my-customer-accounts',
-          {
-            credentials: 'include'
-          }
-        )
-
-        let customerAccounts = []
-        if (customerAccountsResponse.ok) {
-          const customerData = await customerAccountsResponse.json()
-          customerAccounts = customerData.accounts || []
-        }
-
-        // Merge codes with customer account data
-        const enrichedCodes = codesData.codes.map((code) => {
-          // Find matching customer account by license code
-          const customerAccount = customerAccounts.find(
-            (account) => account.license === code.code
-          )
-
-          return {
-            ...code,
-            // Use customer account data if available
-            customerAccount: customerAccount,
-            expireDate: customerAccount?.expireDate || code.expiresAt,
-            accountStatus: customerAccount?.status || 'unknown'
-          }
-        })
-
-        console.log('Enriched codes with customer accounts:', enrichedCodes)
-        setMyCodes(enrichedCodes)
+      if (licensesResponse.ok && licensesData.licenses) {
+        console.log('Fetched unified licenses:', licensesData.licenses)
+        setMyCodes(licensesData.licenses)
+      } else {
+        console.error('Failed to fetch licenses:', licensesData.error)
+        setMyCodes([])
       }
     } catch (error) {
-      console.error('Error fetching codes:', error)
+      console.error('Error fetching licenses:', error)
+      setMyCodes([])
     } finally {
       setLoadingCodes(false)
     }
@@ -357,114 +331,92 @@ export default function LandingPage() {
     }
   }
 
-  // Calculate time remaining for a code using customer account data
-  const getTimeRemaining = (code) => {
-    if (code.status !== 'activated') {
-      return { expired: false, text: 'Not activated', color: 'text-gray-500' }
-    }
+  // Calculate time remaining for a license
+  const getTimeRemaining = (license) => {
+    try {
+      let expiryDate = null
 
-    // Prioritize customer account expiry date over code expiry date
-    let expiryDate = null
+      // Prioritize customer account expiry date
+      if (license.customerAccount?.expireDate) {
+        expiryDate = parseThaiDate(license.customerAccount.expireDate)
+      } else if (license.expiresAt) {
+        expiryDate = new Date(license.expiresAt)
+      } else if (license.expireDate) {
+        expiryDate = parseThaiDate(license.expireDate)
+      }
 
-    if (code.customerAccount?.expireDate) {
-      // Use customer account expiry date (Thai format)
-      expiryDate = parseThaiDate(code.customerAccount.expireDate)
-      console.log(
-        'Using customer account expiry:',
-        code.customerAccount.expireDate,
-        '→',
-        expiryDate
+      if (!expiryDate || isNaN(expiryDate.getTime())) {
+        return {
+          expired: false,
+          timeLeft: 'Invalid date',
+          days: 0,
+          hours: 0,
+          minutes: 0,
+          seconds: 0
+        }
+      }
+
+      const now = currentTime
+      const timeDiff = expiryDate.getTime() - now.getTime()
+
+      if (timeDiff <= 0) {
+        return {
+          expired: true,
+          timeLeft: 'Expired',
+          days: 0,
+          hours: 0,
+          minutes: 0,
+          seconds: 0
+        }
+      }
+
+      const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24))
+      const hours = Math.floor(
+        (timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)
       )
-    } else if (code.expireDate) {
-      // Fallback to code's expireDate (Thai format)
-      expiryDate = parseThaiDate(code.expireDate)
-      console.log('Using code expiry date:', code.expireDate, '→', expiryDate)
-    } else if (code.expiresAt) {
-      // Last fallback to original expiresAt (ISO format)
-      expiryDate = new Date(code.expiresAt)
-      console.log('Using original expiresAt:', code.expiresAt, '→', expiryDate)
-    }
+      const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60))
+      const seconds = Math.floor((timeDiff % (1000 * 60)) / 1000)
 
-    if (!expiryDate || isNaN(expiryDate.getTime())) {
-      console.warn('Invalid expiry date for code:', code.code, {
-        customerAccount: code.customerAccount?.expireDate,
-        expireDate: code.expireDate,
-        expiresAt: code.expiresAt,
-        parsedDate: expiryDate
-      })
-
-      // Try to show which date source had the issue
-      let problemSource = 'Unknown'
-      if (code.customerAccount?.expireDate) problemSource = 'Customer Account'
-      else if (code.expireDate) problemSource = 'Code'
-      else if (code.expiresAt) problemSource = 'Original'
+      let timeLeft = ''
+      if (days > 0) {
+        timeLeft = `${days}d ${hours}h ${minutes}m`
+      } else if (hours > 0) {
+        timeLeft = `${hours}h ${minutes}m ${seconds}s`
+      } else if (minutes > 0) {
+        timeLeft = `${minutes}m ${seconds}s`
+      } else {
+        timeLeft = `${seconds}s`
+      }
 
       return {
         expired: false,
-        text: `Invalid (${problemSource})`,
-        color: 'text-red-500'
+        timeLeft,
+        days,
+        hours,
+        minutes,
+        seconds
       }
-    }
-
-    const now = currentTime
-    const timeDiff = expiryDate.getTime() - now.getTime()
-
-    if (timeDiff <= 0) {
+    } catch (error) {
+      console.error('Error calculating time remaining:', error)
       return {
-        expired: true,
-        text: 'Expired',
-        color: 'text-red-600 font-semibold'
+        expired: false,
+        timeLeft: 'Error',
+        days: 0,
+        hours: 0,
+        minutes: 0,
+        seconds: 0
       }
-    }
-
-    // Calculate time components
-    const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24))
-    const hours = Math.floor(
-      (timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)
-    )
-    const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60))
-    const seconds = Math.floor((timeDiff % (1000 * 60)) / 1000)
-
-    // Format the display
-    let timeText = ''
-    let colorClass = ''
-
-    if (days > 0) {
-      timeText = `${days}d ${hours}h ${minutes}m`
-      colorClass =
-        days > 7
-          ? 'text-green-600'
-          : days > 3
-            ? 'text-yellow-600'
-            : 'text-orange-600'
-    } else if (hours > 0) {
-      timeText = `${hours}h ${minutes}m ${seconds}s`
-      colorClass = hours > 12 ? 'text-yellow-600' : 'text-orange-600'
-    } else if (minutes > 0) {
-      timeText = `${minutes}m ${seconds}s`
-      colorClass = 'text-red-500'
-    } else {
-      timeText = `${seconds}s`
-      colorClass = 'text-red-600 font-bold animate-pulse'
-    }
-
-    return {
-      expired: false,
-      text: timeText,
-      color: colorClass,
-      expiryDate,
-      source: code.customerAccount ? 'customer-account' : 'code'
     }
   }
 
   // Extend code functionality
-  const handleExtendCode = (code) => {
-    setSelectedCode(code)
+  const handleExtendLicense = (license) => {
+    setSelectedCode(license)
     setExtendPlan('30')
     setShowExtendModal(true)
   }
 
-  const submitExtendCode = async (e) => {
+  const submitExtendLicense = async (e) => {
     e.preventDefault()
     if (!selectedCode || !extendPlan) {
       alert('Please select an extension plan')
@@ -473,13 +425,15 @@ export default function LandingPage() {
 
     setExtendingCode(true)
     try {
-      const response = await fetch('/api/extend-code', {
+      const response = await fetch('/api/extend-license', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           codeId: selectedCode._id,
-          extendPlan: extendPlan
+          extendPlan: extendPlan,
+          source: selectedCode.source,
+          licenseCode: selectedCode.code
         })
       })
 
@@ -530,7 +484,7 @@ export default function LandingPage() {
     }))
   }
 
-  const handleGenerateCode = async () => {
+  const handlePurchaseLicense = async () => {
     if (!codeForm.accountNumber) {
       alert('Please enter your trading account number')
       return
@@ -538,7 +492,7 @@ export default function LandingPage() {
 
     setGeneratingCode(true)
     try {
-      const response = await fetch('/api/generate-code', {
+      const response = await fetch('/api/purchase-license', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -554,18 +508,18 @@ export default function LandingPage() {
       const data = await response.json()
 
       if (response.ok) {
-        setGeneratedCode(data.code)
-        // Refresh codes list
+        setGeneratedCode(data.license)
+        // Refresh licenses list
         fetchMyCodes()
-        // Redirect to payment page or show payment modal
+        // Show success message
         alert(
-          `Code generated: ${data.code}\nPlan: ${codeForm.plan} days\nPrice: $${data.price}\n\nPlease proceed to payment.`
+          `License purchased: ${data.license}\nPlan: ${codeForm.plan} days\nPrice: $${data.price}\n\nPlease proceed to payment.`
         )
       } else {
-        alert(data.error || 'Failed to generate code')
+        alert(data.error || 'Failed to purchase license')
       }
     } catch (error) {
-      console.error('Error generating code:', error)
+      console.error('Error purchasing license:', error)
       alert('Network error. Please try again.')
     } finally {
       setGeneratingCode(false)
@@ -676,18 +630,20 @@ export default function LandingPage() {
             Welcome to Your Q-DRAGON Dashboard!
           </h1>
           <p className="text-xl text-gray-600 mb-8">
-            Professional XAU/USD Trading Platform - Generate your trading codes
-            below.
+            Professional XAU/USD Trading Platform - Purchase your trading
+            licenses below.
           </p>
         </div>
 
-        {/* Code Generation Section */}
+        {/* License Purchase Section */}
         <div className="bg-gradient-to-r from-yellow-400 to-amber-500 rounded-xl shadow-xl p-8 mb-8 text-white">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="text-3xl font-bold mb-2">Generate Trading Code</h2>
+              <h2 className="text-3xl font-bold mb-2">
+                Purchase Trading License
+              </h2>
               <p className="text-yellow-100">
-                Connect your trading platform and select your plan
+                Get direct access to professional trading platform
               </p>
             </div>
             <div className="hidden md:block">
@@ -759,7 +715,7 @@ export default function LandingPage() {
           </div>
 
           <button
-            onClick={handleGenerateCode}
+            onClick={handlePurchaseLicense}
             disabled={generatingCode || !codeForm.accountNumber}
             className="w-full md:w-auto bg-white text-yellow-600 font-bold py-4 px-8 rounded-lg hover:bg-yellow-50 disabled:bg-gray-300 disabled:text-gray-500 transition duration-200 flex items-center justify-center shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
           >
@@ -784,7 +740,7 @@ export default function LandingPage() {
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                   ></path>
                 </svg>
-                Generating Code...
+                Purchasing License...
               </>
             ) : (
               <>
@@ -801,29 +757,29 @@ export default function LandingPage() {
                     d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"
                   ></path>
                 </svg>
-                Generate Trading Code
+                Purchase License
               </>
             )}
           </button>
 
           {generatedCode && (
             <div className="mt-6 bg-white/20 rounded-lg p-4">
-              <h3 className="font-bold text-lg mb-2">Your Trading Code:</h3>
+              <h3 className="font-bold text-lg mb-2">License Created:</h3>
               <div className="bg-white/30 rounded p-3 font-mono text-xl font-bold tracking-wider">
                 {generatedCode}
               </div>
               <p className="text-yellow-100 text-sm mt-2">
-                Please proceed to payment to activate this code.
+                Complete payment to activate your license
               </p>
             </div>
           )}
         </div>
 
-        {/* My Trading Codes Section */}
+        {/* My Trading Licenses Section */}
         <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-bold text-gray-900">
-              My Trading Codes
+              My Trading Licenses
             </h2>
             <button
               onClick={fetchMyCodes}
@@ -871,18 +827,12 @@ export default function LandingPage() {
 
           {/* Quick Status Overview */}
           {myCodes.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <div className="bg-green-50 rounded-lg p-4">
                 <div className="text-2xl font-bold text-green-600">
-                  {
-                    myCodes.filter(
-                      (code) =>
-                        code.status === 'activated' &&
-                        !getTimeRemaining(code).expired
-                    ).length
-                  }
+                  {myCodes.filter((code) => code.status === 'activated').length}
                 </div>
-                <div className="text-sm text-green-700">Active Codes</div>
+                <div className="text-sm text-green-700">Active Licenses</div>
               </div>
               <div className="bg-yellow-50 rounded-lg p-4">
                 <div className="text-2xl font-bold text-yellow-600">
@@ -893,49 +843,34 @@ export default function LandingPage() {
                 </div>
                 <div className="text-sm text-yellow-700">Pending Payment</div>
               </div>
-              <div className="bg-red-50 rounded-lg p-4">
-                <div className="text-2xl font-bold text-red-600">
-                  {
-                    myCodes.filter((code) => {
-                      if (code.status !== 'activated') return false
-
-                      // Prioritize customer account expiry date
-                      let expiryDate = null
-                      if (code.customerAccount?.expireDate) {
-                        expiryDate = parseThaiDate(
-                          code.customerAccount.expireDate
-                        )
-                      } else if (code.expireDate) {
-                        expiryDate = parseThaiDate(code.expireDate)
-                      } else if (code.expiresAt) {
-                        expiryDate = new Date(code.expiresAt)
-                      }
-
-                      if (!expiryDate) return false
-
-                      const timeDiff =
-                        expiryDate.getTime() - currentTime.getTime()
-                      const daysLeft = Math.floor(
-                        timeDiff / (1000 * 60 * 60 * 24)
-                      )
-
-                      return timeDiff > 0 && daysLeft <= 7
-                    }).length
-                  }
-                </div>
-                <div className="text-sm text-red-700">Expiring Soon</div>
-              </div>
               <div className="bg-gray-50 rounded-lg p-4">
                 <div className="text-2xl font-bold text-gray-600">
                   {
                     myCodes.filter(
                       (code) =>
-                        getTimeRemaining(code).expired ||
-                        code.status === 'expired'
+                        code.status === 'expired' || code.status === 'cancelled'
                     ).length
                   }
                 </div>
-                <div className="text-sm text-gray-700">Expired</div>
+                <div className="text-sm text-gray-700">Expired/Cancelled</div>
+              </div>
+              <div className="bg-blue-50 rounded-lg p-4">
+                <div className="text-2xl font-bold text-blue-600">
+                  {(() => {
+                    const activeLicenses = myCodes.filter(
+                      (code) => code.status === 'activated'
+                    )
+                    if (activeLicenses.length === 0) return '0'
+
+                    const expiringSoon = activeLicenses.filter((code) => {
+                      const timeRemaining = getTimeRemaining(code)
+                      return !timeRemaining.expired && timeRemaining.days < 7
+                    }).length
+
+                    return expiringSoon
+                  })()}
+                </div>
+                <div className="text-sm text-blue-700">Expiring Soon</div>
               </div>
             </div>
           )}
@@ -956,10 +891,10 @@ export default function LandingPage() {
                 ></path>
               </svg>
               <p className="text-lg font-medium">
-                No trading codes generated yet
+                No trading licenses purchased yet
               </p>
               <p className="text-sm">
-                Generate your first trading code above to get started
+                Purchase your first trading license above to get started
               </p>
             </div>
           ) : (
@@ -968,7 +903,7 @@ export default function LandingPage() {
                 <thead>
                   <tr className="bg-gray-50">
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                      Code
+                      License
                     </th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
                       Platform
@@ -980,19 +915,13 @@ export default function LandingPage() {
                       Plan
                     </th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                      Price
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
                       Status
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                      Time Left
                     </th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
                       Expires
                     </th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                      Created
+                      Time Left
                     </th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
                       Actions
@@ -1001,37 +930,8 @@ export default function LandingPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {myCodes.map((code) => {
-                    const timeRemaining = getTimeRemaining(code)
-
-                    // Check if urgent using customer account data priority
-                    let isUrgent = false
-                    if (code.status === 'activated' && !timeRemaining.expired) {
-                      let expiryDate = null
-                      if (code.customerAccount?.expireDate) {
-                        expiryDate = parseThaiDate(
-                          code.customerAccount.expireDate
-                        )
-                      } else if (code.expireDate) {
-                        expiryDate = parseThaiDate(code.expireDate)
-                      } else if (code.expiresAt) {
-                        expiryDate = new Date(code.expiresAt)
-                      }
-
-                      if (expiryDate) {
-                        const timeDiff =
-                          expiryDate.getTime() - currentTime.getTime()
-                        const daysLeft = Math.floor(
-                          timeDiff / (1000 * 60 * 60 * 24)
-                        )
-                        isUrgent = timeDiff > 0 && daysLeft <= 7
-                      }
-                    }
-
                     return (
-                      <tr
-                        key={code._id}
-                        className={`hover:bg-gray-50 ${isUrgent ? 'bg-red-50 border-l-4 border-red-400' : ''}`}
-                      >
+                      <tr key={code._id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 font-mono text-sm text-blue-600 font-bold">
                           {code.code}
                         </td>
@@ -1043,9 +943,6 @@ export default function LandingPage() {
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900">
                           {code.plan} days
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-900">
-                          ${code.price}
                         </td>
                         <td className="px-4 py-3">
                           <span
@@ -1061,34 +958,6 @@ export default function LandingPage() {
                           >
                             {code.status.replace('_', ' ').toUpperCase()}
                           </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          {(() => {
-                            const timeRemaining = getTimeRemaining(code)
-                            const dataSource = code.customerAccount?.expireDate
-                              ? 'CA'
-                              : code.expireDate
-                                ? 'Code'
-                                : code.expiresAt
-                                  ? 'Orig'
-                                  : 'None'
-                            return (
-                              <div>
-                                <span className={timeRemaining.color}>
-                                  {timeRemaining.text}
-                                </span>
-                                {code.status === 'activated' && (
-                                  <div className="text-xs text-gray-400">
-                                    {dataSource === 'CA' &&
-                                      '📊 Customer Account'}
-                                    {dataSource === 'Code' && '🔖 Code Data'}
-                                    {dataSource === 'Orig' && '📅 Original'}
-                                    {dataSource === 'None' && '❌ No Data'}
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          })()}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-500">
                           {code.status === 'activated'
@@ -1156,51 +1025,53 @@ export default function LandingPage() {
                               ? 'Pay to activate'
                               : '-'}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-500">
-                          {new Date(code.createdAt).toLocaleDateString()}
-                        </td>
-                        <td className="px-4 py-3">
-                          {code.status === 'activated' &&
+                        <td className="px-4 py-3 text-sm">
+                          {code.status === 'activated' ? (
                             (() => {
                               const timeRemaining = getTimeRemaining(code)
-
-                              // Check if urgent using customer account data priority
-                              let isUrgent = false
-                              if (!timeRemaining.expired) {
-                                let expiryDate = null
-                                if (code.customerAccount?.expireDate) {
-                                  expiryDate = parseThaiDate(
-                                    code.customerAccount.expireDate
-                                  )
-                                } else if (code.expireDate) {
-                                  expiryDate = parseThaiDate(code.expireDate)
-                                } else if (code.expiresAt) {
-                                  expiryDate = new Date(code.expiresAt)
-                                }
-
-                                if (expiryDate) {
-                                  const timeDiff =
-                                    expiryDate.getTime() - currentTime.getTime()
-                                  const daysLeft = Math.floor(
-                                    timeDiff / (1000 * 60 * 60 * 24)
-                                  )
-                                  isUrgent = timeDiff > 0 && daysLeft <= 7
-                                }
-                              }
-
                               return (
-                                <button
-                                  onClick={() => handleExtendCode(code)}
-                                  className={`px-3 py-1 rounded text-xs transition duration-200 ${
-                                    isUrgent
-                                      ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
-                                      : 'bg-green-500 hover:bg-green-600 text-white'
-                                  }`}
-                                >
-                                  {isUrgent ? '⚠️ Extend Now' : 'Extend'}
-                                </button>
+                                <div>
+                                  <div
+                                    className={`font-medium ${
+                                      timeRemaining.expired
+                                        ? 'text-red-600'
+                                        : timeRemaining.days < 7
+                                          ? 'text-orange-600'
+                                          : timeRemaining.days < 30
+                                            ? 'text-yellow-600'
+                                            : 'text-green-600'
+                                    }`}
+                                  >
+                                    {timeRemaining.timeLeft}
+                                  </div>
+                                  {!timeRemaining.expired &&
+                                    timeRemaining.days > 0 && (
+                                      <div className="text-xs text-gray-500">
+                                        {timeRemaining.days} day
+                                        {timeRemaining.days !== 1 ? 's' : ''}{' '}
+                                        left
+                                      </div>
+                                    )}
+                                </div>
                               )
-                            })()}
+                            })()
+                          ) : code.status === 'pending_payment' ? (
+                            <span className="text-gray-400 text-xs">
+                              Pay to see countdown
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {code.status === 'activated' && (
+                            <button
+                              onClick={() => handleExtendLicense(code)}
+                              className="px-3 py-1 rounded text-xs transition duration-200 bg-green-500 hover:bg-green-600 text-white"
+                            >
+                              Extend
+                            </button>
+                          )}
                           {code.status === 'pending_payment' && (
                             <span className="text-xs text-gray-400">
                               Pay to extend
@@ -1219,10 +1090,80 @@ export default function LandingPage() {
               </table>
             </div>
           )}
+
+          {/* Expiring Soon Alert */}
+          {myCodes.length > 0 &&
+            (() => {
+              const activeLicenses = myCodes.filter(
+                (code) => code.status === 'activated'
+              )
+              const expiringSoon = activeLicenses.filter((code) => {
+                const timeRemaining = getTimeRemaining(code)
+                return !timeRemaining.expired && timeRemaining.days < 7
+              })
+
+              if (expiringSoon.length === 0) return null
+
+              return (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
+                  <h3 className="text-lg font-semibold text-orange-800 mb-3 flex items-center">
+                    <svg
+                      className="w-5 h-5 mr-2"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    Licenses Expiring Soon
+                  </h3>
+                  <div className="space-y-2">
+                    {expiringSoon.map((license) => {
+                      const timeRemaining = getTimeRemaining(license)
+                      return (
+                        <div
+                          key={license._id}
+                          className="flex items-center justify-between bg-white rounded p-3"
+                        >
+                          <div className="flex items-center space-x-3">
+                            <span className="font-mono text-sm font-semibold text-blue-600">
+                              {license.code}
+                            </span>
+                            <span className="text-sm text-gray-600">
+                              {license.platform} • {license.accountNumber}
+                            </span>
+                          </div>
+                          <div className="flex items-center space-x-3">
+                            <span
+                              className={`text-sm font-medium ${
+                                timeRemaining.days <= 1
+                                  ? 'text-red-600'
+                                  : 'text-orange-600'
+                              }`}
+                            >
+                              {timeRemaining.timeLeft}
+                            </span>
+                            <button
+                              onClick={() => handleExtendLicense(license)}
+                              className="px-3 py-1 rounded text-xs bg-orange-500 hover:bg-orange-600 text-white transition duration-200"
+                            >
+                              Extend Now
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })()}
         </div>
 
         {/* User Info Card */}
-        <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
+        {/* <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">
             Your Profile
           </h2>
@@ -1240,7 +1181,7 @@ export default function LandingPage() {
               <p className="text-green-700 text-lg">{user?.email}</p>
             </div>
           </div>
-        </div>
+        </div> */}
 
         {/* Dashboard Cards */}
         {/* <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -1317,7 +1258,7 @@ export default function LandingPage() {
                 </svg>
               </div>
               <h3 className="text-lg font-bold text-gray-900 mb-2">
-                Extend Trading Code
+                Extend Trading License
               </h3>
               <p className="text-gray-600 mb-4">
                 Code:{' '}
@@ -1330,7 +1271,7 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <form onSubmit={submitExtendCode} className="space-y-6">
+            <form onSubmit={submitExtendLicense} className="space-y-6">
               <div>
                 <label
                   htmlFor="extendPlan"
@@ -1352,7 +1293,7 @@ export default function LandingPage() {
                   <option value="365">365 Days (Annual Extension)</option>
                 </select>
                 <p className="text-xs text-gray-500 mt-1">
-                  Select extension plan to add to your current trading code
+                  Select extension plan to add to your current trading license
                   validity
                 </p>
               </div>

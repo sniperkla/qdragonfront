@@ -6,13 +6,23 @@ import {
   emitExtensionRequestUpdate
 } from '@/lib/websocket'
 
-// Extension Request Schema (same as in extend-code route)
+// Extension Request Schema (updated to handle both CodeRequest and CustomerAccount sources)
 const ExtensionRequestSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   codeId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'CodeRequest',
-    required: true
+    required: false // Made optional to handle customer-account-only licenses
+  },
+  customerAccountId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'CustomerAccount',
+    required: false // For customer-account-only licenses
+  },
+  licenseSource: {
+    type: String,
+    enum: ['codeRequest', 'customerAccount', 'both'],
+    required: true // Indicates the source of the license
   },
   username: { type: String, required: true },
   licenseCode: { type: String, required: true },
@@ -90,6 +100,7 @@ export async function GET(request) {
     const extensionRequests = await ExtensionRequest.find(query)
       .populate('userId', 'username email')
       .populate('codeId', 'code platform accountNumber')
+      .populate('customerAccountId', 'license platform accountNumber status expireDate')
       .sort({ requestedAt: -1 })
       .limit(100)
 
@@ -141,8 +152,9 @@ export async function PUT(request) {
     await connectToDatabase()
 
     // Find the extension request
-    const extensionRequest =
-      await ExtensionRequest.findById(requestId).populate('codeId')
+    const extensionRequest = await ExtensionRequest.findById(requestId)
+      .populate('codeId')
+      .populate('customerAccountId')
 
     if (!extensionRequest) {
       return new Response(
@@ -201,11 +213,20 @@ export async function PUT(request) {
           plan: customerAccount.plan + extensionRequest.requestedDays
         })
 
-        // Update code request
-        await CodeRequest.findByIdAndUpdate(extensionRequest.codeId._id, {
-          plan: extensionRequest.codeId.plan + extensionRequest.requestedDays,
-          expiresAt: newExpiryDate
-        })
+        // Update code request based on license source
+        if (extensionRequest.licenseSource === 'codeRequest' || extensionRequest.licenseSource === 'both') {
+          if (extensionRequest.codeId) {
+            await CodeRequest.findByIdAndUpdate(extensionRequest.codeId._id, {
+              plan: extensionRequest.codeId.plan + extensionRequest.requestedDays,
+              expiresAt: newExpiryDate
+            })
+            console.log('Updated CodeRequest for license:', extensionRequest.licenseCode)
+          } else {
+            console.log('Warning: licenseSource indicates CodeRequest but codeId is null')
+          }
+        } else if (extensionRequest.licenseSource === 'customerAccount') {
+          console.log('Customer account only license - no CodeRequest to update')
+        }
 
         // Update extension request
         await ExtensionRequest.findByIdAndUpdate(requestId, {
