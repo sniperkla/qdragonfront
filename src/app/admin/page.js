@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useAdminWebSocket } from '../../hooks/useWebSocket'
 
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -44,7 +45,7 @@ export default function AdminPage() {
     extendDays: ''
   })
   const [creatingAccount, setCreatingAccount] = useState(false)
-  
+
   // Extension requests state
   const [extensionRequests, setExtensionRequests] = useState([])
   const [loadingExtensions, setLoadingExtensions] = useState(false)
@@ -56,7 +57,7 @@ export default function AdminPage() {
     licenseCode: '',
     reason: ''
   })
-  
+
   // Extend modal state
   const [extendModal, setExtendModal] = useState({
     show: false,
@@ -67,8 +68,62 @@ export default function AdminPage() {
     customDays: '',
     extendingCode: false
   })
-  
+
   const router = useRouter()
+
+  // WebSocket handlers
+  const handleExtensionUpdate = (data) => {
+    console.log('Received extension request update via WebSocket:', data)
+    // Refresh extension requests
+    fetchExtensionRequests()
+    // Also refresh customer accounts to show updated expiry dates
+    fetchAllCustomers()
+    showNotification(`📬 Extension request ${data.action}: ${data.licenseCode}`)
+  }
+
+  const handleAdminNotification = (data) => {
+    console.log('Received admin notification via WebSocket:', data)
+    console.log('Showing toast with message:', data.message, 'type:', data.type)
+    showToast(data.message, data.type)
+  }
+
+  // Test WebSocket notification
+  const testWebSocketNotification = async () => {
+    try {
+      console.log('Testing WebSocket notification...')
+      const response = await fetch('/api/admin/test-websocket', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+      })
+      const data = await response.json()
+      console.log('Test WebSocket response:', data)
+    } catch (error) {
+      console.error('Test WebSocket error:', error)
+    }
+  }
+
+  // Initialize WebSocket server on component mount
+  useEffect(() => {
+    const initWebSocket = async () => {
+      try {
+        console.log('🔧 Initializing WebSocket server...')
+        const response = await fetch('/api/init/socketio', { method: 'GET' })
+        const data = await response.json()
+        if (data.success && data.initialized) {
+          console.log('✅ WebSocket server initialized successfully')
+        } else {
+          console.warn('⚠️ WebSocket server initialization failed:', data)
+        }
+      } catch (error) {
+        console.error('❌ Failed to initialize WebSocket server:', error)
+      }
+    }
+    initWebSocket()
+  }, [])
+
+  // WebSocket connection
+  const { isConnected: wsConnected } = useAdminWebSocket(handleExtensionUpdate, handleAdminNotification)
 
   // Format date to Thai Buddhist Era format with time
   const formatThaiDateTime = (dateString) => {
@@ -78,7 +133,7 @@ export default function AdminPage() {
     const yearBE = d.getFullYear() + 543 // Convert to Buddhist Era
     const hours = d.getHours().toString().padStart(2, '0')
     const minutes = d.getMinutes().toString().padStart(2, '0')
-    
+
     return `${day}/${month}/${yearBE} ${hours}:${minutes}`
   }
 
@@ -445,7 +500,7 @@ export default function AdminPage() {
   }
 
   const approveExtension = async (requestId) => {
-    setProcessingExtension(prev => ({ ...prev, [requestId]: true }))
+    setProcessingExtension((prev) => ({ ...prev, [requestId]: true }))
     try {
       const response = await fetch('/api/admin/extension-requests', {
         method: 'PUT',
@@ -459,7 +514,10 @@ export default function AdminPage() {
 
       const data = await response.json()
       if (response.ok) {
-        showToast(`Extension approved! ${data.licenseCode} extended by ${data.extendedDays} days`, 'success')
+        showToast(
+          `Extension approved! ${data.licenseCode} extended by ${data.extendedDays} days`,
+          'success'
+        )
         fetchExtensionRequests()
         fetchAllCustomers() // Refresh customer list
       } else {
@@ -469,7 +527,7 @@ export default function AdminPage() {
       console.error('Error approving extension:', error)
       showToast('Failed to approve extension', 'error')
     } finally {
-      setProcessingExtension(prev => ({ ...prev, [requestId]: false }))
+      setProcessingExtension((prev) => ({ ...prev, [requestId]: false }))
     }
   }
 
@@ -488,7 +546,10 @@ export default function AdminPage() {
       return
     }
 
-    setProcessingExtension(prev => ({ ...prev, [rejectionModal.requestId]: true }))
+    setProcessingExtension((prev) => ({
+      ...prev,
+      [rejectionModal.requestId]: true
+    }))
     try {
       const response = await fetch('/api/admin/extension-requests', {
         method: 'PUT',
@@ -504,7 +565,12 @@ export default function AdminPage() {
       const data = await response.json()
       if (response.ok) {
         showToast(`Extension rejected for ${data.licenseCode}`, 'success')
-        setRejectionModal({ show: false, requestId: '', licenseCode: '', reason: '' })
+        setRejectionModal({
+          show: false,
+          requestId: '',
+          licenseCode: '',
+          reason: ''
+        })
         fetchExtensionRequests()
       } else {
         showToast(data.error || 'Failed to reject extension', 'error')
@@ -513,7 +579,10 @@ export default function AdminPage() {
       console.error('Error rejecting extension:', error)
       showToast('Failed to reject extension', 'error')
     } finally {
-      setProcessingExtension(prev => ({ ...prev, [rejectionModal.requestId]: false }))
+      setProcessingExtension((prev) => ({
+        ...prev,
+        [rejectionModal.requestId]: false
+      }))
     }
   }
 
@@ -546,7 +615,7 @@ export default function AdminPage() {
       return
     }
 
-    setExtendModal(prev => ({ ...prev, extendingCode: true }))
+    setExtendModal((prev) => ({ ...prev, extendingCode: true }))
 
     try {
       const response = await fetch('/api/admin/extend-customer', {
@@ -563,9 +632,20 @@ export default function AdminPage() {
 
       if (response.ok) {
         const extendType = extendModal.customDays ? 'custom' : 'preset'
-        showToast(`License ${extendModal.licenseCode} extended by ${daysToExtend} days (${extendType})! New expiry: ${data.newExpiry}`, 'success')
-        setExtendModal({ show: false, customerId: '', licenseCode: '', currentExpiry: '', selectedPlan: '30', customDays: '', extendingCode: false })
-        
+        showToast(
+          `License ${extendModal.licenseCode} extended by ${daysToExtend} days (${extendType})! New expiry: ${data.newExpiry}`,
+          'success'
+        )
+        setExtendModal({
+          show: false,
+          customerId: '',
+          licenseCode: '',
+          currentExpiry: '',
+          selectedPlan: '30',
+          customDays: '',
+          extendingCode: false
+        })
+
         // Refresh customer list
         fetchAllCustomers()
       } else {
@@ -575,7 +655,7 @@ export default function AdminPage() {
       console.error('Error extending license:', error)
       showToast('Network error. Please try again.', 'error')
     } finally {
-      setExtendModal(prev => ({ ...prev, extendingCode: false }))
+      setExtendModal((prev) => ({ ...prev, extendingCode: false }))
     }
   }
 
@@ -594,14 +674,14 @@ export default function AdminPage() {
       const data = await response.json()
 
       if (response.ok) {
-        const extendMessage = manualAccountForm.extendDays 
+        const extendMessage = manualAccountForm.extendDays
           ? ` (${manualAccountForm.plan === 'lifetime' ? 'Lifetime' : `${manualAccountForm.plan} days`}${manualAccountForm.extendDays ? ` + ${manualAccountForm.extendDays} extra days` : ''})`
           : ''
-        
-        const expiryMessage = data.license.expireDateThai 
+
+        const expiryMessage = data.license.expireDateThai
           ? ` | Expires: ${data.license.expireDateThai}`
           : ''
-        
+
         showToast(
           `License generated successfully! License Key: ${data.license.license}${extendMessage}${expiryMessage}`,
           'success'
@@ -732,14 +812,113 @@ export default function AdminPage() {
               <p className="text-gray-600">
                 Manage trading code payments and activations
               </p>
-              {autoRefresh && (
-                <div className="flex items-center mt-2">
-                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse mr-2"></div>
-                  <span className="text-sm text-green-600">
-                    Live updates active
+              <div className="flex items-center justify-between mt-2">
+                <div className="flex items-center">
+                  <div className={`w-2 h-2 rounded-full mr-2 ${wsConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></div>
+                  <span className={`text-sm ${wsConnected ? 'text-green-600' : 'text-red-600'}`}>
+                    {wsConnected ? 'WebSocket connected - Live updates' : 'WebSocket disconnected'}
                   </span>
                 </div>
-              )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={testWebSocketNotification}
+                    className="px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                  >
+                    Test WebSocket
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const response = await fetch('/api/debug/websocket', { method: 'GET' })
+                        const data = await response.json()
+                        console.log('WebSocket Debug Info:', data)
+                        showToast(`WebSocket Debug: ${data.websocketExists ? 'Connected' : 'Not Connected'} - ${data.connectedClients || 0} clients`, 'info')
+                      } catch (error) {
+                        console.error('Debug error:', error)
+                        showToast('Debug request failed', 'error')
+                      }
+                    }}
+                    className="px-3 py-1 text-xs bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors"
+                  >
+                    Debug WS
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const response = await fetch('/api/debug/websocket', { method: 'POST' })
+                        const data = await response.json()
+                        console.log('WebSocket Test Emission:', data)
+                        showToast('Test emissions sent - check console', 'info')
+                      } catch (error) {
+                        console.error('Test emission error:', error)
+                        showToast('Test emission failed', 'error')
+                      }
+                    }}
+                    className="px-3 py-1 text-xs bg-green-500 text-white rounded hover:bg-green-600 transition-colors"
+                  >
+                    Test Emit
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const response = await fetch('/api/init/socketio')
+                        const data = await response.json()
+                        console.log('Socket.IO Initialization:', data)
+                        showToast(`Socket.IO: ${data.initialized ? 'Initialized' : 'Not Initialized'} - ${data.connectedClients} clients`, data.initialized ? 'success' : 'warning')
+                      } catch (error) {
+                        console.error('Init check error:', error)
+                        showToast('Init check failed', 'error')
+                      }
+                    }}
+                    className="px-3 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600 transition-colors"
+                  >
+                    Init
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const response = await fetch('/api/force-init/socketio', { method: 'POST' })
+                        const data = await response.json()
+                        console.log('Force Socket.IO Initialization:', data)
+                        showToast(`Force Init: ${data.initialized ? 'Success' : 'Failed'} - ${data.connectedClients} clients`, data.initialized ? 'success' : 'error')
+                      } catch (error) {
+                        console.error('Force init error:', error)
+                        showToast('Force init failed', 'error')
+                      }
+                    }}
+                    className="px-3 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+                  >
+                    Force
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        // Get a user ID from the first customer for testing
+                        let testUserId = '507f1f77bcf86cd799439011' // default test ID
+                        if (customers && customers.length > 0) {
+                          testUserId = customers[0].userId || customers[0]._id
+                        }
+                        
+                        const response = await fetch('/api/test/websocket-communication', { 
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ testType: 'all', userId: testUserId })
+                        })
+                        const data = await response.json()
+                        console.log('WebSocket Communication Test:', data)
+                        const successRate = data.results ? (data.results.summary.successful / data.results.summary.total * 100).toFixed(1) : 0
+                        showToast(`Communication Test: ${successRate}% success rate (${data.results?.summary.successful || 0}/${data.results?.summary.total || 0})`, successRate >= 80 ? 'success' : 'warning')
+                      } catch (error) {
+                        console.error('Communication test error:', error)
+                        showToast('Communication test failed', 'error')
+                      }
+                    }}
+                    className="px-3 py-1 text-xs bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors"
+                  >
+                    Test All
+                  </button>
+                </div>
+              </div>
             </div>
             <div className="flex items-center gap-4">
               <label className="flex items-center cursor-pointer">
@@ -818,7 +997,9 @@ export default function AdminPage() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                Extension Requests ({extensionRequests.filter(r => r.status === 'pending').length})
+                Extension Requests (
+                {extensionRequests.filter((r) => r.status === 'pending').length}
+                )
               </button>
             </nav>
           </div>
@@ -1236,7 +1417,9 @@ export default function AdminPage() {
                             {customer.plan} days
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-900">
-                            {customer.plan === 999999 ? 'Lifetime' : customer.expireDate}
+                            {customer.plan === 999999
+                              ? 'Lifetime'
+                              : customer.expireDate}
                           </td>
                           <td className="px-6 py-4">
                             <span
@@ -1254,12 +1437,16 @@ export default function AdminPage() {
                           <td className="px-6 py-4">
                             <span
                               className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                customer.adminGenerated || customer.createdBy === 'admin'
+                                customer.adminGenerated ||
+                                customer.createdBy === 'admin'
                                   ? 'bg-purple-100 text-purple-800'
                                   : 'bg-blue-100 text-blue-800'
                               }`}
                             >
-                              {customer.adminGenerated || customer.createdBy === 'admin' ? 'ADMIN' : 'USER'}
+                              {customer.adminGenerated ||
+                              customer.createdBy === 'admin'
+                                ? 'ADMIN'
+                                : 'USER'}
                             </span>
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-500">
@@ -1267,7 +1454,8 @@ export default function AdminPage() {
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex gap-2">
-                              {(customer.status === 'valid' || customer.status === 'expired') && (
+                              {(customer.status === 'valid' ||
+                                customer.status === 'expired') && (
                                 <button
                                   onClick={() => showExtendModal(customer)}
                                   disabled={updating[customer._id]}
@@ -1541,7 +1729,8 @@ export default function AdminPage() {
                           access
                         </li>
                         <li>
-                          <strong>Extend Days:</strong> Optionally add extra days on top of the selected plan
+                          <strong>Extend Days:</strong> Optionally add extra
+                          days on top of the selected plan
                         </li>
                       </ul>
                     </div>
@@ -1630,13 +1819,38 @@ export default function AdminPage() {
                     className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg flex items-center"
                   >
                     {loadingExtensions ? (
-                      <svg className="animate-spin w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      <svg
+                        className="animate-spin w-4 h-4 mr-2"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
                       </svg>
                     ) : (
-                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                      <svg
+                        className="w-4 h-4 mr-2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                        ></path>
                       </svg>
                     )}
                     Refresh
@@ -1659,12 +1873,19 @@ export default function AdminPage() {
             {/* Extension Request Stats */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
               {['all', 'pending', 'approved', 'rejected'].map((status) => {
-                const count = status === 'all' 
-                  ? extensionRequests.length 
-                  : extensionRequests.filter(r => r.status === status).length
+                const count =
+                  status === 'all'
+                    ? extensionRequests.length
+                    : extensionRequests.filter((r) => r.status === status)
+                        .length
                 return (
-                  <div key={status} className="bg-white rounded-xl shadow-lg p-6">
-                    <div className="text-2xl font-bold text-gray-900">{count}</div>
+                  <div
+                    key={status}
+                    className="bg-white rounded-xl shadow-lg p-6"
+                  >
+                    <div className="text-2xl font-bold text-gray-900">
+                      {count}
+                    </div>
                     <div className="text-sm text-gray-600 capitalize">
                       {status === 'all' ? 'Total Requests' : status}
                     </div>
@@ -1679,18 +1900,36 @@ export default function AdminPage() {
                 <table className="w-full">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">User</th>
-                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">License</th>
-                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Current Expiry</th>
-                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Requested Extension</th>
-                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Status</th>
-                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Requested</th>
-                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Actions</th>
+                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
+                        User
+                      </th>
+                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
+                        License
+                      </th>
+                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
+                        Current Expiry
+                      </th>
+                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
+                        Requested Extension
+                      </th>
+                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
+                        Status
+                      </th>
+                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
+                        Requested
+                      </th>
+                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {extensionRequests
-                      .filter(request => extensionFilter === 'all' || request.status === extensionFilter)
+                      .filter(
+                        (request) =>
+                          extensionFilter === 'all' ||
+                          request.status === extensionFilter
+                      )
                       .map((request) => (
                         <tr key={request._id} className="hover:bg-gray-50">
                           <td className="px-6 py-4 text-sm font-medium text-gray-900">
@@ -1703,16 +1942,19 @@ export default function AdminPage() {
                             {request.currentExpiry}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-900">
-                            {request.requestedDays} days ({request.requestedPlan} plan)
+                            {request.requestedDays} days (
+                            {request.requestedPlan} plan)
                           </td>
                           <td className="px-6 py-4">
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                              request.status === 'pending' 
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : request.status === 'approved'
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-red-100 text-red-800'
-                            }`}>
+                            <span
+                              className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                request.status === 'pending'
+                                  ? 'bg-yellow-100 text-yellow-800'
+                                  : request.status === 'approved'
+                                    ? 'bg-green-100 text-green-800'
+                                    : 'bg-red-100 text-red-800'
+                              }`}
+                            >
                               {request.status.toUpperCase()}
                             </span>
                           </td>
@@ -1724,26 +1966,43 @@ export default function AdminPage() {
                               {request.status === 'pending' && (
                                 <>
                                   <button
-                                    onClick={() => approveExtension(request._id)}
+                                    onClick={() =>
+                                      approveExtension(request._id)
+                                    }
                                     disabled={processingExtension[request._id]}
                                     className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
                                   >
-                                    {processingExtension[request._id] ? '...' : 'Approve'}
+                                    {processingExtension[request._id]
+                                      ? '...'
+                                      : 'Approve'}
                                   </button>
                                   <button
-                                    onClick={() => showRejectModal(request._id, request.licenseCode)}
+                                    onClick={() =>
+                                      showRejectModal(
+                                        request._id,
+                                        request.licenseCode
+                                      )
+                                    }
                                     disabled={processingExtension[request._id]}
                                     className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
                                   >
-                                    {processingExtension[request._id] ? '...' : 'Reject'}
+                                    {processingExtension[request._id]
+                                      ? '...'
+                                      : 'Reject'}
                                   </button>
                                 </>
                               )}
-                              {request.status === 'rejected' && request.rejectionReason && (
-                                <span className="text-xs text-red-600" title={request.rejectionReason}>
-                                  Reason: {request.rejectionReason.substring(0, 20)}...
-                                </span>
-                              )}
+                              {request.status === 'rejected' &&
+                                request.rejectionReason && (
+                                  <span
+                                    className="text-xs text-red-600"
+                                    title={request.rejectionReason}
+                                  >
+                                    Reason:{' '}
+                                    {request.rejectionReason.substring(0, 20)}
+                                    ...
+                                  </span>
+                                )}
                               {request.status === 'approved' && (
                                 <span className="text-xs text-green-600">
                                   Processed by {request.processedBy}
@@ -1757,13 +2016,31 @@ export default function AdminPage() {
                 </table>
               </div>
 
-              {extensionRequests.filter(request => extensionFilter === 'all' || request.status === extensionFilter).length === 0 && (
+              {extensionRequests.filter(
+                (request) =>
+                  extensionFilter === 'all' ||
+                  request.status === extensionFilter
+              ).length === 0 && (
                 <div className="text-center py-12 text-gray-500">
-                  <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                  <svg
+                    className="w-16 h-16 mx-auto mb-4 text-gray-300"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    ></path>
                   </svg>
-                  <p className="text-lg font-medium">No extension requests found</p>
-                  <p className="text-sm">No extension requests match your current filter</p>
+                  <p className="text-lg font-medium">
+                    No extension requests found
+                  </p>
+                  <p className="text-sm">
+                    No extension requests match your current filter
+                  </p>
                 </div>
               )}
             </div>
@@ -1777,25 +2054,48 @@ export default function AdminPage() {
           <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full mx-4">
             <div className="text-center mb-6">
               <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
-                <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                <svg
+                  className="h-6 w-6 text-red-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-gray-900 mb-2">Reject Extension Request</h3>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">
+                Reject Extension Request
+              </h3>
               <p className="text-gray-600 mb-4">
-                License: <span className="font-mono font-bold text-red-600">{rejectionModal.licenseCode}</span>
+                License:{' '}
+                <span className="font-mono font-bold text-red-600">
+                  {rejectionModal.licenseCode}
+                </span>
               </p>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label htmlFor="rejectionReason" className="block text-sm font-medium text-gray-700 mb-2">
+                <label
+                  htmlFor="rejectionReason"
+                  className="block text-sm font-medium text-gray-700 mb-2"
+                >
                   Rejection Reason *
                 </label>
                 <textarea
                   id="rejectionReason"
                   value={rejectionModal.reason}
-                  onChange={(e) => setRejectionModal(prev => ({ ...prev, reason: e.target.value }))}
+                  onChange={(e) =>
+                    setRejectionModal((prev) => ({
+                      ...prev,
+                      reason: e.target.value
+                    }))
+                  }
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
                   placeholder="Please provide a reason for rejection..."
                   rows="3"
@@ -1806,21 +2106,46 @@ export default function AdminPage() {
               <div className="flex gap-4 pt-4">
                 <button
                   type="button"
-                  onClick={() => setRejectionModal({ show: false, requestId: '', licenseCode: '', reason: '' })}
+                  onClick={() =>
+                    setRejectionModal({
+                      show: false,
+                      requestId: '',
+                      licenseCode: '',
+                      reason: ''
+                    })
+                  }
                   className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-4 rounded-lg transition duration-200"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={rejectExtension}
-                  disabled={processingExtension[rejectionModal.requestId] || !rejectionModal.reason.trim()}
+                  disabled={
+                    processingExtension[rejectionModal.requestId] ||
+                    !rejectionModal.reason.trim()
+                  }
                   className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                 >
                   {processingExtension[rejectionModal.requestId] ? (
                     <>
-                      <svg className="animate-spin w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      <svg
+                        className="animate-spin w-5 h-5 mr-2"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
                       </svg>
                       Rejecting...
                     </>
@@ -1840,13 +2165,28 @@ export default function AdminPage() {
           <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full mx-4">
             <div className="text-center mb-6">
               <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-purple-100 mb-4">
-                <svg className="h-6 w-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <svg
+                  className="h-6 w-6 text-purple-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-gray-900 mb-2">Extend License</h3>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">
+                Extend License
+              </h3>
               <p className="text-gray-600 mb-2">
-                License: <span className="font-mono font-bold text-purple-600">{extendModal.licenseCode}</span>
+                License:{' '}
+                <span className="font-mono font-bold text-purple-600">
+                  {extendModal.licenseCode}
+                </span>
               </p>
               <p className="text-sm text-gray-500">
                 Current Expiry: {extendModal.currentExpiry}
@@ -1855,13 +2195,22 @@ export default function AdminPage() {
 
             <div className="space-y-4">
               <div>
-                <label htmlFor="extensionPlan" className="block text-sm font-medium text-gray-700 mb-2">
+                <label
+                  htmlFor="extensionPlan"
+                  className="block text-sm font-medium text-gray-700 mb-2"
+                >
                   Preset Extension Plans
                 </label>
                 <select
                   id="extensionPlan"
                   value={extendModal.selectedPlan}
-                  onChange={(e) => setExtendModal(prev => ({ ...prev, selectedPlan: e.target.value, customDays: '' }))}
+                  onChange={(e) =>
+                    setExtendModal((prev) => ({
+                      ...prev,
+                      selectedPlan: e.target.value,
+                      customDays: ''
+                    }))
+                  }
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                 >
                   <option value="">-- Select Custom Days Instead --</option>
@@ -1881,39 +2230,78 @@ export default function AdminPage() {
               </div>
 
               <div>
-                <label htmlFor="customDays" className="block text-sm font-medium text-gray-700 mb-2">
+                <label
+                  htmlFor="customDays"
+                  className="block text-sm font-medium text-gray-700 mb-2"
+                >
                   Custom Extension Days
                 </label>
                 <input
                   type="number"
                   id="customDays"
                   value={extendModal.customDays}
-                  onChange={(e) => setExtendModal(prev => ({ ...prev, customDays: e.target.value, selectedPlan: '' }))}
+                  onChange={(e) =>
+                    setExtendModal((prev) => ({
+                      ...prev,
+                      customDays: e.target.value,
+                      selectedPlan: ''
+                    }))
+                  }
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                   placeholder="Enter custom days (e.g., 45)"
                   min="1"
                   max="9999"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Enter any number of days for custom extension. This will clear the preset selection above.
+                  Enter any number of days for custom extension. This will clear
+                  the preset selection above.
                 </p>
               </div>
 
               <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
                 <div className="flex items-start">
-                  <svg className="w-5 h-5 text-purple-400 mt-0.5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  <svg
+                    className="w-5 h-5 text-purple-400 mt-0.5 mr-3"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    ></path>
                   </svg>
                   <div>
-                    <h3 className="text-sm font-medium text-purple-800 mb-1">Admin Extension Options</h3>
+                    <h3 className="text-sm font-medium text-purple-800 mb-1">
+                      Admin Extension Options
+                    </h3>
                     <div className="text-sm text-purple-700">
                       <ul className="list-disc list-inside space-y-1">
-                        <li><strong>Preset Plans:</strong> Choose from predefined extension periods</li>
-                        <li><strong>Custom Days:</strong> Enter any specific number of days (1-9999)</li>
-                        <li>License will be extended immediately - no approval needed</li>
-                        <li>New expiry date calculated from current expiry (or today if expired)</li>
-                        <li>Automatically reactivates expired licenses to valid status</li>
-                        <li>No payment required - admin override with audit trail</li>
+                        <li>
+                          <strong>Preset Plans:</strong> Choose from predefined
+                          extension periods
+                        </li>
+                        <li>
+                          <strong>Custom Days:</strong> Enter any specific
+                          number of days (1-9999)
+                        </li>
+                        <li>
+                          License will be extended immediately - no approval
+                          needed
+                        </li>
+                        <li>
+                          New expiry date calculated from current expiry (or
+                          today if expired)
+                        </li>
+                        <li>
+                          Automatically reactivates expired licenses to valid
+                          status
+                        </li>
+                        <li>
+                          No payment required - admin override with audit trail
+                        </li>
                       </ul>
                     </div>
                   </div>
@@ -1923,7 +2311,17 @@ export default function AdminPage() {
               <div className="flex gap-4 pt-4">
                 <button
                   type="button"
-                  onClick={() => setExtendModal({ show: false, customerId: '', licenseCode: '', currentExpiry: '', selectedPlan: '', customDays: '', extendingCode: false })}
+                  onClick={() =>
+                    setExtendModal({
+                      show: false,
+                      customerId: '',
+                      licenseCode: '',
+                      currentExpiry: '',
+                      selectedPlan: '',
+                      customDays: '',
+                      extendingCode: false
+                    })
+                  }
                   disabled={extendModal.extendingCode}
                   className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50"
                 >
@@ -1931,25 +2329,47 @@ export default function AdminPage() {
                 </button>
                 <button
                   onClick={handleAdminExtendCode}
-                  disabled={extendModal.extendingCode || (!extendModal.selectedPlan && !extendModal.customDays)}
+                  disabled={
+                    extendModal.extendingCode ||
+                    (!extendModal.selectedPlan && !extendModal.customDays)
+                  }
                   className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                 >
                   {extendModal.extendingCode ? (
                     <>
-                      <svg className="animate-spin w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      <svg
+                        className="animate-spin w-5 h-5 mr-2"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
                       </svg>
                       Extending...
                     </>
                   ) : (
                     (() => {
-                      const days = extendModal.customDays && extendModal.customDays.trim() !== '' 
-                        ? extendModal.customDays 
-                        : extendModal.selectedPlan
-                      const type = extendModal.customDays && extendModal.customDays.trim() !== '' 
-                        ? 'Custom' 
-                        : 'Preset'
+                      const days =
+                        extendModal.customDays &&
+                        extendModal.customDays.trim() !== ''
+                          ? extendModal.customDays
+                          : extendModal.selectedPlan
+                      const type =
+                        extendModal.customDays &&
+                        extendModal.customDays.trim() !== ''
+                          ? 'Custom'
+                          : 'Preset'
                       return `Extend by ${days} Days (${type})`
                     })()
                   )}

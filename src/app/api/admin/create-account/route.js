@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import mongoose from 'mongoose'
 import CustomerAccount from '../../../../lib/customerAccountModel'
+import { emitCustomerAccountUpdate, emitNotificationToAdminAndClient } from '@/lib/websocket'
 
 // Admin authentication middleware
 const verifyAdmin = async (request) => {
@@ -59,7 +60,7 @@ const formatThaiDateTime = (date) => {
   const yearBE = d.getFullYear() + 543 // Convert to Buddhist Era
   const hours = d.getHours().toString().padStart(2, '0')
   const minutes = d.getMinutes().toString().padStart(2, '0')
-  
+
   return `${day}/${month}/${yearBE} ${hours}:${minutes}`
 }
 
@@ -134,9 +135,8 @@ export async function POST(request) {
     const expireDateThai = formatThaiDateTime(expiryDateTime)
 
     // Calculate total plan days for database storage
-    const totalPlanDays = plan === 'lifetime' 
-      ? 999999 
-      : parseInt(plan) + parseInt(extendDays || 0)
+    const totalPlanDays =
+      plan === 'lifetime' ? 999999 : parseInt(plan) + parseInt(extendDays || 0)
 
     // Create customer account
     const customerAccount = new CustomerAccount({
@@ -154,6 +154,35 @@ export async function POST(request) {
 
     await customerAccount.save()
     console.log('License generated successfully:', customerAccount._id)
+
+    // Emit WebSocket updates
+    try {
+      // Find user ID to emit to correct user
+      const User = (await import('@/lib/userModel')).default
+      const user = await User.findOne({ username })
+      
+      if (user) {
+        await emitCustomerAccountUpdate(user._id.toString(), {
+          accountId: customerAccount._id,
+          license: customerAccount.license,
+          platform: customerAccount.platform,
+          accountNumber: customerAccount.accountNumber,
+          expireDate: customerAccount.expireDate,
+          status: 'valid',
+          action: 'created',
+          createdBy: 'admin'
+        })
+
+        await emitNotificationToAdminAndClient(
+          user._id.toString(),
+          `🎉 New license created for you: ${customerAccount.license}`,
+          'success'
+        )
+      }
+    } catch (wsError) {
+      console.error('WebSocket emission error:', wsError)
+      // Don't fail the main request if WebSocket fails
+    }
 
     // Return success response
     return NextResponse.json({

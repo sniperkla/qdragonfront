@@ -1,45 +1,53 @@
-import { connectToDatabase } from '@/lib/mongodb';
-import CodeRequest from '@/lib/codeRequestModel';
-import CustomerAccount from '@/lib/customerAccountModel';
-import User from '@/lib/userModel';
+import { connectToDatabase } from '@/lib/mongodb'
+import CodeRequest from '@/lib/codeRequestModel'
+import CustomerAccount from '@/lib/customerAccountModel'
+import User from '@/lib/userModel'
+import { emitCodesUpdate, emitCustomerAccountUpdate, emitNotificationToAdminAndClient } from '@/lib/websocket'
 
 // Get all code requests (admin only)
 export async function GET(req) {
   try {
     // Check admin authentication via cookie
-    const adminSession = req.cookies.get('admin-session')?.value;
+    const adminSession = req.cookies.get('admin-session')?.value
     if (adminSession !== 'authenticated') {
-      return new Response(JSON.stringify({ error: 'Admin authentication required' }), { status: 401 });
+      return new Response(
+        JSON.stringify({ error: 'Admin authentication required' }),
+        { status: 401 }
+      )
     }
 
-    const { searchParams } = new URL(req.url);
-    const status = searchParams.get('status') || 'all';
-    const code = searchParams.get('code');
+    const { searchParams } = new URL(req.url)
+    const status = searchParams.get('status') || 'all'
+    const code = searchParams.get('code')
 
-    await connectToDatabase();
+    await connectToDatabase()
 
-    let query = {};
-    
+    let query = {}
+
     if (code) {
-      query.code = code;
+      query.code = code
     } else if (status !== 'all') {
-      query.status = status;
+      query.status = status
     }
 
     const codeRequests = await CodeRequest.find(query)
       .populate('userId', 'username email')
       .sort({ createdAt: -1 })
-      .limit(100);
+      .limit(100)
 
-    return new Response(JSON.stringify({
-      success: true,
-      total: codeRequests.length,
-      codes: codeRequests
-    }), { status: 200 });
-
+    return new Response(
+      JSON.stringify({
+        success: true,
+        total: codeRequests.length,
+        codes: codeRequests
+      }),
+      { status: 200 }
+    )
   } catch (error) {
-    console.error('Admin codes fetch error:', error);
-    return new Response(JSON.stringify({ error: 'Internal server error' }), { status: 500 });
+    console.error('Admin codes fetch error:', error)
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+      status: 500
+    })
   }
 }
 
@@ -47,60 +55,68 @@ export async function GET(req) {
 export async function PUT(req) {
   try {
     // Check admin authentication via cookie
-    const adminSession = req.cookies.get('admin-session')?.value;
+    const adminSession = req.cookies.get('admin-session')?.value
     if (adminSession !== 'authenticated') {
-      return new Response(JSON.stringify({ error: 'Admin authentication required' }), { status: 401 });
+      return new Response(
+        JSON.stringify({ error: 'Admin authentication required' }),
+        { status: 401 }
+      )
     }
 
-    const { codeId, status, paymentMethod, paymentId } = await req.json();
+    const { codeId, status, paymentMethod, paymentId } = await req.json()
 
     if (!codeId || !status) {
-      return new Response(JSON.stringify({ error: 'Code ID and status are required' }), { status: 400 });
+      return new Response(
+        JSON.stringify({ error: 'Code ID and status are required' }),
+        { status: 400 }
+      )
     }
 
-    await connectToDatabase();
+    await connectToDatabase()
 
     const updateData = {
       status,
       ...(paymentMethod && { paymentMethod }),
       ...(paymentId && { paymentId })
-    };
+    }
 
     if (status === 'paid') {
-      updateData.paidAt = new Date();
+      updateData.paidAt = new Date()
     }
 
     if (status === 'activated') {
-      updateData.activatedAt = new Date();
-      updateData.isActive = true;
+      updateData.activatedAt = new Date()
+      updateData.isActive = true
     }
 
     const codeRequest = await CodeRequest.findByIdAndUpdate(
       codeId,
       updateData,
       { new: true }
-    ).populate('userId', 'username');
+    ).populate('userId', 'username')
 
     if (!codeRequest) {
-      return new Response(JSON.stringify({ error: 'Code not found' }), { status: 404 });
+      return new Response(JSON.stringify({ error: 'Code not found' }), {
+        status: 404
+      })
     }
 
     // If status is being changed to 'activated', create customer account
     if (status === 'activated') {
       try {
         // Calculate expire date based on plan - add days to current date
-        const now = new Date();
-        const expireDate = new Date(now);
-        expireDate.setDate(now.getDate() + codeRequest.plan);
-        
+        const now = new Date()
+        const expireDate = new Date(now)
+        expireDate.setDate(now.getDate() + codeRequest.plan)
+
         // Format expire date as "DD/MM/YYYY HH:mm" in Thai Buddhist calendar
-        const day = expireDate.getDate().toString().padStart(2, '0');
-        const month = (expireDate.getMonth() + 1).toString().padStart(2, '0');
-        const thaiYear = expireDate.getFullYear() + 543; // Convert to Thai Buddhist year
-        const hour = expireDate.getHours().toString().padStart(2, '0');
-        const minute = expireDate.getMinutes().toString().padStart(2, '0');
-        
-        const formattedExpireDate = `${day}/${month}/${thaiYear} ${hour}:${minute}`;
+        const day = expireDate.getDate().toString().padStart(2, '0')
+        const month = (expireDate.getMonth() + 1).toString().padStart(2, '0')
+        const thaiYear = expireDate.getFullYear() + 543 // Convert to Thai Buddhist year
+        const hour = expireDate.getHours().toString().padStart(2, '0')
+        const minute = expireDate.getMinutes().toString().padStart(2, '0')
+
+        const formattedExpireDate = `${day}/${month}/${thaiYear} ${hour}:${minute}`
 
         // Create customer account
         const customerAccount = new CustomerAccount({
@@ -113,44 +129,110 @@ export async function PUT(req) {
           plan: codeRequest.plan,
           createdBy: 'user',
           adminGenerated: false
-        });
+        })
 
-        await customerAccount.save();
-        
+        await customerAccount.save()
+
         console.log('Customer account created:', {
           user: customerAccount.user,
           license: customerAccount.license,
           expireDate: customerAccount.expireDate,
           status: customerAccount.status
-        });
+        })
       } catch (customerError) {
-        console.error('Error creating customer account:', customerError);
+        console.error('Error creating customer account:', customerError)
         // Don't fail the main request if customer account creation fails
       }
     }
 
-    let customerAccountData = null;
+    let customerAccountData = null
     if (status === 'activated') {
       // Find the customer account that was just created
       try {
-        const CustomerAccount = (await import('@/lib/customerAccountModel')).default;
-        customerAccountData = await CustomerAccount.findOne({ license: codeRequest.code });
+        const CustomerAccount = (await import('@/lib/customerAccountModel'))
+          .default
+        customerAccountData = await CustomerAccount.findOne({
+          license: codeRequest.code
+        })
       } catch (error) {
-        console.error('Error fetching created customer account:', error);
+        console.error('Error fetching created customer account:', error)
       }
     }
 
-    return new Response(JSON.stringify({
-      success: true,
-      message: 'Code status updated successfully',
-      code: codeRequest,
-      customerAccountCreated: status === 'activated' ? true : false,
-      customerAccount: customerAccountData
-    }), { status: 200 });
+    // Emit WebSocket updates
+    try {
+      // Emit code update to the user
+      if (codeRequest.userId) {
+        await emitCodesUpdate(codeRequest.userId.toString(), {
+          codeId: codeRequest._id,
+          code: codeRequest.code,
+          status: codeRequest.status,
+          action: 'status-updated'
+        })
+      }
 
+      // If customer account was created, emit that update too
+      if (customerAccountData) {
+        await emitCustomerAccountUpdate(codeRequest.userId.toString(), {
+          accountId: customerAccountData._id,
+          license: customerAccountData.license,
+          expireDate: customerAccountData.expireDate,
+          status: customerAccountData.status,
+          action: 'account-created'
+        })
+      }
+
+      // Emit notification to both admin and client
+      let clientMessage = ''
+      let notificationType = 'info'
+      
+      switch (status) {
+        case 'activated':
+          clientMessage = `🎉 Your trading code ${codeRequest.code} has been activated! You can now start trading.`
+          notificationType = 'success'
+          break
+        case 'completed':
+          clientMessage = `✅ Your trading code ${codeRequest.code} has been completed.`
+          notificationType = 'success'
+          break
+        case 'cancelled':
+          clientMessage = `❌ Your trading code ${codeRequest.code} has been cancelled.`
+          notificationType = 'error'
+          break
+        case 'expired':
+          clientMessage = `⏰ Your trading code ${codeRequest.code} has expired.`
+          notificationType = 'warning'
+          break
+        default:
+          clientMessage = `📋 Your trading code ${codeRequest.code} status has been updated to ${status}.`
+          notificationType = 'info'
+      }
+      
+      await emitNotificationToAdminAndClient(
+        codeRequest.userId.toString(),
+        clientMessage,
+        notificationType
+      )
+    } catch (wsError) {
+      console.error('WebSocket emission error:', wsError)
+      // Don't fail the main request if WebSocket fails
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: 'Code status updated successfully',
+        code: codeRequest,
+        customerAccountCreated: status === 'activated' ? true : false,
+        customerAccount: customerAccountData
+      }),
+      { status: 200 }
+    )
   } catch (error) {
-    console.error('Admin code update error:', error);
-    return new Response(JSON.stringify({ error: 'Internal server error' }), { status: 500 });
+    console.error('Admin code update error:', error)
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+      status: 500
+    })
   }
 }
 
@@ -158,42 +240,57 @@ export async function PUT(req) {
 export async function DELETE(req) {
   try {
     // Check admin authentication via cookie
-    const adminSession = req.cookies.get('admin-session')?.value;
+    const adminSession = req.cookies.get('admin-session')?.value
     if (adminSession !== 'authenticated') {
-      return new Response(JSON.stringify({ error: 'Admin authentication required' }), { status: 401 });
+      return new Response(
+        JSON.stringify({ error: 'Admin authentication required' }),
+        { status: 401 }
+      )
     }
 
-    const { codeId } = await req.json();
+    const { codeId } = await req.json()
 
     if (!codeId) {
-      return new Response(JSON.stringify({ error: 'Code ID is required' }), { status: 400 });
+      return new Response(JSON.stringify({ error: 'Code ID is required' }), {
+        status: 400
+      })
     }
 
-    await connectToDatabase();
+    await connectToDatabase()
 
-    const deletedCode = await CodeRequest.findByIdAndDelete(codeId);
+    const deletedCode = await CodeRequest.findByIdAndDelete(codeId)
 
     if (!deletedCode) {
-      return new Response(JSON.stringify({ error: 'Code not found' }), { status: 404 });
+      return new Response(JSON.stringify({ error: 'Code not found' }), {
+        status: 404
+      })
     }
 
     // Also delete associated customer account if exists
     try {
-      const CustomerAccount = (await import('@/lib/customerAccountModel')).default;
-      await CustomerAccount.deleteOne({ license: deletedCode.code });
+      const CustomerAccount = (await import('@/lib/customerAccountModel'))
+        .default
+      await CustomerAccount.deleteOne({ license: deletedCode.code })
     } catch (customerError) {
-      console.error('Error deleting associated customer account:', customerError);
+      console.error(
+        'Error deleting associated customer account:',
+        customerError
+      )
       // Don't fail the main request if customer account deletion fails
     }
 
-    return new Response(JSON.stringify({
-      success: true,
-      message: 'Code deleted successfully',
-      code: deletedCode
-    }), { status: 200 });
-
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: 'Code deleted successfully',
+        code: deletedCode
+      }),
+      { status: 200 }
+    )
   } catch (error) {
-    console.error('Admin code delete error:', error);
-    return new Response(JSON.stringify({ error: 'Internal server error' }), { status: 500 });
+    console.error('Admin code delete error:', error)
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+      status: 500
+    })
   }
 }

@@ -2,6 +2,7 @@ import { verifyAuth } from '@/lib/auth';
 import { connectToDatabase } from '@/lib/mongodb';
 import CodeRequest from '@/lib/codeRequestModel';
 import User from '@/lib/userModel';
+import { emitCodesUpdate, emitAdminNotification } from '@/lib/websocket';
 
 // Code generation API
 export async function POST(req) {
@@ -77,6 +78,25 @@ export async function POST(req) {
       price: planInfo.price,
       status: 'pending_payment'
     });
+
+    // Emit WebSocket updates
+    try {
+      await emitCodesUpdate(authData.id, {
+        codeId: codeRequest._id,
+        code: tradingCode,
+        accountNumber,
+        platform,
+        plan: planInfo.days,
+        price: planInfo.price,
+        status: 'pending_payment',
+        action: 'created'
+      })
+
+      await emitAdminNotification(`New trading code generated: ${tradingCode} by ${user.username}`, 'info')
+    } catch (wsError) {
+      console.error('WebSocket emission error:', wsError)
+      // Don't fail the main request if WebSocket fails
+    }
 
     return new Response(JSON.stringify({
       success: true,

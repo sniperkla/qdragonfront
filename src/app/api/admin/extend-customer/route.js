@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { connectToDatabase } from '@/lib/mongodb'
 import CustomerAccount from '@/lib/customerAccountModel'
+import { emitCustomerAccountUpdate, emitNotificationToAdminAndClient } from '@/lib/websocket'
 
 export async function POST(request) {
   try {
@@ -9,19 +10,28 @@ export async function POST(request) {
     // Check admin authentication via cookie
     const adminSession = request.cookies.get('admin-session')?.value
     if (adminSession !== 'authenticated') {
-      return NextResponse.json({ error: 'Admin authentication required' }, { status: 401 })
+      return NextResponse.json(
+        { error: 'Admin authentication required' },
+        { status: 401 }
+      )
     }
 
     const { customerId, extendDays } = await request.json()
 
     if (!customerId || !extendDays || extendDays <= 0) {
-      return NextResponse.json({ error: 'Customer ID and valid extend days are required' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'Customer ID and valid extend days are required' },
+        { status: 400 }
+      )
     }
 
     // Find the customer account
     const customerAccount = await CustomerAccount.findById(customerId)
     if (!customerAccount) {
-      return NextResponse.json({ error: 'Customer account not found' }, { status: 404 })
+      return NextResponse.json(
+        { error: 'Customer account not found' },
+        { status: 404 }
+      )
     }
 
     console.log('Admin extending license:', {
@@ -40,11 +50,17 @@ export async function POST(request) {
         const [datePart, timePart] = customerAccount.expireDate.split(' ')
         const [day, month, thaiYear] = datePart.split('/')
         const [hours, minutes] = timePart ? timePart.split(':') : ['23', '59']
-        
+
         // Convert Thai Buddhist year to Gregorian year
         const gregorianYear = parseInt(thaiYear) - 543
-        currentExpiryDate = new Date(gregorianYear, parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes))
-        
+        currentExpiryDate = new Date(
+          gregorianYear,
+          parseInt(month) - 1,
+          parseInt(day),
+          parseInt(hours),
+          parseInt(minutes)
+        )
+
         console.log('Parsed current expiry date:', {
           originalThai: customerAccount.expireDate,
           parsedGregorian: currentExpiryDate.toISOString(),
@@ -57,13 +73,16 @@ export async function POST(request) {
     } else {
       // Fallback to today if no expiry date
       currentExpiryDate = new Date()
-      console.log('No expiry date found, using current date:', currentExpiryDate.toISOString())
+      console.log(
+        'No expiry date found, using current date:',
+        currentExpiryDate.toISOString()
+      )
     }
 
     // If the current date is past expiry, extend from now
     const now = new Date()
     const baseDate = currentExpiryDate > now ? currentExpiryDate : now
-    
+
     console.log('Extension calculation:', {
       currentExpiry: currentExpiryDate.toISOString(),
       now: now.toISOString(),
@@ -78,7 +97,7 @@ export async function POST(request) {
 
     // Format new expiry date in Thai Buddhist Era format
     const newExpiryThaiFormat = formatThaiDateTime(newExpiryDate)
-    
+
     console.log('New expiry date:', {
       gregorianDate: newExpiryDate.toISOString(),
       thaiFormat: newExpiryThaiFormat
@@ -86,7 +105,7 @@ export async function POST(request) {
 
     // Update customer account
     const updateResult = await CustomerAccount.findByIdAndUpdate(
-      customerId, 
+      customerId,
       {
         expireDate: newExpiryThaiFormat,
         status: 'valid', // Reactivate if was expired
@@ -95,12 +114,41 @@ export async function POST(request) {
       },
       { new: true } // Return the updated document
     )
-    
+
     console.log('Update result:', {
       success: !!updateResult,
       newExpireDate: updateResult?.expireDate,
       newStatus: updateResult?.status
     })
+
+    // Emit WebSocket updates
+    try {
+      // Find user associated with this customer account to emit to correct user
+      const User = (await import('@/lib/userModel')).default
+      const user = await User.findOne({ username: customerAccount.user })
+      
+      if (user) {
+        await emitCustomerAccountUpdate(user._id.toString(), {
+          accountId: customerAccount._id,
+          license: customerAccount.license,
+          expireDate: newExpiryThaiFormat,
+          status: 'valid',
+          action: 'extended',
+          extendedDays: parseInt(extendDays),
+          extendedBy: 'admin'
+        })
+
+        // Send notification to both admin and the specific client
+        await emitNotificationToAdminAndClient(
+          user._id.toString(),
+          `✅ License ${customerAccount.license} extended by ${extendDays} days`,
+          'success'
+        )
+      }
+    } catch (wsError) {
+      console.error('WebSocket emission error:', wsError)
+      // Don't fail the main request if WebSocket fails
+    }
 
     return NextResponse.json({
       success: true,
@@ -113,10 +161,12 @@ export async function POST(request) {
       extendedBy: 'admin',
       timestamp: new Date().toISOString()
     })
-
   } catch (error) {
     console.error('Admin extend customer error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
   }
 }
 
@@ -127,6 +177,6 @@ function formatThaiDateTime(date) {
   const yearBE = date.getFullYear() + 543 // Convert to Buddhist Era
   const hours = date.getHours().toString().padStart(2, '0')
   const minutes = date.getMinutes().toString().padStart(2, '0')
-  
+
   return `${day}/${month}/${yearBE} ${hours}:${minutes}`
 }

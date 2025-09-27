@@ -87,71 +87,71 @@ export default function AdminPage() {
   }
 
   // Auto-refresh functionality for real-time updates
-  useEffect(() => {
-    let interval
+//   useEffect(() => {
+//     let interval
 
-    if (isAuthenticated && autoRefresh) {
-      interval = setInterval(async () => {
-        try {
-          // Silently fetch updated data
-          const [codesResponse, customersResponse] = await Promise.all([
-            fetch('/api/admin/codes', { credentials: 'include' }),
-            fetch('/api/admin/customers', { credentials: 'include' })
-          ])
+//     if (isAuthenticated && autoRefresh) {
+//       interval = setInterval(async () => {
+//         try {
+//           // Silently fetch updated data
+//           const [codesResponse, customersResponse] = await Promise.all([
+//             fetch('/api/admin/codes', { credentials: 'include' }),
+//             fetch('/api/admin/customers', { credentials: 'include' })
+//           ])
 
-          if (codesResponse.ok && customersResponse.ok) {
-            const codesData = await codesResponse.json()
-            const customersData = await customersResponse.json()
+//           if (codesResponse.ok && customersResponse.ok) {
+//             const codesData = await codesResponse.json()
+//             const customersData = await customersResponse.json()
 
-            // Check for new codes
-            if (
-              codesData.codes &&
-              codesData.codes.length > lastCodeCount &&
-              lastCodeCount > 0
-            ) {
-              const newCodesCount = codesData.codes.length - lastCodeCount
-              showNotification(
-                `🆕 ${newCodesCount} new trading code${
-                  newCodesCount > 1 ? 's' : ''
-                } generated!`
-              )
-              // Play notification sound
-              playNotificationSound()
-            }
+//             // Check for new codes
+//             if (
+//               codesData.codes &&
+//               codesData.codes.length > lastCodeCount &&
+//               lastCodeCount > 0
+//             ) {
+//               const newCodesCount = codesData.codes.length - lastCodeCount
+//               showNotification(
+//                 `🆕 ${newCodesCount} new trading code${
+//                   newCodesCount > 1 ? 's' : ''
+//                 } generated!`
+//               )
+//               // Play notification sound
+//               playNotificationSound()
+//             }
 
-            // Check for new customers
-            if (
-              customersData.accounts &&
-              customersData.accounts.length > lastCustomerCount &&
-              lastCustomerCount > 0
-            ) {
-              const newCustomersCount =
-                customersData.accounts.length - lastCustomerCount
-              showNotification(
-                `🎉 ${newCustomersCount} new customer account${
-                  newCustomersCount > 1 ? 's' : ''
-                } activated!`
-              )
-              // Play notification sound
-              playNotificationSound()
-            }
+//             // Check for new customers
+//             if (
+//               customersData.accounts &&
+//               customersData.accounts.length > lastCustomerCount &&
+//               lastCustomerCount > 0
+//             ) {
+//               const newCustomersCount =
+//                 customersData.accounts.length - lastCustomerCount
+//               showNotification(
+//                 `🎉 ${newCustomersCount} new customer account${
+//                   newCustomersCount > 1 ? 's' : ''
+//                 } activated!`
+//               )
+//               // Play notification sound
+//               playNotificationSound()
+//             }
 
-            // Update state
-            setCodes(codesData.codes || [])
-            setCustomers(customersData.accounts || [])
-            setLastCodeCount(codesData.codes?.length || 0)
-            setLastCustomerCount(customersData.accounts?.length || 0)
-          }
-        } catch (error) {
-          console.error('Auto-refresh error:', error)
-        }
-      }, 10000) // Check every 10 seconds (reduced server load)
-    }
+//             // Update state
+//             setCodes(codesData.codes || [])
+//             setCustomers(customersData.accounts || [])
+//             setLastCodeCount(codesData.codes?.length || 0)
+//             setLastCustomerCount(customersData.accounts?.length || 0)
+//           }
+//         } catch (error) {
+//           console.error('Auto-refresh error:', error)
+//         }
+//       }, 10000) // Check every 10 seconds (reduced server load)
+//     }
 
-    return () => {
-      if (interval) clearInterval(interval)
-    }
-  }, [isAuthenticated, autoRefresh, lastCodeCount, lastCustomerCount])
+//     return () => {
+//       if (interval) clearInterval(interval)
+//     }
+//   }, [isAuthenticated, autoRefresh, lastCodeCount, lastCustomerCount])
 
   const handleAdminLogin = async (e) => {
     e.preventDefault()

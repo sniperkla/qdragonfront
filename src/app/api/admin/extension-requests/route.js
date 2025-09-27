@@ -1,10 +1,15 @@
-import { connectToDatabase } from '@/lib/mongodb';
-import mongoose from 'mongoose';
+import { connectToDatabase } from '@/lib/mongodb'
+import mongoose from 'mongoose'
+import { emitCustomerAccountUpdate, emitNotificationToAdminAndClient, emitExtensionRequestUpdate } from '@/lib/websocket'
 
 // Extension Request Schema (same as in extend-code route)
 const ExtensionRequestSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  codeId: { type: mongoose.Schema.Types.ObjectId, ref: 'CodeRequest', required: true },
+  codeId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'CodeRequest',
+    required: true
+  },
   username: { type: String, required: true },
   licenseCode: { type: String, required: true },
   currentExpiry: { type: String, required: true },
@@ -21,7 +26,9 @@ const ExtensionRequestSchema = new mongoose.Schema({
   rejectionReason: { type: String }
 })
 
-const ExtensionRequest = mongoose.models.ExtensionRequest || mongoose.model('ExtensionRequest', ExtensionRequestSchema)
+const ExtensionRequest =
+  mongoose.models.ExtensionRequest ||
+  mongoose.model('ExtensionRequest', ExtensionRequestSchema)
 
 // Import other models
 import CodeRequest from '@/lib/codeRequestModel'
@@ -35,7 +42,7 @@ const formatThaiDateTime = (date) => {
   const yearBE = d.getFullYear() + 543 // Convert to Buddhist Era
   const hours = d.getHours().toString().padStart(2, '0')
   const minutes = d.getMinutes().toString().padStart(2, '0')
-  
+
   return `${day}/${month}/${yearBE} ${hours}:${minutes}`
 }
 
@@ -61,7 +68,9 @@ export async function GET(request) {
     // Verify admin authentication
     if (!(await verifyAdmin(request))) {
       console.log('Admin authentication failed')
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401
+      })
     }
 
     const { searchParams } = new URL(request.url)
@@ -80,15 +89,19 @@ export async function GET(request) {
       .sort({ requestedAt: -1 })
       .limit(100)
 
-    return new Response(JSON.stringify({
-      success: true,
-      total: extensionRequests.length,
-      requests: extensionRequests
-    }), { status: 200 })
-
+    return new Response(
+      JSON.stringify({
+        success: true,
+        total: extensionRequests.length,
+        requests: extensionRequests
+      }),
+      { status: 200 }
+    )
   } catch (error) {
     console.error('Error fetching extension requests:', error)
-    return new Response(JSON.stringify({ error: 'Internal server error' }), { status: 500 })
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+      status: 500
+    })
   }
 }
 
@@ -100,55 +113,82 @@ export async function PUT(request) {
     // Verify admin authentication
     if (!(await verifyAdmin(request))) {
       console.log('Admin authentication failed')
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401
+      })
     }
 
     const { requestId, action, rejectionReason } = await request.json()
 
     if (!requestId || !action || !['approve', 'reject'].includes(action)) {
-      return new Response(JSON.stringify({ error: 'Valid request ID and action are required' }), { status: 400 })
+      return new Response(
+        JSON.stringify({ error: 'Valid request ID and action are required' }),
+        { status: 400 }
+      )
     }
 
     if (action === 'reject' && !rejectionReason) {
-      return new Response(JSON.stringify({ error: 'Rejection reason is required' }), { status: 400 })
+      return new Response(
+        JSON.stringify({ error: 'Rejection reason is required' }),
+        { status: 400 }
+      )
     }
 
     await connectToDatabase()
 
     // Find the extension request
-    const extensionRequest = await ExtensionRequest.findById(requestId)
-      .populate('codeId')
+    const extensionRequest =
+      await ExtensionRequest.findById(requestId).populate('codeId')
 
     if (!extensionRequest) {
-      return new Response(JSON.stringify({ error: 'Extension request not found' }), { status: 404 })
+      return new Response(
+        JSON.stringify({ error: 'Extension request not found' }),
+        { status: 404 }
+      )
     }
 
     if (extensionRequest.status !== 'pending') {
-      return new Response(JSON.stringify({ error: 'Extension request already processed' }), { status: 400 })
+      return new Response(
+        JSON.stringify({ error: 'Extension request already processed' }),
+        { status: 400 }
+      )
     }
 
     if (action === 'approve') {
       // Process the extension
       try {
         // Find customer account
-        const customerAccount = await CustomerAccount.findOne({ 
-          license: extensionRequest.licenseCode 
+        const customerAccount = await CustomerAccount.findOne({
+          license: extensionRequest.licenseCode
         })
 
         if (!customerAccount) {
-          return new Response(JSON.stringify({ error: 'Customer account not found' }), { status: 404 })
+          return new Response(
+            JSON.stringify({ error: 'Customer account not found' }),
+            { status: 404 }
+          )
         }
 
         // Parse current expiry date
         const dateParts = customerAccount.expireDate.split(' ')
         const [day, month, thaiYear] = dateParts[0].split('/')
-        const [hours, minutes] = dateParts[1] ? dateParts[1].split(':') : ['00', '00']
+        const [hours, minutes] = dateParts[1]
+          ? dateParts[1].split(':')
+          : ['00', '00']
         const gregorianYear = parseInt(thaiYear) - 543
-        const currentExpiryDate = new Date(gregorianYear, parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes))
+        const currentExpiryDate = new Date(
+          gregorianYear,
+          parseInt(month) - 1,
+          parseInt(day),
+          parseInt(hours),
+          parseInt(minutes)
+        )
 
         // Calculate new expiry date
         const newExpiryDate = new Date(currentExpiryDate)
-        newExpiryDate.setDate(currentExpiryDate.getDate() + extensionRequest.requestedDays)
+        newExpiryDate.setDate(
+          currentExpiryDate.getDate() + extensionRequest.requestedDays
+        )
         const newExpiryThai = formatThaiDateTime(newExpiryDate)
 
         // Update customer account
@@ -177,20 +217,54 @@ export async function PUT(request) {
           newExpiry: newExpiryThai
         })
 
-        return new Response(JSON.stringify({
-          success: true,
-          message: 'Extension request approved and processed successfully',
-          licenseCode: extensionRequest.licenseCode,
-          oldExpiry: customerAccount.expireDate,
-          newExpiry: newExpiryThai,
-          extendedDays: extensionRequest.requestedDays
-        }), { status: 200 })
+        // Emit WebSocket updates
+        try {
+          await emitCustomerAccountUpdate(extensionRequest.userId.toString(), {
+            accountId: customerAccount._id,
+            license: extensionRequest.licenseCode,
+            expireDate: newExpiryThai,
+            status: 'valid',
+            action: 'extended',
+            extendedDays: extensionRequest.requestedDays,
+            extendedBy: 'admin'
+          })
 
+          await emitExtensionRequestUpdate({
+            requestId: extensionRequest._id,
+            licenseCode: extensionRequest.licenseCode,
+            action: 'approved',
+            status: 'approved',
+            extendedDays: extensionRequest.requestedDays
+          })
+
+          await emitNotificationToAdminAndClient(
+            extensionRequest.userId.toString(),
+            `🎉 Your extension request for ${extensionRequest.licenseCode} has been approved! Extended by ${extensionRequest.requestedDays} days.`,
+            'success'
+          )
+        } catch (wsError) {
+          console.error('WebSocket emission error:', wsError)
+          // Don't fail the main request if WebSocket fails
+        }
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: 'Extension request approved and processed successfully',
+            licenseCode: extensionRequest.licenseCode,
+            oldExpiry: customerAccount.expireDate,
+            newExpiry: newExpiryThai,
+            extendedDays: extensionRequest.requestedDays
+          }),
+          { status: 200 }
+        )
       } catch (extensionError) {
         console.error('Error processing extension:', extensionError)
-        return new Response(JSON.stringify({ error: 'Failed to process extension' }), { status: 500 })
+        return new Response(
+          JSON.stringify({ error: 'Failed to process extension' }),
+          { status: 500 }
+        )
       }
-
     } else if (action === 'reject') {
       // Reject the extension request
       await ExtensionRequest.findByIdAndUpdate(requestId, {
@@ -206,17 +280,41 @@ export async function PUT(request) {
         reason: rejectionReason
       })
 
-      return new Response(JSON.stringify({
-        success: true,
-        message: 'Extension request rejected',
-        licenseCode: extensionRequest.licenseCode,
-        rejectionReason: rejectionReason
-      }), { status: 200 })
-    }
+      // Emit WebSocket notifications for rejection
+      try {
+        await emitExtensionRequestUpdate({
+          requestId: extensionRequest._id,
+          licenseCode: extensionRequest.licenseCode,
+          action: 'rejected',
+          status: 'rejected',
+          rejectionReason: rejectionReason
+        })
 
+        await emitNotificationToAdminAndClient(
+          extensionRequest.userId.toString(),
+          `❌ Your extension request for ${extensionRequest.licenseCode} has been rejected. Reason: ${rejectionReason}`,
+          'error'
+        )
+      } catch (wsError) {
+        console.error('WebSocket emission error:', wsError)
+        // Don't fail the main request if WebSocket fails
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'Extension request rejected',
+          licenseCode: extensionRequest.licenseCode,
+          rejectionReason: rejectionReason
+        }),
+        { status: 200 }
+      )
+    }
   } catch (error) {
     console.error('Error processing extension request:', error)
-    return new Response(JSON.stringify({ error: 'Internal server error' }), { status: 500 })
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+      status: 500
+    })
   }
 }
 
@@ -227,13 +325,17 @@ export async function DELETE(request) {
 
     // Verify admin authentication
     if (!(await verifyAdmin(request))) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401
+      })
     }
 
     const { requestId } = await request.json()
 
     if (!requestId) {
-      return new Response(JSON.stringify({ error: 'Request ID is required' }), { status: 400 })
+      return new Response(JSON.stringify({ error: 'Request ID is required' }), {
+        status: 400
+      })
     }
 
     await connectToDatabase()
@@ -241,16 +343,23 @@ export async function DELETE(request) {
     const deletedRequest = await ExtensionRequest.findByIdAndDelete(requestId)
 
     if (!deletedRequest) {
-      return new Response(JSON.stringify({ error: 'Extension request not found' }), { status: 404 })
+      return new Response(
+        JSON.stringify({ error: 'Extension request not found' }),
+        { status: 404 }
+      )
     }
 
-    return new Response(JSON.stringify({
-      success: true,
-      message: 'Extension request deleted successfully'
-    }), { status: 200 })
-
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: 'Extension request deleted successfully'
+      }),
+      { status: 200 }
+    )
   } catch (error) {
     console.error('Error deleting extension request:', error)
-    return new Response(JSON.stringify({ error: 'Internal server error' }), { status: 500 })
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+      status: 500
+    })
   }
 }
