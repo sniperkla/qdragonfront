@@ -3,8 +3,10 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAdminWebSocket } from '../../hooks/useWebSocket'
+import { useTranslation } from '../../hooks/useTranslation'
 
 export default function AdminPage() {
+  const { t, language, changeLanguage } = useTranslation()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [adminKey, setAdminKey] = useState('')
   const [loading, setLoading] = useState(true)
@@ -270,11 +272,11 @@ export default function AdminPage() {
         fetchAllCustomers()
         fetchExtensionRequests()
       } else {
-        showToast('Invalid admin key', 'error')
+        showToast(t('invalid_admin_key'), 'error')
       }
     } catch (error) {
       console.error('Admin login error:', error)
-      showToast('Login failed', 'error')
+      showToast(t('login') + ' failed', 'error')
     } finally {
       setLoading(false)
     }
@@ -747,11 +749,37 @@ export default function AdminPage() {
         <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Q-DRAGON Admin
+              Q-DRAGON {t('admin_panel')}
             </h1>
             <p className="text-gray-600">
-              Enter admin key to access payment management
+              {t('enter_admin_key')} {language === 'th' ? 'เพื่อเข้าถึงระบบจัดการการชำระเงิน' : 'to access payment management'}
             </p>
+          </div>
+
+          {/* Language Selector */}
+          <div className="flex justify-center mb-6">
+            <div className="flex bg-gray-100 p-1 rounded-lg">
+              <button
+                onClick={() => changeLanguage('th')}
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                  language === 'th' 
+                    ? 'bg-white text-yellow-600 shadow-sm' 
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                ไทย
+              </button>
+              <button
+                onClick={() => changeLanguage('en')}
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                  language === 'en' 
+                    ? 'bg-white text-yellow-600 shadow-sm' 
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                English
+              </button>
+            </div>
           </div>
 
           <form onSubmit={handleAdminLogin} className="space-y-6">
@@ -760,7 +788,7 @@ export default function AdminPage() {
                 htmlFor="adminKey"
                 className="block text-sm font-medium text-gray-700 mb-2"
               >
-                Admin Key
+                {t('admin_key')}
               </label>
               <input
                 type="password"
@@ -768,7 +796,7 @@ export default function AdminPage() {
                 value={adminKey}
                 onChange={(e) => setAdminKey(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
-                placeholder="Enter admin key"
+                placeholder={t('enter_admin_key')}
                 required
               />
             </div>
@@ -778,7 +806,7 @@ export default function AdminPage() {
               disabled={loading}
               className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50"
             >
-              {loading ? 'Authenticating...' : 'Access Admin Panel'}
+              {loading ? t('loading') : t('admin_panel')}
             </button>
           </form>
         </div>
@@ -794,10 +822,10 @@ export default function AdminPage() {
           <div className="flex justify-between items-center py-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">
-                Q-DRAGON Admin Panel
+                Q-DRAGON {t('admin_panel')}
               </h1>
               <p className="text-gray-600">
-                Manage trading code payments and activations
+                {language === 'th' ? 'จัดการการชำระเงินและการเปิดใช้งานรหัสเทรดดิ้ง' : 'Manage trading code payments and activations'}
               </p>
               <div className="flex items-center justify-between mt-2">
                 <div className="flex items-center">
@@ -808,13 +836,37 @@ export default function AdminPage() {
                     className={`text-sm ${wsConnected ? 'text-green-600' : 'text-red-600'}`}
                   >
                     {wsConnected
-                      ? 'WebSocket connected - Live updates'
-                      : 'WebSocket disconnected'}
+                      ? t('websocket_connected')
+                      : t('websocket_disconnected')}
                   </span>
                 </div>
               </div>
             </div>
             <div className="flex items-center gap-4">
+              {/* Language Selector */}
+              <div className="flex bg-gray-100 p-1 rounded-lg">
+                <button
+                  onClick={() => changeLanguage('th')}
+                  className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                    language === 'th' 
+                      ? 'bg-white text-yellow-600 shadow-sm' 
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  ไทย
+                </button>
+                <button
+                  onClick={() => changeLanguage('en')}
+                  className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                    language === 'en' 
+                      ? 'bg-white text-yellow-600 shadow-sm' 
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  EN
+                </button>
+              </div>
+              
               <label className="flex items-center cursor-pointer">
                 <input
                   type="checkbox"
@@ -829,7 +881,7 @@ export default function AdminPage() {
                     className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${autoRefresh ? 'translate-x-6' : 'translate-x-1'}`}
                   />
                 </div>
-                <span className="ml-2 text-sm text-gray-700">Auto-refresh</span>
+                <span className="ml-2 text-sm text-gray-700">{t('auto_refresh')}</span>
               </label>
               <button
                 onClick={() => {
@@ -841,7 +893,7 @@ export default function AdminPage() {
                 }}
                 className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg"
               >
-                Logout
+                {t('logout')}
               </button>
             </div>
           </div>
@@ -861,7 +913,7 @@ export default function AdminPage() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                Trading Codes ({codes.length})
+                {t('codes')} ({codes.length})
               </button>
               <button
                 onClick={() => setActiveTab('customers')}
@@ -871,7 +923,7 @@ export default function AdminPage() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                Customer Accounts ({customers.length})
+                {t('customers')} ({customers.length})
               </button>
               <button
                 onClick={() => setActiveTab('create-account')}
@@ -881,7 +933,7 @@ export default function AdminPage() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                Generate License
+                {t('manual_account')}
               </button>
               <button
                 onClick={() => setActiveTab('extension-requests')}
@@ -891,7 +943,7 @@ export default function AdminPage() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                Extension Requests (
+                {t('extensions')} (
                 {extensionRequests.filter((r) => r.status === 'pending').length}
                 )
               </button>
@@ -953,18 +1005,18 @@ export default function AdminPage() {
                     onChange={(e) => setFilter(e.target.value)}
                     className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500"
                   >
-                    <option value="all">All Status</option>
-                    <option value="pending_payment">Pending Payment</option>
-                    <option value="paid">Paid</option>
-                    <option value="activated">Activated</option>
-                    <option value="expired">Expired</option>
-                    <option value="cancelled">Cancelled</option>
+                    <option value="all">{t('all')} {t('status')}</option>
+                    <option value="pending_payment">{t('pending')} {language === 'th' ? 'การชำระเงิน' : 'Payment'}</option>
+                    <option value="paid">{language === 'th' ? 'ชำระแล้ว' : 'Paid'}</option>
+                    <option value="activated">{t('activated')}</option>
+                    <option value="expired">{t('expired')}</option>
+                    <option value="cancelled">{t('cancelled')}</option>
                   </select>
                 </div>
 
                 <input
                   type="text"
-                  placeholder="Search by code, username, or account..."
+                  placeholder={language === 'th' ? 'ค้นหาตามรหัส, ชื่อผู้ใช้, หรือบัญชี...' : 'Search by code, username, or account...'}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 min-w-64"
@@ -1006,31 +1058,31 @@ export default function AdminPage() {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        Code
+                        {t('code')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        User
+                        {t('user')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        Account
+                        {t('account_number')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        Platform
+                        {t('platform')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        Plan
+                        {t('plan')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        Price
+                        {language === 'th' ? 'ราคา' : 'Price'}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        Status
+                        {t('status')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        Created
+                        {t('created_at')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        Actions
+                        {t('actions')}
                       </th>
                     </tr>
                   </thead>
@@ -1199,16 +1251,16 @@ export default function AdminPage() {
                     onChange={(e) => setCustomerFilter(e.target.value)}
                     className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500"
                   >
-                    <option value="all">All Status</option>
-                    <option value="valid">Valid</option>
-                    <option value="expired">Expired</option>
-                    <option value="suspended">Suspended</option>
+                    <option value="all">{t('all')} {t('status')}</option>
+                    <option value="valid">{language === 'th' ? 'ใช้งานได้' : 'Valid'}</option>
+                    <option value="expired">{t('expired')}</option>
+                    <option value="suspended">{language === 'th' ? 'ระงับ' : 'Suspended'}</option>
                   </select>
                 </div>
 
                 <input
                   type="text"
-                  placeholder="Search by username or license..."
+                  placeholder={language === 'th' ? 'ค้นหาตามชื่อผู้ใช้หรือใบอนุญาต...' : 'Search by username or license...'}
                   value={customerSearch}
                   onChange={(e) => setCustomerSearch(e.target.value)}
                   className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 min-w-64"
@@ -1232,7 +1284,13 @@ export default function AdminPage() {
                       {count}
                     </div>
                     <div className="text-sm text-gray-600 capitalize">
-                      {status === 'all' ? 'Total Customers' : status}
+                      {status === 'all' 
+                        ? (language === 'th' ? 'ลูกค้าทั้งหมด' : 'Total Customers')
+                        : (language === 'th' && status === 'valid' ? 'ใช้งานได้' :
+                           language === 'th' && status === 'expired' ? 'หมดอายุ' :
+                           language === 'th' && status === 'suspended' ? 'ระงับ' :
+                           status)
+                      }
                     </div>
                   </div>
                 )
@@ -1246,34 +1304,34 @@ export default function AdminPage() {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        User
+                        {t('user')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        License
+                        {t('license')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        Platform
+                        {t('platform')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        Account
+                        {t('account')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        Plan
+                        {t('plan')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        Expire Date
+                        {t('expire_date')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        Status
+                        {t('status')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        Source
+                        {t('source')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        Activated
+                        {t('activated')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        Actions
+                        {t('actions')}
                       </th>
                     </tr>
                   </thead>
@@ -1460,10 +1518,10 @@ export default function AdminPage() {
           <div className="bg-white rounded-xl shadow-lg p-8">
             <div className="mb-8">
               <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                Generate License Key
+                {t('generate_license_key')}
               </h2>
               <p className="text-gray-600">
-                Create a trading license directly for existing customers
+                {t('create_trading_license')}
               </p>
             </div>
 
@@ -1477,7 +1535,7 @@ export default function AdminPage() {
                     htmlFor="username"
                     className="block text-sm font-medium text-gray-700 mb-2"
                   >
-                    Username *
+                    {t('username')} *
                   </label>
                   <input
                     type="text"
@@ -1487,7 +1545,7 @@ export default function AdminPage() {
                       handleFormChange('username', e.target.value)
                     }
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
-                    placeholder="Enter username"
+                    placeholder={t('enter_username')}
                     required
                   />
                 </div>
@@ -1497,7 +1555,7 @@ export default function AdminPage() {
                     htmlFor="accountNumber"
                     className="block text-sm font-medium text-gray-700 mb-2"
                   >
-                    Account Number *
+                    {t('account_number')} *
                   </label>
                   <input
                     type="text"
@@ -1507,7 +1565,7 @@ export default function AdminPage() {
                       handleFormChange('accountNumber', e.target.value)
                     }
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
-                    placeholder="Enter account number"
+                    placeholder={t('enter_account_number')}
                     required
                   />
                 </div>
@@ -1517,7 +1575,7 @@ export default function AdminPage() {
                     htmlFor="platform"
                     className="block text-sm font-medium text-gray-700 mb-2"
                   >
-                    Trading Platform *
+                    {t('trading_platform')} *
                   </label>
                   <select
                     id="platform"
@@ -1540,7 +1598,7 @@ export default function AdminPage() {
                     htmlFor="plan"
                     className="block text-sm font-medium text-gray-700 mb-2"
                   >
-                    Plan Duration (Days) *
+                    {t('plan_duration')} *
                   </label>
                   <select
                     id="plan"
@@ -1563,7 +1621,7 @@ export default function AdminPage() {
                     htmlFor="extendDays"
                     className="block text-sm font-medium text-gray-700 mb-2"
                   >
-                    Extend Days (Optional)
+                    {t('extend_days_optional')}
                   </label>
                   <input
                     type="number"
@@ -1573,12 +1631,12 @@ export default function AdminPage() {
                       handleFormChange('extendDays', e.target.value)
                     }
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
-                    placeholder="Additional days (e.g., 15)"
+                    placeholder={t('additional_days')}
                     min="0"
                     max="9999"
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Add extra days on top of the selected plan duration
+                    {t('add_extra_days')}
                   </p>
                 </div>
               </div>
@@ -1600,31 +1658,27 @@ export default function AdminPage() {
                   </svg>
                   <div>
                     <h3 className="text-sm font-medium text-blue-800 mb-1">
-                      License Generation Notice
+                      {t('license_generation_notice')}
                     </h3>
                     <div className="text-sm text-blue-700">
                       <ul className="list-disc list-inside space-y-1">
                         <li>
-                          A unique license key will be generated automatically
+                          {t('unique_license_generated')}
                         </li>
                         <li>
-                          License will be <strong>immediately activated</strong>{' '}
-                          with the selected plan
+                          {t('immediately_activated')}
                         </li>
                         <li>
-                          Expiry date will be calculated from today + plan
-                          duration + extend days (if specified)
+                          {t('expiry_calculated')}
                         </li>
                         <li>
-                          No user account creation required - license only
+                          {t('no_user_account')}
                         </li>
                         <li>
-                          Customer can use the license key directly for trading
-                          access
+                          {t('direct_trading_access')}
                         </li>
                         <li>
-                          <strong>Extend Days:</strong> Optionally add extra
-                          days on top of the selected plan
+                          <strong>{t('extend_days_note')}</strong>
                         </li>
                       </ul>
                     </div>
@@ -1659,7 +1713,7 @@ export default function AdminPage() {
                           d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                         ></path>
                       </svg>
-                      Generating License...
+                      {t('generating_license')}
                     </>
                   ) : (
                     <>
@@ -1676,7 +1730,7 @@ export default function AdminPage() {
                           d="M12 6v6m0 0v6m0-6h6m-6 0H6"
                         ></path>
                       </svg>
-                      Generate License
+                      {t('generate_license')}
                     </>
                   )}
                 </button>
@@ -1755,10 +1809,10 @@ export default function AdminPage() {
                     onChange={(e) => setExtensionFilter(e.target.value)}
                     className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500"
                   >
-                    <option value="all">All Requests</option>
-                    <option value="pending">Pending</option>
-                    <option value="approved">Approved</option>
-                    <option value="rejected">Rejected</option>
+                    <option value="all">{language === 'th' ? 'คำขอทั้งหมด' : 'All Requests'}</option>
+                    <option value="pending">{t('pending')}</option>
+                    <option value="approved">{language === 'th' ? 'อนุมัติแล้ว' : 'Approved'}</option>
+                    <option value="rejected">{language === 'th' ? 'ปฏิเสธแล้ว' : 'Rejected'}</option>
                   </select>
                 </div>
               </div>
@@ -1781,7 +1835,13 @@ export default function AdminPage() {
                       {count}
                     </div>
                     <div className="text-sm text-gray-600 capitalize">
-                      {status === 'all' ? 'Total Requests' : status}
+                      {status === 'all' 
+                        ? (language === 'th' ? 'คำขอทั้งหมด' : 'Total Requests')
+                        : (language === 'th' && status === 'pending' ? 'รอดำเนินการ' :
+                           language === 'th' && status === 'approved' ? 'อนุมัติแล้ว' :
+                           language === 'th' && status === 'rejected' ? 'ปฏิเสธแล้ว' :
+                           status)
+                      }
                     </div>
                   </div>
                 )
@@ -1795,25 +1855,25 @@ export default function AdminPage() {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        User
+                        {t('user')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        License
+                        {t('license')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        Current Expiry
+                        {t('current_expiry')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        Requested Extension
+                        {t('requested_extension')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        Status
+                        {t('status')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        Requested
+                        {t('requested')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        Actions
+                        {t('actions')}
                       </th>
                     </tr>
                   </thead>

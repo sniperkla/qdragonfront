@@ -10,11 +10,13 @@ export function useWebSocket(userId = null, isAdmin = false) {
     console.log('🔧 Setting up WebSocket connection...', { userId, isAdmin })
 
     // Initialize socket connection
-    socketRef.current = io(
-      process.env.NODE_ENV === 'production'
-        ? process.env.NEXT_PUBLIC_APP_URL
-        : 'http://localhost:3000',
-      {
+    const wsUrl = process.env.NODE_ENV === 'production'
+      ? process.env.NEXT_PUBLIC_APP_URL
+      : 'http://localhost:3000'
+    
+    console.log('🔧 WebSocket connecting to:', wsUrl, 'for user:', userId, 'isAdmin:', isAdmin)
+    
+    socketRef.current = io(wsUrl, {
         path: '/api/socketio',
         transports: ['websocket', 'polling'],
         forceNew: true,
@@ -42,8 +44,10 @@ export function useWebSocket(userId = null, isAdmin = false) {
           socket.emit('join-admin')
         }
         if (userId) {
-          console.log('👤 User joining user room:', userId)
+          console.log('👤 User joining user room:', userId, 'socketId:', socket.id)
           socket.emit('join-user', userId)
+        } else {
+          console.log('⚠️ No userId provided, cannot join user room')
         }
       }, 100)
     })
@@ -100,6 +104,23 @@ export function useWebSocket(userId = null, isAdmin = false) {
       console.log('🔍 Received general-notification:', data)
     })
 
+    // Listen for the specific events that should trigger table updates
+    socket.on('codes-updated', (data) => {
+      console.log('🔍 [DEBUG] Raw codes-updated event received:', data)
+    })
+
+    socket.on('customer-account-updated', (data) => {
+      console.log('🔍 [DEBUG] Raw customer-account-updated event received:', data)
+    })
+
+    socket.on('client-notification', (data) => {
+      console.log('🔍 [DEBUG] Raw client-notification event received:', data)
+    })
+
+    socket.on('broadcast-notification', (data) => {
+      console.log('🔍 [DEBUG] Raw broadcast-notification event received:', data)
+    })
+
     // Handle room join acknowledgments
     socket.on('room-joined', (data) => {
       if (data.success) {
@@ -150,15 +171,30 @@ export function useCodesWebSocket(userId, onUpdate) {
   const { subscribe, isConnected } = useWebSocket(userId)
 
   useEffect(() => {
-    if (!subscribe) return
+    if (!subscribe) {
+      console.log('⚠️ Codes WebSocket subscribe not available')
+      return
+    }
+
+    if (!userId) {
+      console.log('⚠️ No userId provided for codes WebSocket')
+      return
+    }
+
+    console.log('🎧 Setting up codes WebSocket listener for user:', userId)
 
     const unsubscribe = subscribe('codes-updated', (data) => {
-      console.log('Codes update received:', data)
-      if (onUpdate) onUpdate(data)
+      console.log('📨 Codes update received for user', userId, ':', data)
+      if (onUpdate) {
+        console.log('🔄 Calling codes update handler')
+        onUpdate(data)
+      } else {
+        console.log('⚠️ No codes update handler provided')
+      }
     })
 
     return unsubscribe
-  }, [subscribe, onUpdate])
+  }, [subscribe, onUpdate, userId])
 
   return { isConnected }
 }
@@ -172,13 +208,18 @@ export function useCustomerAccountWebSocket(userId, onUpdate) {
       return
     }
 
+    if (!userId) {
+      console.log('⚠️ No userId provided for customer account WebSocket')
+      return
+    }
+
     console.log(
       '🎧 Setting up customer account WebSocket listener for user:',
       userId
     )
 
     const unsubscribe = subscribe('customer-account-updated', (data) => {
-      console.log('📨 Customer account update received:', data)
+      console.log('📨 Customer account update received for user', userId, ':', data)
       if (onUpdate) {
         console.log('🔄 Calling customer account update handler')
         onUpdate(data)
@@ -241,7 +282,8 @@ export function useClientNotifications(userId, onNotification) {
   useEffect(() => {
     if (!subscribe || !userId) {
       console.log(
-        '⚠️ Client notifications WebSocket subscribe not available or no userId'
+        '⚠️ Client notifications WebSocket subscribe not available or no userId:',
+        { subscribe: !!subscribe, userId }
       )
       return
     }
@@ -249,7 +291,7 @@ export function useClientNotifications(userId, onNotification) {
     console.log('🎧 Setting up client notification listeners for user:', userId)
 
     const unsubClientNotification = subscribe('client-notification', (data) => {
-      console.log('📨 Client notification received via WebSocket:', data)
+      console.log('📨 Client notification received via WebSocket for user', userId, ':', data)
       if (onNotification) {
         console.log('🔄 Calling client notification handler with:', data)
         onNotification(data)
@@ -261,7 +303,7 @@ export function useClientNotifications(userId, onNotification) {
     const unsubBroadcastNotification = subscribe(
       'broadcast-notification',
       (data) => {
-        console.log('📨 Broadcast notification received via WebSocket:', data)
+        console.log('📨 Broadcast notification received via WebSocket for user', userId, ':', data)
         if (onNotification) {
           console.log(
             '🔄 Calling client notification handler with broadcast:',
@@ -275,7 +317,7 @@ export function useClientNotifications(userId, onNotification) {
     )
 
     return () => {
-      console.log('🧹 Cleaning up client notification listeners')
+      console.log('🧹 Cleaning up client notification listeners for user:', userId)
       unsubClientNotification?.()
       unsubBroadcastNotification?.()
     }

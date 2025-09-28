@@ -2,7 +2,7 @@
 
 import { useSelector, useDispatch } from 'react-redux'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { logout, loginSuccess } from '../../store/slices/authSlice'
 import {
   useCodesWebSocket,
@@ -56,9 +56,17 @@ export default function LandingPage() {
 
   // WebSocket handlers
   const handleCodeUpdate = (data) => {
-    console.log('Received code update via WebSocket:', data)
-    // Refresh codes when we receive an update
-    fetchMyCodes()
+    console.log('📨 Received code update via WebSocket:', data)
+    console.log('🔄 Triggering fetchMyCodes to refresh table data...')
+    
+    // Add small delay to ensure database is updated before refetching
+    setTimeout(() => {
+      fetchMyCodes().then(() => {
+        console.log('✅ fetchMyCodes completed after WebSocket update')
+      }).catch((error) => {
+        console.error('❌ fetchMyCodes failed after WebSocket update:', error)
+      })
+    }, 500) // 500ms delay
 
     // Show notification based on action and status
     if (data.action === 'status-updated') {
@@ -92,9 +100,17 @@ export default function LandingPage() {
   }
 
   const handleCustomerAccountUpdate = (data) => {
-    console.log('Received customer account update via WebSocket:', data)
-    // Refresh codes to get updated customer account data
-    fetchMyCodes()
+    console.log('📨 Received customer account update via WebSocket:', data)
+    console.log('🔄 Triggering fetchMyCodes to refresh table data...')
+    
+    // Add small delay to ensure database is updated before refetching
+    setTimeout(() => {
+      fetchMyCodes().then(() => {
+        console.log('✅ fetchMyCodes completed after customer account update')
+      }).catch((error) => {
+        console.error('❌ fetchMyCodes failed after customer account update:', error)
+      })
+    }, 500) // 500ms delay
 
     // Show notification to user based on action
     switch (data.action) {
@@ -123,45 +139,124 @@ export default function LandingPage() {
     showNotification(data.message, data.type)
   }
 
+  // WebSocket server initialization state
+  const [wsServerReady, setWsServerReady] = useState(false)
+
   // Initialize WebSocket server on component mount
   useEffect(() => {
     const initWebSocket = async () => {
       try {
         console.log('🔧 Initializing WebSocket server...')
-        const response = await fetch('/api/init/socketio', { method: 'GET' })
-        const data = await response.json()
-        if (data.success && data.initialized) {
-          console.log('✅ WebSocket server initialized successfully')
+        
+        // Try multiple initialization methods
+        const methods = [
+          () => fetch('/api/init/socketio', { method: 'GET' }),
+          () => fetch('/api/socketio', { method: 'GET' }),
+          () => fetch('/api/force-init/socketio', { method: 'GET' })
+        ]
+
+        let initialized = false
+        for (const method of methods) {
+          try {
+            console.log('🔄 Trying WebSocket initialization method...')
+            const response = await method()
+            const data = await response.json()
+            
+            if (data.success || response.ok) {
+              console.log('✅ WebSocket server initialized successfully via method')
+              initialized = true
+              break
+            }
+          } catch (methodError) {
+            console.log('⚠️ WebSocket initialization method failed, trying next...')
+          }
+        }
+
+        if (initialized) {
+          setWsServerReady(true)
+          console.log('✅ WebSocket server is ready')
         } else {
-          console.warn('⚠️ WebSocket server initialization failed:', data)
+          console.warn('⚠️ All WebSocket server initialization methods failed')
+          // Still set as ready to allow WebSocket hooks to try connecting
+          setWsServerReady(true)
         }
       } catch (error) {
         console.error('❌ Failed to initialize WebSocket server:', error)
+        // Still set as ready to allow WebSocket hooks to try connecting
+        setWsServerReady(true)
       }
     }
     initWebSocket()
   }, [])
 
-  // WebSocket connections
+  // Direct WebSocket connection for reliable table updates
+  useEffect(() => {
+    if (!wsServerReady || !isAuthenticated || !user?.id) return
+
+    const { io } = require('socket.io-client')
+    
+    const socket = io(
+      process.env.NODE_ENV === 'production'
+        ? process.env.NEXT_PUBLIC_APP_URL
+        : 'http://localhost:3000',
+      {
+        path: '/api/socketio',
+        transports: ['websocket', 'polling'],
+        forceNew: true
+      }
+    )
+
+    socket.on('connect', () => {
+      socket.emit('join-user', user.id)
+    })
+
+    // Direct event listeners for table updates
+    socket.on('codes-updated', (data) => {
+      fetchMyCodes()
+      if (data.action === 'status-updated') {
+        let message = `📋 Your trading license ${data.code} status updated to ${data.status}.`
+        showNotification(message, 'info')
+      }
+    })
+
+    socket.on('customer-account-updated', (data) => {
+      fetchMyCodes()
+      showNotification(`📋 Your account has been updated.`, 'info')
+    })
+
+    socket.on('client-notification', (data) => {
+      fetchMyCodes()
+      showNotification(data.message, data.type || 'info')
+    })
+
+    socket.on('broadcast-notification', (data) => {
+      fetchMyCodes()
+      showNotification(data.message, data.type || 'info')
+    })
+
+    setWsConnected(true)
+
+    return () => {
+      socket.disconnect()
+      setWsConnected(false)
+    }
+  }, [wsServerReady, isAuthenticated, user?.id])
+
+  // Fallback WebSocket connections using hooks
   const { isConnected: codesWsConnected } = useCodesWebSocket(
-    user?.id,
-    handleCodeUpdate
+    null, // Disable hooks since we're using direct connection
+    null
   )
   const { isConnected: accountsWsConnected } = useCustomerAccountWebSocket(
-    user?.id,
-    handleCustomerAccountUpdate
+    null, // Disable hooks since we're using direct connection
+    null
   )
   const { isConnected: notificationsWsConnected } = useClientNotifications(
-    user?.id,
-    handleClientNotification
+    null, // Disable hooks since we're using direct connection
+    null
   )
 
-  // Update WebSocket connection status
-  useEffect(() => {
-    setWsConnected(
-      codesWsConnected && accountsWsConnected && notificationsWsConnected
-    )
-  }, [codesWsConnected, accountsWsConnected, notificationsWsConnected])
+  // WebSocket connection status is managed directly in the connection useEffect above
 
   useEffect(() => {
     // Check if user is authenticated via cookie on page load
@@ -173,6 +268,7 @@ export default function LandingPage() {
 
         if (response.ok) {
           const data = await response.json()
+          console.log('🔍 User auth data from /api/auth/me:', data)
           // Update Redux state with user data from cookie
           dispatch(
             loginSuccess({
@@ -181,6 +277,7 @@ export default function LandingPage() {
               email: data.user.username
             })
           )
+          console.log('🔍 User ID for WebSocket:', data.user.id)
         } else {
           // No valid cookie, redirect to login
           router.push('/')
@@ -202,26 +299,30 @@ export default function LandingPage() {
 
   // Fetch user's licenses (unified view)
   const fetchMyCodes = async () => {
+    console.log('🔄 Starting fetchMyCodes...')
     setLoadingCodes(true)
     try {
       // Fetch unified licenses
+      console.log('📡 Fetching from /api/my-licenses...')
       const licensesResponse = await fetch('/api/my-licenses', {
         credentials: 'include'
       })
       const licensesData = await licensesResponse.json()
 
       if (licensesResponse.ok && licensesData.licenses) {
-        console.log('Fetched unified licenses:', licensesData.licenses)
+        console.log('✅ Fetched unified licenses:', licensesData.licenses.length, 'licenses')
+        console.log('📊 License statuses:', licensesData.licenses.map(l => ({ code: l.code, status: l.status })))
         setMyCodes(licensesData.licenses)
       } else {
-        console.error('Failed to fetch licenses:', licensesData.error)
+        console.error('❌ Failed to fetch licenses:', licensesData.error)
         setMyCodes([])
       }
     } catch (error) {
-      console.error('Error fetching licenses:', error)
+      console.error('❌ Error fetching licenses:', error)
       setMyCodes([])
     } finally {
       setLoadingCodes(false)
+      console.log('🏁 fetchMyCodes completed')
     }
   }
 
@@ -555,10 +656,20 @@ export default function LandingPage() {
               {/* WebSocket Status Indicator */}
               <div className="flex items-center space-x-2">
                 <div
-                  className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}
+                  className={`w-2 h-2 rounded-full ${
+                    !wsServerReady 
+                      ? 'bg-yellow-400 animate-pulse' 
+                      : wsConnected 
+                        ? 'bg-green-400 animate-pulse' 
+                        : 'bg-red-400'
+                  }`}
                 ></div>
                 <span className="text-xs text-gray-500">
-                  {wsConnected ? 'Live Updates' : 'Connecting...'}
+                  {!wsServerReady 
+                    ? 'Initializing...' 
+                    : wsConnected 
+                      ? 'Live Updates' 
+                      : 'Connecting...'}
                 </span>
                 <button
                   onClick={async () => {
@@ -608,6 +719,68 @@ export default function LandingPage() {
                   className="px-2 py-1 text-xs bg-green-500 text-white rounded hover:bg-green-600 transition-colors"
                 >
                   Test Notify
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      console.log('🔍 Testing WebSocket for user:', user?.id)
+                      const response = await fetch('/api/debug/test-user-websocket', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: user?.id })
+                      })
+                      const data = await response.json()
+                      console.log('🔍 WebSocket test response:', data)
+                      showNotification(
+                        `WebSocket test completed - Room size: ${data.roomInfo?.userRoomSize || 0}`,
+                        data.success ? 'success' : 'error'
+                      )
+                    } catch (error) {
+                      console.error('🔍 WebSocket test error:', error)
+                      showNotification('WebSocket test failed', 'error')
+                    }
+                  }}
+                  className="px-2 py-1 text-xs bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors"
+                >
+                  Test WS
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      console.log('🔍 Checking environment and WebSocket status')
+                      const response = await fetch('/api/debug/env')
+                      const data = await response.json()
+                      console.log('🔍 Environment data:', data)
+                      console.log('🔍 Client-side URL:', window.location.href)
+                      console.log('🔍 User in state:', user)
+                      console.log('🔍 WebSocket status:', { codesWsConnected, accountsWsConnected, notificationsWsConnected })
+                      showNotification(
+                        `Env check - Clients: ${data.socketClients}, URL: ${data.appUrl}`,
+                        'info'
+                      )
+                    } catch (error) {
+                      console.error('🔍 Environment check error:', error)
+                      showNotification('Environment check failed', 'error')
+                    }
+                  }}
+                  className="px-2 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600 transition-colors"
+                >
+                  Env
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      console.log('🔄 Force refreshing table data...')
+                      await fetchMyCodes()
+                      showNotification('Table data refreshed manually', 'success')
+                    } catch (error) {
+                      console.error('🔄 Force refresh error:', error)
+                      showNotification('Force refresh failed', 'error')
+                    }
+                  }}
+                  className="px-2 py-1 text-xs bg-cyan-500 text-white rounded hover:bg-cyan-600 transition-colors"
+                >
+                  Refresh
                 </button>
               </div>
               <span className="text-gray-700">Welcome, {user?.name}</span>
