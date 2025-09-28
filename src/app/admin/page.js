@@ -442,10 +442,13 @@ export default function AdminPage() {
               : customer
           )
         )
-        showToast(
-          `Customer account ${newStatus === 'suspended' ? 'suspended' : newStatus === 'valid' ? 'reactivated' : newStatus}`,
-          'success'
-        )
+        if (newStatus === 'suspended') {
+          showToast(t('customer_account_suspended'), 'success')
+        } else if (newStatus === 'valid') {
+          showToast(t('customer_account_reactivated'), 'success')
+        } else {
+          showToast(t('customer_account_status_updated'), 'success')
+        }
       } else {
         showToast('Failed to update customer status', 'error')
       }
@@ -1096,8 +1099,16 @@ export default function AdminPage() {
                       </div>
                       <div className="text-sm text-gray-600 capitalize">
                         {status === 'all'
-                          ? 'Total Codes'
-                          : status.replace('_', ' ')}
+                          ? t('total_codes')
+                          : status === 'pending_payment'
+                            ? t('pending_payment')
+                            : status === 'paid'
+                              ? t('paid')
+                              : status === 'activated'
+                                ? t('activated')
+                                : status === 'expired'
+                                  ? t('expired')
+                                  : status}
                       </div>
                     </div>
                   )
@@ -1165,7 +1176,17 @@ export default function AdminPage() {
                           <span
                             className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(code.status)}`}
                           >
-                            {code.status.replace('_', ' ').toUpperCase()}
+                            {code.status === 'pending_payment'
+                              ? t('pending_payment')
+                              : code.status === 'paid'
+                                ? t('paid')
+                                : code.status === 'activated'
+                                  ? t('activated')
+                                  : code.status === 'expired'
+                                    ? t('expired')
+                                    : code.status === 'cancelled'
+                                      ? t('cancelled')
+                                      : code.status}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-500">
@@ -1181,7 +1202,7 @@ export default function AdminPage() {
                                 disabled={updating[code._id]}
                                 className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
                               >
-                                {updating[code._id] ? '...' : 'Confirm Payment'}
+                                {updating[code._id] ? '...' : t('confirm_payment')}
                               </button>
                             )}
                             {code.status === 'paid' && (
@@ -1192,7 +1213,7 @@ export default function AdminPage() {
                                 disabled={updating[code._id]}
                                 className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
                               >
-                                {updating[code._id] ? '...' : 'Activate'}
+                                {updating[code._id] ? '...' : t('activate_action')}
                               </button>
                             )}
                             {code.status !== 'cancelled' &&
@@ -1204,7 +1225,7 @@ export default function AdminPage() {
                                   disabled={updating[code._id]}
                                   className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
                                 >
-                                  {updating[code._id] ? '...' : 'Cancel'}
+                                  {updating[code._id] ? '...' : t('cancel_action')}
                                 </button>
                               )}
                             {code.status === 'cancelled' && (
@@ -1308,13 +1329,9 @@ export default function AdminPage() {
                     <option value="all">
                       {t('all')} {t('status')}
                     </option>
-                    <option value="valid">
-                      {language === 'th' ? 'ใช้งานได้' : 'Valid'}
-                    </option>
+                    <option value="valid">{t('valid')}</option>
                     <option value="expired">{t('expired')}</option>
-                    <option value="suspended">
-                      {language === 'th' ? 'ระงับ' : 'Suspended'}
-                    </option>
+                    <option value="suspended">{t('suspended')}</option>
                   </select>
                 </div>
 
@@ -1349,15 +1366,13 @@ export default function AdminPage() {
                     </div>
                     <div className="text-sm text-gray-600 capitalize">
                       {status === 'all'
-                        ? language === 'th'
-                          ? 'ลูกค้าทั้งหมด'
-                          : 'Total Customers'
-                        : language === 'th' && status === 'valid'
-                          ? 'ใช้งานได้'
-                          : language === 'th' && status === 'expired'
-                            ? 'หมดอายุ'
-                            : language === 'th' && status === 'suspended'
-                              ? 'ระงับ'
+                        ? (language === 'th' ? 'ลูกค้าทั้งหมด' : 'Total Customers')
+                        : status === 'valid'
+                          ? t('valid')
+                          : status === 'expired'
+                            ? t('expired')
+                            : status === 'suspended'
+                              ? t('suspended')
                               : status}
                     </div>
                   </div>
@@ -1451,7 +1466,7 @@ export default function AdminPage() {
                                     : 'bg-yellow-100 text-yellow-800'
                               }`}
                             >
-                              {customer.status.toUpperCase()}
+                              {customer.status === 'valid' ? t('valid') : customer.status === 'expired' ? t('expired') : customer.status === 'suspended' ? t('suspended') : customer.status}
                             </span>
                           </td>
                           <td className="px-6 py-4">
@@ -1495,7 +1510,7 @@ export default function AdminPage() {
                                   disabled={updating[customer._id]}
                                   className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
                                 >
-                                  {updating[customer._id] ? '...' : 'Suspend'}
+                                  {updating[customer._id] ? '...' : t('suspend_action')}
                                 </button>
                               )}
                               {customer.status === 'suspended' && (
@@ -1506,9 +1521,7 @@ export default function AdminPage() {
                                   disabled={updating[customer._id]}
                                   className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
                                 >
-                                  {updating[customer._id]
-                                    ? '...'
-                                    : 'Reactivate'}
+                                  {updating[customer._id] ? '...' : t('reactivate_action')}
                                 </button>
                               )}
                               {customer.status === 'expired' && (
@@ -1519,7 +1532,7 @@ export default function AdminPage() {
                                   disabled={updating[customer._id]}
                                   className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
                                 >
-                                  {updating[customer._id] ? '...' : 'Renew'}
+                                  {updating[customer._id] ? '...' : t('renew_action')}
                                 </button>
                               )}
                               {customer.status === 'suspended' && (
