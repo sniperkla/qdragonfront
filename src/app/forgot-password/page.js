@@ -145,13 +145,19 @@ export default function ForgotPasswordPage() {
       {/* Forgot Password Card */}
       <div className="relative z-10 max-w-md w-full bg-white/5 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/30 ring-1 ring-white/20">
         <div className="absolute top-3 right-3 flex gap-2">
-          {['en','th'].map(l => (
+          {['en', 'th'].map((l) => (
             <button
               key={l}
               type="button"
-              onClick={() => typeof window !== 'undefined' && localStorage.setItem('admin_language', l) || location.reload()}
-              className={`px-2 py-1 text-xs rounded-md font-semibold transition-colors ${language===l ? 'bg-yellow-400 text-black' : 'bg-white/20 text-white hover:bg-white/30'}`}
-            >{l.toUpperCase()}</button>
+              onClick={() =>
+                (typeof window !== 'undefined' &&
+                  localStorage.setItem('admin_language', l)) ||
+                location.reload()
+              }
+              className={`px-2 py-1 text-xs rounded-md font-semibold transition-colors ${language === l ? 'bg-yellow-400 text-black' : 'bg-white/20 text-white hover:bg-white/30'}`}
+            >
+              {l.toUpperCase()}
+            </button>
           ))}
         </div>
         {/* Header */}
@@ -171,7 +177,7 @@ export default function ForgotPasswordPage() {
             <span className="text-3xl sm:text-4xl hidden">🐉</span>
           </div>
           <p className="text-white/90 text-sm sm:text-base">
-            {t('forgot_password_title')}
+            {t('forgot_password_title1')}
           </p>
           <p className="text-xs sm:text-sm text-yellow-300 font-medium mt-1 sm:mt-2">
             {t('forgot_password_title')}
@@ -215,7 +221,7 @@ export default function ForgotPasswordPage() {
                     </svg>
                   </div>
                 </div>
-                <p className="text-xs sm:text-sm text-white/50 mt-2 leading-relaxed">
+                <p className="text-xs sm:text-sm text-white/50 mt-2 leading-relaxed text-white/80">
                   {t('enter_email_associated')}
                 </p>
               </div>
@@ -333,7 +339,8 @@ export default function ForgotPasswordPage() {
                 <text className="text-white/70">{t('check_your_email')}</text>
               </h3>
               <p className="text-white/70 mb-6">
-                {message === 'If an account with that email exists, we have sent a password reset link.'
+                {message ===
+                'If an account with that email exists, we have sent a password reset link.'
                   ? t('if_account_exists_reset_link_sent')
                   : message}
               </p>

@@ -46,14 +46,14 @@ const translations = {
     active: 'Active',
     approved: 'Approved',
     rejected: 'Rejected',
-  valid: 'Valid',
-  suspended: 'Suspended',
-  suspend_action: 'Suspend',
-  reactivate_action: 'Reactivate',
-  renew_action: 'Renew',
-  customer_account_suspended: 'Customer account suspended',
-  customer_account_reactivated: 'Customer account reactivated',
-  customer_account_status_updated: 'Customer account status updated',
+    valid: 'Valid',
+    suspended: 'Suspended',
+    suspend_action: 'Suspend',
+    reactivate_action: 'Reactivate',
+    renew_action: 'Renew',
+    customer_account_suspended: 'Customer account suspended',
+    customer_account_reactivated: 'Customer account reactivated',
+    customer_account_status_updated: 'Customer account status updated',
 
     // Trading Codes
     code: 'Code',
@@ -154,10 +154,11 @@ const translations = {
     checking_auth: 'Checking authentication...',
     auth_check_title: 'Checking Session',
     auth_check_description: 'Verifying your session securely...',
-  auth_check_slow_title: 'Still Checking...',
-  auth_check_slow_message: 'This is taking longer than expected. You can wait, retry, or skip and log in manually.',
-  auth_check_retry: 'Retry',
-  auth_check_skip: 'Skip for now',
+    auth_check_slow_title: 'Still Checking...',
+    auth_check_slow_message:
+      'This is taking longer than expected. You can wait, retry, or skip and log in manually.',
+    auth_check_retry: 'Retry',
+    auth_check_skip: 'Skip for now',
     secure_reliable: 'Secure • Professional • Reliable',
     copyright: '© 2025 Q-Dragon Trading Platform',
     login_failed: 'Username or password incorrect',
@@ -173,7 +174,9 @@ const translations = {
     register_cta: 'Create Account',
     already_have_account: 'Already have an account?',
     go_to_login: 'Go to Login',
-    forgot_password_title: 'Reset Your Password',
+    forgot_password_title1: 'Reset Password',
+    forgot_password_title:
+      'Enter your email to receive a reset link and regain access to your account.',
     send_reset_link: 'Send Reset Link',
     sending_reset_link: 'Sending Reset Link...',
     back_to_login: 'Back to Login',
@@ -266,11 +269,11 @@ const translations = {
     expires_header: 'Expires',
     time_left_header: 'Time Left',
     actions_header: 'Actions',
-  total_codes: 'Total Codes',
-  paid: 'Paid',
-  confirm_payment: 'Confirm Payment',
-  activate_action: 'Activate',
-  cancel_action: 'Cancel',
+    total_codes: 'Total Codes',
+    paid: 'Paid',
+    confirm_payment: 'Confirm Payment',
+    activate_action: 'Activate',
+    cancel_action: 'Cancel',
     pay_to_activate: 'Pay to activate',
     pay_to_see_countdown: 'Pay to see countdown',
     extend: 'Extend',
@@ -298,10 +301,11 @@ const translations = {
     information: 'Information',
     ok: 'OK',
     license_list_updated: 'License list updated',
-    license_updated_broadcast: 'License updated (broadcast)'
-    ,
-    account_creation_agreement: 'By creating an account, you agree to our Terms of Service',
-    email_verification_required_secure: 'Email verification required • Secure Trading Platform'
+    license_updated_broadcast: 'License updated (broadcast)',
+    account_creation_agreement:
+      'By creating an account, you agree to our Terms of Service',
+    email_verification_required_secure:
+      'Email verification required • Secure Trading Platform'
   },
 
   th: {
@@ -348,14 +352,14 @@ const translations = {
     active: 'ใช้งานอยู่',
     approved: 'อนุมัติแล้ว',
     rejected: 'ปฏิเสธแล้ว',
-  valid: 'ใช้งานได้',
-  suspended: 'ถูกระงับ',
-  suspend_action: 'ระงับ',
-  reactivate_action: 'เปิดใช้งานอีกครั้ง',
-  renew_action: 'ต่ออายุ',
-  customer_account_suspended: 'ระงับบัญชีลูกค้าแล้ว',
-  customer_account_reactivated: 'เปิดใช้งานบัญชีลูกค้าอีกครั้งแล้ว',
-  customer_account_status_updated: 'อัปเดตสถานะบัญชีลูกค้าแล้ว',
+    valid: 'ใช้งานได้',
+    suspended: 'ถูกระงับ',
+    suspend_action: 'ระงับ',
+    reactivate_action: 'เปิดใช้งานอีกครั้ง',
+    renew_action: 'ต่ออายุ',
+    customer_account_suspended: 'ระงับบัญชีลูกค้าแล้ว',
+    customer_account_reactivated: 'เปิดใช้งานบัญชีลูกค้าอีกครั้งแล้ว',
+    customer_account_status_updated: 'อัปเดตสถานะบัญชีลูกค้าแล้ว',
 
     // Trading Codes
     code: 'รหัส',
@@ -454,10 +458,11 @@ const translations = {
     checking_auth: 'กำลังตรวจสอบการเข้าสู่ระบบ...',
     auth_check_title: 'กำลังตรวจสอบเซสชัน',
     auth_check_description: 'กำลังยืนยันเซสชันของคุณอย่างปลอดภัย...',
-  auth_check_slow_title: 'ยังคงกำลังตรวจสอบ...',
-  auth_check_slow_message: 'ใช้เวลานานกว่าปกติ คุณสามารถรอ ลองใหม่ หรือข้ามแล้วเข้าสู่ระบบเองได้',
-  auth_check_retry: 'ลองใหม่',
-  auth_check_skip: 'ข้ามก่อน',
+    auth_check_slow_title: 'ยังคงกำลังตรวจสอบ...',
+    auth_check_slow_message:
+      'ใช้เวลานานกว่าปกติ คุณสามารถรอ ลองใหม่ หรือข้ามแล้วเข้าสู่ระบบเองได้',
+    auth_check_retry: 'ลองใหม่',
+    auth_check_skip: 'ข้ามก่อน',
     secure_reliable: 'ปลอดภัย • มืออาชีพ • เชื่อถือได้',
     copyright: '© 2025 แพลตฟอร์ม Q-Dragon',
     login_failed: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง',
@@ -473,9 +478,10 @@ const translations = {
     register_cta: 'สร้างบัญชี',
     already_have_account: 'มีบัญชีอยู่แล้ว?',
     go_to_login: 'ไปหน้าเข้าสู่ระบบ',
-    forgot_password_title1: 'ลืมรหัสผ่านใช่หรือไม่?',
+    forgot_password_title1: 'รีเซ็ตรหัสผ่าน',
 
-    forgot_password_title: 'รีเซ็ตรหัสผ่านของคุณ',
+    forgot_password_title:
+      'กรอกอีเมลของคุณเพื่อรับลิงก์สำหรับรีเซ็ตรหัสผ่าน และเข้าถึงบัญชีอีกครั้ง',
     send_reset_link: 'ส่งลิงก์รีเซ็ต',
     sending_reset_link: 'กำลังส่งลิงก์...',
     back_to_login: 'กลับสู่หน้าเข้าสู่ระบบ',
@@ -565,11 +571,11 @@ const translations = {
     expires_header: 'วันหมดอายุ',
     time_left_header: 'เวลาที่เหลือ',
     actions_header: 'การกระทำ',
-  total_codes: 'โค้ดทั้งหมด',
-  paid: 'ชำระแล้ว',
-  confirm_payment: 'ยืนยันการชำระเงิน',
-  activate_action: 'เปิดใช้งาน',
-  cancel_action: 'ยกเลิก',
+    total_codes: 'โค้ดทั้งหมด',
+    paid: 'ชำระแล้ว',
+    confirm_payment: 'ยืนยันการชำระเงิน',
+    activate_action: 'เปิดใช้งาน',
+    cancel_action: 'ยกเลิก',
     pay_to_activate: 'ชำระเงินเพื่อเปิดใช้งาน',
     pay_to_see_countdown: 'ชำระเงินเพื่อดูเวลานับถอยหลัง',
     extend: 'เพิ่มเวลา',
@@ -594,10 +600,11 @@ const translations = {
     information: 'ข้อมูล',
     ok: 'ตกลง',
     license_list_updated: 'อัปเดตรายการใบอนุญาตแล้ว',
-    license_updated_broadcast: 'อัปเดตใบอนุญาต (บรอดแคสต์)'
-    ,
-    account_creation_agreement: 'เมื่อสร้างบัญชีแสดงว่าคุณยอมรับเงื่อนไขการให้บริการของเรา',
-    email_verification_required_secure: 'ต้องยืนยันอีเมล • แพลตฟอร์มการเทรดที่ปลอดภัย'
+    license_updated_broadcast: 'อัปเดตใบอนุญาต (บรอดแคสต์)',
+    account_creation_agreement:
+      'เมื่อสร้างบัญชีแสดงว่าคุณยอมรับเงื่อนไขการให้บริการของเรา',
+    email_verification_required_secure:
+      'ต้องยืนยันอีเมล • แพลตฟอร์มการเทรดที่ปลอดภัย'
   }
 }
 
