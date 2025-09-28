@@ -5,7 +5,7 @@ import { sendVerificationEmail } from '@/lib/emailService'
 
 export async function POST(req) {
   try {
-    const { username, email, password } = await req.json()
+  const { username, email, password, language } = await req.json()
 
     // Input validation
     if (!username || !email || !password) {
@@ -80,7 +80,8 @@ export async function POST(req) {
     const emailResult = await sendVerificationEmail(
       email,
       username,
-      verificationToken
+      verificationToken,
+      language || 'en'
     )
 
     if (!emailResult.success) {

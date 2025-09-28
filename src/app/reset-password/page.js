@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, Suspense } from 'react'
+import { useTranslation } from '../../hooks/useTranslation'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 // Inline debug logger
@@ -48,6 +49,7 @@ const debugLogger = {
 }
 
 function ResetPasswordContent() {
+  const { t } = useTranslation()
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [token, setToken] = useState('')
@@ -69,7 +71,7 @@ function ResetPasswordContent() {
     if (tokenParam) {
       setToken(tokenParam)
     } else {
-      setError('Invalid or missing reset token')
+      setError(t('invalid_reset_link_message'))
       setIsValidToken(false)
     }
   }, [searchParams])
@@ -82,13 +84,13 @@ function ResetPasswordContent() {
 
     // Client-side validation
     if (password !== confirmPassword) {
-      setError('Passwords do not match')
+      setError(t('passwords_do_not_match'))
       setIsLoading(false)
       return
     }
 
     if (password.length < 6) {
-      setError('Password must be at least 6 characters long')
+      setError(t('password_requirement_6chars'))
       setIsLoading(false)
       return
     }
@@ -125,12 +127,12 @@ function ResetPasswordContent() {
           router.push('/login')
         }, 3000)
       } else {
-        setError(data.error || 'Failed to reset password')
+        setError(data.error || t('failed_reset_password'))
         debugLogger.error('Password reset failed', { error: data.error })
       }
     } catch (error) {
       debugLogger.error('Password reset network error', error)
-      setError('Network error. Please try again.')
+      setError(t('network_error'))
     } finally {
       setIsLoading(false)
     }
@@ -160,17 +162,13 @@ function ResetPasswordContent() {
                 ></path>
               </svg>
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              Invalid Reset Link
-            </h3>
-            <p className="text-gray-600 mb-6">
-              This password reset link is invalid or has expired.
-            </p>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">{t('invalid_reset_link_title')}</h3>
+            <p className="text-gray-600 mb-6">{t('invalid_reset_link_message')}</p>
             <button
               onClick={handleBackToLogin}
               className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-white font-semibold py-3 px-4 rounded-lg transition duration-200"
             >
-              Back to Login
+              {t('back_to_login') || t('back_to_login_arrow')}
             </button>
           </div>
         </div>
@@ -215,9 +213,9 @@ function ResetPasswordContent() {
             {/* Fallback Dragon Icon */}
             <span className="text-3xl sm:text-4xl hidden">🐉</span>
           </div>
-          <p className="text-white/90 text-sm sm:text-base">Reset Password</p>
+          <p className="text-white/90 text-sm sm:text-base">{t('reset_password_title') || 'Reset Password'}</p>
           <p className="text-xs sm:text-sm text-yellow-300 font-medium mt-1 sm:mt-2">
-            Create Your New Password
+            {t('create_new_password_subtitle') || 'Create Your New Password'}
           </p>
         </div>
 
@@ -230,7 +228,7 @@ function ResetPasswordContent() {
                   htmlFor="password"
                   className="block text-sm font-medium text-white/90 mb-2"
                 >
-                  New Password
+                  {t('new_password_label')}
                 </label>
                 <div className="relative">
                   <input
@@ -240,7 +238,7 @@ function ResetPasswordContent() {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     className="w-full px-4 py-3 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition duration-200 pl-12 text-sm sm:text-base text-white placeholder-white/60 bg-white/10 backdrop-blur-sm"
-                    placeholder="Enter new password"
+                    placeholder={t('new_password_label')}
                   />
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <svg
@@ -265,7 +263,7 @@ function ResetPasswordContent() {
                   htmlFor="confirmPassword"
                   className="block text-sm font-medium text-white/90 mb-2"
                 >
-                  Confirm New Password
+                  {t('confirm_new_password_label')}
                 </label>
                 <div className="relative">
                   <input
@@ -275,7 +273,7 @@ function ResetPasswordContent() {
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     required
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition duration-200 pl-12 text-sm sm:text-base text-gray-900 placeholder-gray-500"
-                    placeholder="Confirm new password"
+                    placeholder={t('confirm_new_password_label')}
                   />
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <svg
@@ -297,9 +295,7 @@ function ResetPasswordContent() {
 
               {/* Password Requirements */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
-                <h4 className="text-xs sm:text-sm font-medium text-blue-700 mb-2">
-                  Password Requirements:
-                </h4>
+                <h4 className="text-xs sm:text-sm font-medium text-blue-700 mb-2">{t('password_requirements_title')}</h4>
                 <ul className="text-xs sm:text-sm text-blue-600 space-y-1">
                   <li className="flex items-center">
                     <span
@@ -311,7 +307,7 @@ function ResetPasswordContent() {
                     >
                       {password.length >= 6 ? '✓' : '○'}
                     </span>
-                    At least 6 characters long
+                    {t('password_requirement_6chars')}
                   </li>
                   <li className="flex items-center">
                     <span
@@ -329,7 +325,7 @@ function ResetPasswordContent() {
                         ? '✓'
                         : '○'}
                     </span>
-                    Passwords match
+                    {t('password_requirement_match')}
                   </li>
                 </ul>
               </div>
@@ -378,7 +374,7 @@ function ResetPasswordContent() {
                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                       ></path>
                     </svg>
-                    Resetting Password...
+                    {t('resetting_password_loading')}
                   </>
                 ) : (
                   <>
@@ -395,7 +391,7 @@ function ResetPasswordContent() {
                         d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                       ></path>
                     </svg>
-                    Reset Password
+                    {t('reset_password_title')}
                   </>
                 )}
               </button>
@@ -419,29 +415,27 @@ function ResetPasswordContent() {
                 </svg>
               </div>
               <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">
-                Password Reset Successfully!
+                {t('password_reset_success')}
               </h3>
               <p className="text-gray-600 mb-4 sm:mb-6 text-sm sm:text-base">
                 {message}
               </p>
               <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
-                <p className="text-xs sm:text-sm text-green-700">
-                  Redirecting to login page in 3 seconds...
-                </p>
+                <p className="text-xs sm:text-sm text-green-700">{t('redirecting_login_3s')}</p>
               </div>
               <button
                 onClick={handleBackToLogin}
                 className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 text-sm sm:text-base"
               >
-                Login Now
+                {t('login_now')}
               </button>
             </div>
           )}
 
           {/* Footer */}
           <div className="mt-6 sm:mt-8 text-center text-xs text-white">
-            <p>Secure Password Reset • Q-DRAGON Trading Platform</p>
-            <p className="mt-1">© 2025 Q-Dragon Trading Platform</p>
+            <p>{t('secure_password_reset_tagline')}</p>
+            <p className="mt-1">{t('copyright')}</p>
           </div>
         </div>
       </div>

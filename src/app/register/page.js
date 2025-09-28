@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useTranslation } from '../../hooks/useTranslation'
 import { useDispatch, useSelector } from 'react-redux'
 import { useRouter } from 'next/navigation'
 import {
@@ -10,52 +11,16 @@ import {
   clearError
 } from '../../store/slices/authSlice'
 
-// Inline debug logger to avoid import issues
+// Inline debug logger (restored to prevent reference errors)
 const debugLogger = {
-  log: (message, data = {}) => {
-    const timestamp = new Date().toISOString()
-    const logEntry = {
-      timestamp,
-      message,
-      data,
-      url: typeof window !== 'undefined' ? window.location.href : 'server'
-    }
-    console.log('🔍 DEBUG:', logEntry)
-    if (process.env.NODE_ENV === 'production') {
-      try {
-        const logs = JSON.parse(localStorage.getItem('debug_logs') || '[]')
-        logs.push(logEntry)
-        if (logs.length > 50) logs.shift()
-        localStorage.setItem('debug_logs', JSON.stringify(logs))
-      } catch (error) {
-        console.warn('Failed to store debug log:', error)
-      }
-    }
+  log: (...args) => {
+    if (process.env.NODE_ENV !== 'production') console.log('[REGISTER]', ...args)
   },
-  error: (message, error = {}) => {
-    const timestamp = new Date().toISOString()
-    const logEntry = {
-      timestamp,
-      level: 'ERROR',
-      message,
-      error: { message: error.message, stack: error.stack },
-      url: typeof window !== 'undefined' ? window.location.href : 'server'
-    }
-    console.error('❌ ERROR:', logEntry)
-    if (process.env.NODE_ENV === 'production') {
-      try {
-        const logs = JSON.parse(localStorage.getItem('debug_logs') || '[]')
-        logs.push(logEntry)
-        if (logs.length > 50) logs.shift()
-        localStorage.setItem('debug_logs', JSON.stringify(logs))
-      } catch (err) {
-        console.warn('Failed to store error log:', err)
-      }
-    }
-  }
+  error: (...args) => console.error('[REGISTER]', ...args)
 }
 
 export default function RegisterPage() {
+  const { t, language, changeLanguage } = useTranslation()
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -109,7 +74,8 @@ export default function RegisterPage() {
         body: JSON.stringify({
           username: formData.username,
           email: formData.email,
-          password: formData.password
+          password: formData.password,
+          language
         })
       })
 
@@ -133,62 +99,10 @@ export default function RegisterPage() {
             typeof window !== 'undefined' ? window.location.href : 'server'
         })
 
-        // Redirect to email verification page
-        const targetUrl = `/verify-email?email=${encodeURIComponent(
-          formData.email
-        )}`
-        debugLogger.log('Target URL created', { targetUrl })
-
-        // Try different redirect methods for production compatibility
-        if (typeof window !== 'undefined') {
-          debugLogger.log('Attempting client-side redirect', {
-            method: 'window.location.href',
-            from: window.location.href,
-            to: targetUrl
-          })
-
-          try {
-            // Client-side redirect
-            window.location.href = targetUrl
-
-            // Verify redirect success after delay
-            setTimeout(() => {
-              debugLogger.log('Redirect status check', {
-                expectedPath: '/verify-email',
-                actualPath: window.location.pathname,
-                actualUrl: window.location.href,
-                success: window.location.pathname === '/verify-email'
-              })
-
-              if (window.location.pathname !== '/verify-email') {
-                debugLogger.error('Client redirect failed, trying router.push')
-                router.push(targetUrl)
-              }
-            }, 1500)
-          } catch (error) {
-            debugLogger.error('Window redirect error', error)
-            router.push(targetUrl)
-          }
-        } else {
-          debugLogger.log('Server-side redirect attempt', {
-            method: 'router.push'
-          })
-          router.push(targetUrl)
-        }
-
-        // Additional fallback: show success message with manual link
-        setTimeout(() => {
-          if (window.location.pathname !== '/verify-email') {
-            console.warn('Redirect may have failed, showing fallback message')
-            dispatch(
-              registerSuccess({
-                username: formData.username,
-                email: formData.email,
-                showManualLink: true
-              })
-            )
-          }
-        }, 2000)
+        // Redirect to email verification page (simplified)
+  const targetUrl = `/verify-email?email=${encodeURIComponent(formData.email)}&username=${encodeURIComponent(formData.username)}&lang=${language}`
+        debugLogger.log('Redirecting to verify-email', { targetUrl })
+        router.push(targetUrl)
       } else {
         // Registration failed
         dispatch(
@@ -198,7 +112,8 @@ export default function RegisterPage() {
         )
       }
     } catch (error) {
-      dispatch(registerFailure('Registration failed. Please try again.'))
+      debugLogger.error('Registration network/error', error)
+      dispatch(registerFailure(data?.error || 'Registration failed. Please try again.'))
     }
   }
 
@@ -227,6 +142,17 @@ export default function RegisterPage() {
 
       {/* Register Card */}
       <div className="relative z-10 max-w-md w-full bg-white/5 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/30 ring-1 ring-white/20">
+        {/* Language Switcher */}
+        <div className="absolute top-3 right-3 flex gap-2">
+          {['en','th'].map(l => (
+            <button
+              key={l}
+              type="button"
+              onClick={() => changeLanguage(l)}
+              className={`px-2 py-1 text-xs rounded-md font-semibold transition-colors ${language===l ? 'bg-yellow-400 text-black' : 'bg-white/20 text-white hover:bg-white/30'}`}
+            >{l.toUpperCase()}</button>
+          ))}
+        </div>
         {/* Header */}
         <div className="text-center pt-6 sm:pt-8 pb-4 sm:pb-6 px-6 sm:px-8">
           <div className="inline-flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32  rounded-full mb-3 sm:mb-4 shadow-lg overflow-hidden">
@@ -243,12 +169,8 @@ export default function RegisterPage() {
             {/* Fallback Dragon Icon */}
             <span className="text-3xl sm:text-4xl hidden">🐉</span>
           </div>
-          <p className="text-white/90 text-sm sm:text-base">
-            Create Your Account
-          </p>
-          <p className="text-xs sm:text-sm text-yellow-300 font-medium">
-            Professional XAU/USD Trading Platform
-          </p>
+          <p className="text-white/90 text-sm sm:text-base">{t('register_title')}</p>
+          <p className="text-xs sm:text-sm text-yellow-300 font-medium">{t('sub_tagline')}</p>
         </div>
 
         {/* Register Form */}
@@ -259,7 +181,7 @@ export default function RegisterPage() {
                 htmlFor="username"
                 className="block text-xs sm:text-sm font-medium text-white/90 mb-2"
               >
-                Username
+                {t('username_label')}
               </label>
               <div className="relative">
                 <input
@@ -270,7 +192,7 @@ export default function RegisterPage() {
                   onChange={handleInputChange}
                   required
                   className="w-full px-4 py-3 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition duration-200 pl-12 text-sm sm:text-base text-white placeholder-white/60 bg-white/10 backdrop-blur-sm"
-                  placeholder="Choose a username"
+                  placeholder={t('username_placeholder')}
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <svg
@@ -295,7 +217,7 @@ export default function RegisterPage() {
                 htmlFor="email"
                 className="block text-xs sm:text-sm font-medium text-white/90 mb-2"
               >
-                Email Address
+                {t('email_label')}
               </label>
               <div className="relative">
                 <input
@@ -306,7 +228,7 @@ export default function RegisterPage() {
                   onChange={handleInputChange}
                   required
                   className="w-full px-4 py-3 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition duration-200 pl-12 text-sm sm:text-base text-white placeholder-white/60 bg-white/10 backdrop-blur-sm"
-                  placeholder="Enter your email address"
+                  placeholder={t('email_placeholder')}
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <svg
@@ -331,7 +253,7 @@ export default function RegisterPage() {
                 htmlFor="password"
                 className="block text-xs sm:text-sm font-medium text-white/90 mb-2"
               >
-                Password
+                {t('password_label')}
               </label>
               <div className="relative">
                 <input
@@ -342,7 +264,7 @@ export default function RegisterPage() {
                   onChange={handleInputChange}
                   required
                   className="w-full px-4 py-3 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition duration-200 pl-12 text-sm sm:text-base text-white placeholder-white/60 bg-white/10 backdrop-blur-sm"
-                  placeholder="Create a secure password"
+                  placeholder={t('password_placeholder')}
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <svg
@@ -360,7 +282,7 @@ export default function RegisterPage() {
                   </svg>
                 </div>
               </div>
-              <p className="text-xs text-red-400 mt-1">Minimum 6 characters</p>
+              <p className="text-xs text-red-400 mt-1">{t('password_too_short')}</p>
             </div>
 
             <div>
@@ -368,7 +290,7 @@ export default function RegisterPage() {
                 htmlFor="confirmPassword"
                 className="block text-xs sm:text-sm font-medium text-white/90 mb-2"
               >
-                Confirm Password
+                {t('confirm_password_label')}
               </label>
               <div className="relative">
                 <input
@@ -379,7 +301,7 @@ export default function RegisterPage() {
                   onChange={handleInputChange}
                   required
                   className="w-full px-4 py-3 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition duration-200 pl-12 text-sm sm:text-base text-white placeholder-white/60 bg-white/10 backdrop-blur-sm"
-                  placeholder="Confirm your password"
+                  placeholder={t('confirm_password_label')}
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <svg
@@ -443,7 +365,7 @@ export default function RegisterPage() {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     ></path>
                   </svg>
-                  Creating Account...
+                  {t('registering')}
                 </>
               ) : (
                 <>
@@ -460,7 +382,7 @@ export default function RegisterPage() {
                       d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
                     ></path>
                   </svg>
-                  Create Trading Account
+                  {t('register_cta')}
                 </>
               )}
             </button>
@@ -474,7 +396,7 @@ export default function RegisterPage() {
               </div>
               <div className="relative flex justify-center text-xs sm:text-sm">
                 <span className="px-2 bg-white text-gray-500 font-bold">
-                  Already a member?
+                  {t('already_have_account')}
                 </span>
               </div>
             </div>
@@ -496,17 +418,15 @@ export default function RegisterPage() {
                   d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"
                 ></path>
               </svg>
-              Sign In to Existing Account
+              {t('go_to_login')}
             </button>
           </div>
 
           {/* Footer */}
           <div className="mt-6 sm:mt-8 text-center text-xs text-white/70">
-            <p>By creating an account, you agree to our Terms of Service</p>
-            <p className="mt-1">
-              Email verification required • Secure Trading Platform
-            </p>
-            <p className="mt-2">© 2025 Q-Dragon Trading Platform</p>
+            <p>{t('account_creation_agreement')}</p>
+            <p className="mt-1">{t('email_verification_required_secure')}</p>
+            <p className="mt-2">{t('copyright')}</p>
           </div>
         </div>
       </div>
@@ -523,9 +443,8 @@ export default function RegisterPage() {
         <button
           onClick={() => {
             const logs = JSON.parse(localStorage.getItem('debug_logs') || '[]')
-            console.log('📋 Debug Logs:', logs)
             alert(
-              `Debug logs (${logs.length} entries) - Check browser console for details`
+              `Debug logs (${logs.length} entries)`
             )
           }}
           className="fixed bottom-4 right-4 z-50 bg-red-500 text-white px-3 py-2 rounded-lg text-sm font-mono hover:bg-red-600 transition-colors"

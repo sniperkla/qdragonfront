@@ -28,7 +28,6 @@ export function verifyAuth(request) {
       id: decoded.userId || decoded.id
     }
   } catch (error) {
-    console.error('Auth verification error:', error)
     return null
   }
 }

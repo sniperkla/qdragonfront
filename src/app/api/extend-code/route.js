@@ -4,10 +4,7 @@ import CodeRequest from '@/lib/codeRequestModel'
 import CustomerAccount from '@/lib/customerAccountModel'
 import User from '@/lib/userModel'
 import mongoose from 'mongoose'
-import {
-  emitAdminNotification,
-  emitExtensionRequestUpdate
-} from '@/lib/websocket'
+// WebSocket imports removed
 
 // Extension Request Schema
 const ExtensionRequestSchema = new mongoose.Schema({
@@ -317,25 +314,7 @@ export async function POST(request) {
       currentExpiry: workingCustomerAccount.expireDate
     })
 
-    // Emit WebSocket updates to admin
-    try {
-      await emitAdminNotification(
-        `New extension request: ${codeRequest.code} (${actualExtendDays} days) from ${user.username}`,
-        'info'
-      )
-
-      await emitExtensionRequestUpdate({
-        requestId: extensionRequest._id,
-        licenseCode: codeRequest.code,
-        username: user.username,
-        requestedDays: parseInt(actualExtendDays),
-        action: 'created',
-        status: 'pending'
-      })
-    } catch (wsError) {
-      console.error('WebSocket emission error:', wsError)
-      // Don't fail the main request if WebSocket fails
-    }
+    // WebSocket notifications removed - admin will see updates on manual refresh
 
     return new Response(
       JSON.stringify({

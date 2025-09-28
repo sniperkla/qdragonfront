@@ -234,43 +234,66 @@ export function useCustomerAccountWebSocket(userId, onUpdate) {
   return { isConnected }
 }
 
-export function useAdminWebSocket(onExtensionUpdate, onNotification) {
+export function useAdminWebSocket(onExtensionUpdate, onNotification, onDataUpdate) {
   const { subscribe, isConnected } = useWebSocket(null, true)
 
   useEffect(() => {
     if (!subscribe) {
-      console.log('⚠️ Admin WebSocket subscribe not available')
       return
     }
 
-    console.log('🎧 Setting up admin WebSocket listeners')
-
     const unsubExtension = subscribe('extension-request-updated', (data) => {
-      console.log('📨 Extension request update received:', data)
+      console.log('📨 Admin received extension-request-updated:', data)
       if (onExtensionUpdate) {
-        console.log('🔄 Calling extension update handler')
         onExtensionUpdate(data)
-      } else {
-        console.log('⚠️ No extension update handler provided')
       }
     })
 
     const unsubNotification = subscribe('admin-notification', (data) => {
-      console.log('📨 Admin notification received via WebSocket:', data)
+      console.log('📨 Admin received admin-notification:', data)
       if (onNotification) {
-        console.log('🔄 Calling admin notification handler with:', data)
         onNotification(data)
-      } else {
-        console.log('⚠️ No admin notification handler provided')
+      }
+    })
+
+    // Subscribe to all data update events
+    const unsubCodesUpdate = subscribe('codes-updated', (data) => {
+      console.log('📨 Admin received codes-updated:', data)
+      if (onDataUpdate) {
+        onDataUpdate({ type: 'code_updated', ...data })
+      }
+    })
+
+    const unsubCustomerUpdate = subscribe('customer-account-updated', (data) => {
+      console.log('📨 Admin received customer-account-updated:', data)
+      if (onDataUpdate) {
+        onDataUpdate({ type: 'customer_updated', ...data })
+      }
+    })
+
+    const unsubNewCode = subscribe('new-code-generated', (data) => {
+      console.log('📨 Admin received new-code-generated:', data)
+      if (onDataUpdate) {
+        onDataUpdate({ type: 'new_code', ...data })
+      }
+    })
+
+    const unsubExtensionProcessed = subscribe('extension-processed', (data) => {
+      console.log('📨 Admin received extension-processed:', data)
+      if (onDataUpdate) {
+        onDataUpdate({ type: 'extension_processed', ...data })
       }
     })
 
     return () => {
-      console.log('🧹 Cleaning up admin WebSocket listeners')
       unsubExtension?.()
       unsubNotification?.()
+      unsubCodesUpdate?.()
+      unsubCustomerUpdate?.()
+      unsubNewCode?.()
+      unsubExtensionProcessed?.()
     }
-  }, [subscribe, onExtensionUpdate, onNotification])
+  }, [subscribe, onExtensionUpdate, onNotification, onDataUpdate])
 
   return { isConnected }
 }

@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useTranslation } from '../../hooks/useTranslation'
 
 // Inline debug logger
 const debugLogger = {
@@ -55,6 +56,7 @@ export default function ForgotPasswordPage() {
   const [isSuccess, setIsSuccess] = useState(false)
   const [needsRegistration, setNeedsRegistration] = useState(false)
   const router = useRouter()
+  const { t, language } = useTranslation()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -71,7 +73,7 @@ export default function ForgotPasswordPage() {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email, language })
       })
 
       const data = await res.json()
@@ -88,27 +90,25 @@ export default function ForgotPasswordPage() {
         setIsSuccess(true)
         debugLogger.log('Password reset email request successful')
       } else if (res.status === 404 && data.requiresRegistration) {
-        setError('No account found with this email address.')
+        setError(t('no_account_found_with_email'))
         setNeedsRegistration(true)
         setIsSuccess(false)
         debugLogger.log('User attempted password reset for unregistered email')
       } else if (res.status === 403 && data.requiresVerification) {
-        setError(
-          'Please verify your email address first before requesting a password reset.'
-        )
+        setError(t('email_verification_required'))
         debugLogger.log('Email verification required before password reset')
         setTimeout(() => {
           router.push(`/verify-email?email=${encodeURIComponent(data.email)}`)
         }, 3000)
       } else {
-        setError(data.error || 'Failed to send password reset email')
+        setError(data.error || t('failed_send_reset_email'))
         debugLogger.error('Password reset request failed', {
           error: data.error
         })
       }
     } catch (error) {
       debugLogger.error('Password reset network error', error)
-      setError('Network error. Please try again.')
+      setError(t('network_error'))
     } finally {
       setIsLoading(false)
     }
@@ -144,6 +144,16 @@ export default function ForgotPasswordPage() {
 
       {/* Forgot Password Card */}
       <div className="relative z-10 max-w-md w-full bg-white/5 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/30 ring-1 ring-white/20">
+        <div className="absolute top-3 right-3 flex gap-2">
+          {['en','th'].map(l => (
+            <button
+              key={l}
+              type="button"
+              onClick={() => typeof window !== 'undefined' && localStorage.setItem('admin_language', l) || location.reload()}
+              className={`px-2 py-1 text-xs rounded-md font-semibold transition-colors ${language===l ? 'bg-yellow-400 text-black' : 'bg-white/20 text-white hover:bg-white/30'}`}
+            >{l.toUpperCase()}</button>
+          ))}
+        </div>
         {/* Header */}
         <div className="text-center pt-6 sm:pt-8 pb-4 sm:pb-6 px-6 sm:px-8">
           <div className="inline-flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32  rounded-full mb-3 sm:mb-4 shadow-lg overflow-hidden">
@@ -160,9 +170,11 @@ export default function ForgotPasswordPage() {
             {/* Fallback Dragon Icon */}
             <span className="text-3xl sm:text-4xl hidden">🐉</span>
           </div>
-          <p className="text-white/90 text-sm sm:text-base">Forgot Password</p>
+          <p className="text-white/90 text-sm sm:text-base">
+            {t('forgot_password_title')}
+          </p>
           <p className="text-xs sm:text-sm text-yellow-300 font-medium mt-1 sm:mt-2">
-            Reset Your Trading Account Password
+            {t('forgot_password_title')}
           </p>
         </div>
 
@@ -175,7 +187,7 @@ export default function ForgotPasswordPage() {
                   htmlFor="email"
                   className="block text-sm font-medium text-white/90 mb-2"
                 >
-                  Email Address
+                  {t('email_label')}
                 </label>
                 <div className="relative">
                   <input
@@ -185,7 +197,7 @@ export default function ForgotPasswordPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     required
                     className="w-full px-4 py-3 sm:py-3 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition duration-200 pl-12 text-sm sm:text-base text-white placeholder-white/60 bg-white/10 backdrop-blur-sm"
-                    placeholder="Enter your email address"
+                    placeholder={t('email_placeholder')}
                   />
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <svg
@@ -204,7 +216,7 @@ export default function ForgotPasswordPage() {
                   </div>
                 </div>
                 <p className="text-xs sm:text-sm text-white/50 mt-2 leading-relaxed">
-                  Enter the email address associated with your Q-DRAGON account
+                  {t('enter_email_associated')}
                 </p>
               </div>
 
@@ -243,7 +255,7 @@ export default function ForgotPasswordPage() {
                             d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
                           ></path>
                         </svg>
-                        Create New Account
+                        {t('create_new_account')}
                       </button>
                     </div>
                   )}
@@ -277,7 +289,7 @@ export default function ForgotPasswordPage() {
                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                       ></path>
                     </svg>
-                    Sending Reset Link...
+                    {t('sending_reset_link')}
                   </>
                 ) : (
                   <>
@@ -294,7 +306,7 @@ export default function ForgotPasswordPage() {
                         d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
                       ></path>
                     </svg>
-                    Send Reset Link
+                    {t('send_reset_link')}
                   </>
                 )}
               </button>
@@ -318,20 +330,24 @@ export default function ForgotPasswordPage() {
                 </svg>
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Check Your Email
+                <text className="text-white/70">{t('check_your_email')}</text>
               </h3>
-              <p className="text-gray-600 mb-6">{message}</p>
+              <p className="text-white/70 mb-6">
+                {message === 'If an account with that email exists, we have sent a password reset link.'
+                  ? t('if_account_exists_reset_link_sent')
+                  : message}
+              </p>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                 <p className="text-sm text-blue-700">
-                  <strong>Next Steps:</strong>
+                  <strong>{t('reset_next_steps_title')}</strong>
                   <br />
-                  1. Check your email inbox
+                  {t('reset_step_1')}
                   <br />
-                  2. Click the password reset link
+                  {t('reset_step_2')}
                   <br />
-                  3. Create a new password
+                  {t('reset_step_3')}
                   <br />
-                  4. Log in with your new password
+                  {t('reset_step_4')}
                 </p>
               </div>
             </div>
@@ -367,16 +383,16 @@ export default function ForgotPasswordPage() {
                   d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"
                 ></path>
               </svg>
-              Back to Login
+              {t('back_to_login')}
             </button>
           </div>
 
           {/* Footer */}
           <div className="mt-6 sm:mt-8 text-center text-xs text-white/70">
             <p className="leading-relaxed">
-              Secure Password Reset • Q-DRAGON Trading Platform
+              {t('secure_password_reset_tagline')}
             </p>
-            <p className="mt-1">© 2025 Q-Dragon Trading Platform</p>
+            <p className="mt-1">{t('copyright')}</p>
           </div>
         </div>
       </div>

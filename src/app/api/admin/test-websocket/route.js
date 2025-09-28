@@ -58,14 +58,41 @@ export async function POST(request) {
       'info'
     )
 
+    // Test admin-specific table update events
+    let tableUpdateResult = false
+    if (socketIO) {
+      console.log('📡 Testing admin table update events...')
+      
+      // Test codes table update
+      socketIO.to('admin').emit('codes-updated', {
+        code: 'TEST-CODE-123',
+        username: 'TestUser',
+        status: 'pending_payment',
+        action: 'test-event'
+      })
+
+      // Test new code generated event
+      socketIO.to('admin').emit('new-code-generated', {
+        code: 'TEST-NEW-456',
+        username: 'TestUser2',
+        platform: 'MT4',
+        plan: 30,
+        price: 99
+      })
+
+      tableUpdateResult = true
+      console.log('✅ Test table update events emitted')
+    }
+
     if (adminResult && broadcastResult) {
       console.log('✅ Test notifications emitted successfully')
       return new Response(
         JSON.stringify({
           success: true,
           message:
-            'Test WebSocket notifications sent successfully (admin + broadcast)',
-          socketInitialized: !!global.__socketIO
+            'Test WebSocket notifications sent successfully (admin + broadcast + table updates)',
+          socketInitialized: !!global.__socketIO,
+          tableUpdatesEmitted: tableUpdateResult
         }),
         { status: 200 }
       )

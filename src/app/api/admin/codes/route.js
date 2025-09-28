@@ -2,11 +2,8 @@ import { connectToDatabase } from '@/lib/mongodb'
 import CodeRequest from '@/lib/codeRequestModel'
 import CustomerAccount from '@/lib/customerAccountModel'
 import User from '@/lib/userModel'
-import {
-  emitCodesUpdate,
-  emitCustomerAccountUpdate,
-  emitNotificationToAdminAndClient
-} from '@/lib/websocket'
+// WebSocket emit helpers
+import { emitCodesUpdate, emitCustomerAccountUpdate, emitAdminNotification, emitNotificationToAdminAndClient } from '@/lib/websocket'
 
 // Get all code requests (admin only)
 export async function GET(req) {
@@ -163,63 +160,21 @@ export async function PUT(req) {
       }
     }
 
-    // Emit WebSocket updates
+    // Emit WebSocket events for real-time updates
     try {
-      // Emit code update to the user
-      if (codeRequest.userId) {
-        await emitCodesUpdate(codeRequest.userId.toString(), {
-          codeId: codeRequest._id,
-          code: codeRequest.code,
-          status: codeRequest.status,
-          action: 'status-updated'
-        })
+      const userId = codeRequest.userId?._id?.toString()
+      // Notify admin list to refresh
+      await emitAdminNotification(`Code ${codeRequest.code} updated to ${status}`,'info')
+      // Notify specific user of status change
+      if (userId) {
+        await emitCodesUpdate(userId, { codeId: codeRequest._id, status })
+        await emitNotificationToAdminAndClient(userId, `Your license ${codeRequest.code} status: ${status}`,'success')
       }
-
-      // If customer account was created, emit that update too
-      if (customerAccountData) {
-        await emitCustomerAccountUpdate(codeRequest.userId.toString(), {
-          accountId: customerAccountData._id,
-          license: customerAccountData.license,
-          expireDate: customerAccountData.expireDate,
-          status: customerAccountData.status,
-          action: 'account-created'
-        })
+      if (status === 'activated' && userId) {
+        await emitCustomerAccountUpdate(userId, { license: codeRequest.code })
       }
-
-      // Emit notification to both admin and client
-      let clientMessage = ''
-      let notificationType = 'info'
-
-      switch (status) {
-        case 'activated':
-          clientMessage = `🎉 Your trading code ${codeRequest.code} has been activated! You can now start trading.`
-          notificationType = 'success'
-          break
-        case 'completed':
-          clientMessage = `✅ Your trading code ${codeRequest.code} has been completed.`
-          notificationType = 'success'
-          break
-        case 'cancelled':
-          clientMessage = `❌ Your trading code ${codeRequest.code} has been cancelled.`
-          notificationType = 'error'
-          break
-        case 'expired':
-          clientMessage = `⏰ Your trading code ${codeRequest.code} has expired.`
-          notificationType = 'warning'
-          break
-        default:
-          clientMessage = `📋 Your trading code ${codeRequest.code} status has been updated to ${status}.`
-          notificationType = 'info'
-      }
-
-      await emitNotificationToAdminAndClient(
-        codeRequest.userId.toString(),
-        clientMessage,
-        notificationType
-      )
-    } catch (wsError) {
-      console.error('WebSocket emission error:', wsError)
-      // Don't fail the main request if WebSocket fails
+    } catch (emitErr) {
+      console.warn('WebSocket emission failed (non-fatal):', emitErr.message)
     }
 
     return new Response(
@@ -262,6 +217,13 @@ export async function DELETE(req) {
 
     await connectToDatabase()
 
+    // Fetch first (to retain user reference) then delete
+    const codeToDelete = await CodeRequest.findById(codeId)
+    if (!codeToDelete) {
+      return new Response(JSON.stringify({ error: 'Code not found' }), {
+        status: 404
+      })
+    }
     const deletedCode = await CodeRequest.findByIdAndDelete(codeId)
 
     if (!deletedCode) {
@@ -281,6 +243,33 @@ export async function DELETE(req) {
         customerError
       )
       // Don't fail the main request if customer account deletion fails
+    }
+
+    // Emit WebSocket events so landing page updates in real-time
+    try {
+      let userId = null
+      if (deletedCode?.userId) {
+        userId = deletedCode.userId.toString()
+      } else if (deletedCode?.username) {
+        try {
+          const userDoc = await User.findOne({ username: deletedCode.username }, '_id')
+          if (userDoc) userId = userDoc._id.toString()
+        } catch (uErr) {
+          console.warn('Lookup user by username failed (delete emission):', uErr.message)
+        }
+      }
+
+      if (userId) {
+        await emitCodesUpdate(userId, { action: 'deleted', codeId: deletedCode._id, code: deletedCode.code })
+        await emitNotificationToAdminAndClient(
+          userId,
+          `Your license ${deletedCode.code} was deleted by admin`,
+          'warning'
+        )
+        await emitCustomerAccountUpdate(userId, { action: 'code-deleted', license: deletedCode.code })
+      }
+    } catch (emitErr) {
+      console.warn('WebSocket emission on delete failed (non-fatal):', emitErr.message)
     }
 
     return new Response(

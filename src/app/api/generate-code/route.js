@@ -2,7 +2,7 @@ import { verifyAuth } from '@/lib/auth'
 import { connectToDatabase } from '@/lib/mongodb'
 import CodeRequest from '@/lib/codeRequestModel'
 import User from '@/lib/userModel'
-import { emitCodesUpdate, emitAdminNotification } from '@/lib/websocket'
+import { emitNewCodeGenerated, emitAdminNotification } from '@/lib/websocket'
 
 // Code generation API
 export async function POST(req) {
@@ -96,26 +96,21 @@ export async function POST(req) {
       status: 'pending_payment'
     })
 
-    // Emit WebSocket updates
+    // Emit WebSocket events so admin dashboard updates in real time
     try {
-      await emitCodesUpdate(authData.id, {
-        codeId: codeRequest._id,
+      await emitNewCodeGenerated({
+        codeId: codeRequest._id.toString(),
         code: tradingCode,
+        username: user.username,
         accountNumber,
         platform,
         plan: planInfo.days,
-        price: planInfo.price,
         status: 'pending_payment',
-        action: 'created'
+        createdAt: codeRequest.createdAt
       })
-
-      await emitAdminNotification(
-        `New trading code generated: ${tradingCode} by ${user.username}`,
-        'info'
-      )
-    } catch (wsError) {
-      console.error('WebSocket emission error:', wsError)
-      // Don't fail the main request if WebSocket fails
+      await emitAdminNotification(`New trading code: ${tradingCode} (${planInfo.days}d)`, 'info')
+    } catch (wsErr) {
+      console.warn('WebSocket emission failed (generate-code):', wsErr.message)
     }
 
     return new Response(

@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { useTranslation } from '../../hooks/useTranslation'
 
 // Inline debug logger to avoid import issues
 const debugLogger = {
@@ -56,6 +57,7 @@ function VerifyEmailContent() {
   const [fromLogin, setFromLogin] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { t, language, changeLanguage } = useTranslation()
 
   useEffect(() => {
     debugLogger.log('Verify email page loaded', {
@@ -94,11 +96,11 @@ function VerifyEmailContent() {
           windowSearch: window.location.search,
           allParams: Object.fromEntries(searchParams.entries())
         })
-        setError('No email address provided. Please register again.')
+        setError(t('no_email_provided'))
       }
     } catch (error) {
       debugLogger.error('Error processing URL parameters', error)
-      setError('Error loading verification page. Please try again.')
+      setError(t('verification_failed'))
     }
   }, [searchParams])
 
@@ -124,21 +126,21 @@ function VerifyEmailContent() {
 
       if (response.ok) {
         if (fromLogin) {
-          setMessage('Email verified successfully! You can now log in.')
+          setMessage(t('verification_success_login'))
           setTimeout(() => {
             router.push('/login')
           }, 2000)
         } else {
-          setMessage('Email verified successfully! Redirecting to login...')
+          setMessage(t('verification_success_redirect'))
           setTimeout(() => {
             router.push('/login')
           }, 2000)
         }
       } else {
-        setError(data.error || 'Verification failed')
+        setError(data.error || t('verification_failed'))
       }
     } catch (error) {
-      setError('Network error. Please try again.')
+      setError(t('network_error'))
     } finally {
       setIsLoading(false)
     }
@@ -155,18 +157,18 @@ function VerifyEmailContent() {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email, language })
       })
 
       const data = await response.json()
 
       if (response.ok) {
-        setMessage('Verification email sent! Please check your inbox.')
+        setMessage(t('resend_verification_success'))
       } else {
-        setError(data.error || 'Failed to resend verification')
+        setError(data.error || t('resend_verification_failed'))
       }
     } catch (error) {
-      setError('Network error. Please try again.')
+      setError(t('network_error'))
     } finally {
       setIsLoading(false)
     }
@@ -194,7 +196,17 @@ function VerifyEmailContent() {
       {/* Verification Card */}
       <div className="relative z-10 max-w-md w-full bg-white/5 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/30 ring-1 ring-white/20">
         {/* Header */}
-        <div className="text-center pt-6 sm:pt-8 pb-4 sm:pb-6 px-6 sm:px-8">
+        <div className="text-center pt-6 sm:pt-8 pb-4 sm:pb-6 px-6 sm:px-8 relative">
+          <div className="absolute top-3 right-3 flex gap-2">
+            {['en','th'].map(l => (
+              <button
+                key={l}
+                type="button"
+                onClick={() => changeLanguage(l)}
+                className={`px-2 py-1 text-xs rounded-md font-semibold transition-colors ${language===l ? 'bg-yellow-400 text-black' : 'bg-white/20 text-white hover:bg-white/30'}`}
+              >{l.toUpperCase()}</button>
+            ))}
+          </div>
           <div className="inline-flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32  rounded-full mb-3 sm:mb-4 shadow-lg overflow-hidden">
             {/* Logo Image */}
             <img
@@ -210,24 +222,24 @@ function VerifyEmailContent() {
             <span className="text-3xl sm:text-4xl hidden">🐉</span>
           </div>
           <p className="text-white/90 text-sm sm:text-base mb-2">
-            Verify Your Email
+            {t('verify_your_email')}
           </p>
           {fromLogin ? (
             <>
               <p className="text-white/80 text-xs sm:text-sm">
-                Email verification required to access your account
+                {t('email_verification_required_notice')}
               </p>
               <p className="text-xs sm:text-sm text-yellow-300 font-medium mt-1 sm:mt-2">
-                ⚠️ You must verify your email before logging in
+                {t('must_verify_before_login')}
               </p>
             </>
           ) : (
             <>
               <p className="text-white/80 text-xs sm:text-sm">
-                Complete your account setup
+                {t('complete_account_setup')}
               </p>
               <p className="text-xs sm:text-sm text-yellow-300 font-medium mt-1 sm:mt-2">
-                Check your email for the verification code
+                {t('check_email_for_code')}
               </p>
             </>
           )}
@@ -241,7 +253,7 @@ function VerifyEmailContent() {
                 htmlFor="email"
                 className="block text-sm font-medium text-white/90 mb-2"
               >
-                Email Address
+                {t('email_address')}
               </label>
               <div className="relative">
                 <input
@@ -277,7 +289,7 @@ function VerifyEmailContent() {
                 htmlFor="verificationCode"
                 className="block text-sm font-medium text-white/90 mb-2"
               >
-                Verification Code
+                {t('verification_code')}
               </label>
               <div className="relative">
                 <input
@@ -287,7 +299,7 @@ function VerifyEmailContent() {
                   onChange={(e) => setVerificationCode(e.target.value)}
                   required
                   className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition duration-200 pl-12 text-white placeholder-white/60"
-                  placeholder="Enter verification code"
+                  placeholder={t('enter_verification_code')}
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <svg
@@ -306,7 +318,7 @@ function VerifyEmailContent() {
                 </div>
               </div>
               <p className="text-xs text-white/70 mt-1">
-                Check your email inbox and spam folder
+                {t('check_inbox_and_spam')}
               </p>
             </div>
 
@@ -371,7 +383,7 @@ function VerifyEmailContent() {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     ></path>
                   </svg>
-                  Verifying...
+                  {t('verifying')}
                 </>
               ) : (
                 <>
@@ -388,7 +400,7 @@ function VerifyEmailContent() {
                       d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                     ></path>
                   </svg>
-                  Verify Email
+                  {t('verify_email_cta')}
                 </>
               )}
             </button>
@@ -396,13 +408,13 @@ function VerifyEmailContent() {
 
           {/* Resend Button */}
           <div className="mt-6 text-center">
-            <p className="text-white/80 mb-4">Didn't receive the code?</p>
+            <p className="text-white/80 mb-4">{t('didnt_receive_code')}</p>
             <button
               onClick={handleResendVerification}
               disabled={isLoading}
               className="text-yellow-300 hover:text-yellow-200 font-medium py-2 transition duration-200 disabled:opacity-50"
             >
-              Resend Verification Email
+              {t('resend_verification_email')}
             </button>
           </div>
 
@@ -412,14 +424,14 @@ function VerifyEmailContent() {
               onClick={() => router.push('/login')}
               className="text-white/80 hover:text-white font-medium py-2 transition duration-200"
             >
-              ← Back to Login
+              {t('back_to_login_arrow')}
             </button>
           </div>
 
           {/* Footer */}
           <div className="mt-8 text-center text-xs text-white/60">
-            <p>Verification link expires in 24 hours</p>
-            <p className="mt-1">© 2025 Q-Dragon Trading Platform</p>
+            <p>{t('verification_link_expires')}</p>
+            <p className="mt-1">{t('copyright')}</p>
           </div>
         </div>
       </div>

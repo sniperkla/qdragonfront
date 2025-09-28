@@ -2,15 +2,21 @@
 
 import { useSelector, useDispatch } from 'react-redux'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { logout, loginSuccess } from '../../store/slices/authSlice'
-import {
-  useCodesWebSocket,
-  useCustomerAccountWebSocket,
-  useClientNotifications
-} from '../../hooks/useWebSocket'
+import { useTranslation } from '../../hooks/useTranslation'
+// Use dynamic import to avoid SSR bundling issues
+let socketIOClientFactory = null
+const getSocketIO = async () => {
+  if (!socketIOClientFactory) {
+    const mod = await import('socket.io-client')
+    socketIOClientFactory = mod.io
+  }
+  return socketIOClientFactory
+}
 
 export default function LandingPage() {
+  const { t, language, changeLanguage } = useTranslation()
   const { user, isAuthenticated } = useSelector((state) => state.auth)
   const dispatch = useDispatch()
   const router = useRouter()
@@ -36,6 +42,32 @@ export default function LandingPage() {
   // Notification state
   const [notifications, setNotifications] = useState([])
 
+  // Modal state for replacing alerts
+  const [alertModalVisible, setAlertModalVisible] = useState(false)
+  const [modalContent, setModalContent] = useState({
+    title: '',
+    message: '',
+    type: 'info', // 'info', 'success', 'error', 'warning'
+    onConfirm: null
+  })
+
+  const showModalAlert = (message, type = 'info', title = null, onConfirm = null) => {
+    setModalContent({
+      title: title || (type === 'error' ? t('error') : type === 'success' ? t('success') : type === 'warning' ? t('warning') : t('information')),
+      message,
+      type,
+      onConfirm
+    })
+    setAlertModalVisible(true)
+  }
+
+  const hideModalAlert = () => {
+    setAlertModalVisible(false)
+    if (modalContent.onConfirm) {
+      modalContent.onConfirm()
+    }
+  }
+
   const showNotification = (message, type = 'info') => {
     const id = Date.now()
     const notification = { id, message, type }
@@ -51,212 +83,12 @@ export default function LandingPage() {
   // Real-time countdown state
   const [currentTime, setCurrentTime] = useState(new Date())
 
-  // WebSocket connection status
+  // WebSocket state
+  const [socket, setSocket] = useState(null)
   const [wsConnected, setWsConnected] = useState(false)
-
-  // WebSocket handlers
-  const handleCodeUpdate = (data) => {
-    console.log('📨 Received code update via WebSocket:', data)
-    console.log('🔄 Triggering fetchMyCodes to refresh table data...')
-    
-    // Add small delay to ensure database is updated before refetching
-    setTimeout(() => {
-      fetchMyCodes().then(() => {
-        console.log('✅ fetchMyCodes completed after WebSocket update')
-      }).catch((error) => {
-        console.error('❌ fetchMyCodes failed after WebSocket update:', error)
-      })
-    }, 500) // 500ms delay
-
-    // Show notification based on action and status
-    if (data.action === 'status-updated') {
-      let message = ''
-      let type = 'info'
-
-      switch (data.status) {
-        case 'activated':
-          message = `🎉 Your trading license ${data.code} has been activated!`
-          type = 'success'
-          break
-        case 'completed':
-          message = `✅ Your trading license ${data.code} has been completed.`
-          type = 'success'
-          break
-        case 'cancelled':
-          message = `❌ Your trading license ${data.code} has been cancelled.`
-          type = 'error'
-          break
-        case 'expired':
-          message = `⏰ Your trading license ${data.code} has expired.`
-          type = 'warning'
-          break
-        default:
-          message = `📋 Your trading license ${data.code} status updated to ${data.status}.`
-          type = 'info'
-      }
-
-      showNotification(message, type)
-    }
-  }
-
-  const handleCustomerAccountUpdate = (data) => {
-    console.log('📨 Received customer account update via WebSocket:', data)
-    console.log('🔄 Triggering fetchMyCodes to refresh table data...')
-    
-    // Add small delay to ensure database is updated before refetching
-    setTimeout(() => {
-      fetchMyCodes().then(() => {
-        console.log('✅ fetchMyCodes completed after customer account update')
-      }).catch((error) => {
-        console.error('❌ fetchMyCodes failed after customer account update:', error)
-      })
-    }, 500) // 500ms delay
-
-    // Show notification to user based on action
-    switch (data.action) {
-      case 'extended':
-        showNotification(
-          `🎉 Your license ${data.license} has been extended by ${data.extendedDays} days!`,
-          'success'
-        )
-        break
-      case 'account-created':
-        showNotification(
-          `✅ Your customer account has been activated! License: ${data.license}`,
-          'success'
-        )
-        break
-      case 'created':
-        showNotification(`🎉 New license created: ${data.license}`, 'success')
-        break
-      default:
-        showNotification(`📋 Your account has been updated.`, 'info')
-    }
-  }
-
-  const handleClientNotification = (data) => {
-    console.log('Received client notification via WebSocket:', data)
-    showNotification(data.message, data.type)
-  }
-
-  // WebSocket server initialization state
-  const [wsServerReady, setWsServerReady] = useState(false)
-
-  // Initialize WebSocket server on component mount
-  useEffect(() => {
-    const initWebSocket = async () => {
-      try {
-        console.log('🔧 Initializing WebSocket server...')
-        
-        // Try multiple initialization methods
-        const methods = [
-          () => fetch('/api/init/socketio', { method: 'GET' }),
-          () => fetch('/api/socketio', { method: 'GET' }),
-          () => fetch('/api/force-init/socketio', { method: 'GET' })
-        ]
-
-        let initialized = false
-        for (const method of methods) {
-          try {
-            console.log('🔄 Trying WebSocket initialization method...')
-            const response = await method()
-            const data = await response.json()
-            
-            if (data.success || response.ok) {
-              console.log('✅ WebSocket server initialized successfully via method')
-              initialized = true
-              break
-            }
-          } catch (methodError) {
-            console.log('⚠️ WebSocket initialization method failed, trying next...')
-          }
-        }
-
-        if (initialized) {
-          setWsServerReady(true)
-          console.log('✅ WebSocket server is ready')
-        } else {
-          console.warn('⚠️ All WebSocket server initialization methods failed')
-          // Still set as ready to allow WebSocket hooks to try connecting
-          setWsServerReady(true)
-        }
-      } catch (error) {
-        console.error('❌ Failed to initialize WebSocket server:', error)
-        // Still set as ready to allow WebSocket hooks to try connecting
-        setWsServerReady(true)
-      }
-    }
-    initWebSocket()
-  }, [])
-
-  // Direct WebSocket connection for reliable table updates
-  useEffect(() => {
-    if (!wsServerReady || !isAuthenticated || !user?.id) return
-
-    const { io } = require('socket.io-client')
-    
-    const socket = io(
-      process.env.NODE_ENV === 'production'
-        ? process.env.NEXT_PUBLIC_APP_URL
-        : 'http://localhost:3000',
-      {
-        path: '/api/socketio',
-        transports: ['websocket', 'polling'],
-        forceNew: true
-      }
-    )
-
-    socket.on('connect', () => {
-      socket.emit('join-user', user.id)
-    })
-
-    // Direct event listeners for table updates
-    socket.on('codes-updated', (data) => {
-      fetchMyCodes()
-      if (data.action === 'status-updated') {
-        let message = `📋 Your trading license ${data.code} status updated to ${data.status}.`
-        showNotification(message, 'info')
-      }
-    })
-
-    socket.on('customer-account-updated', (data) => {
-      fetchMyCodes()
-      showNotification(`📋 Your account has been updated.`, 'info')
-    })
-
-    socket.on('client-notification', (data) => {
-      fetchMyCodes()
-      showNotification(data.message, data.type || 'info')
-    })
-
-    socket.on('broadcast-notification', (data) => {
-      fetchMyCodes()
-      showNotification(data.message, data.type || 'info')
-    })
-
-    setWsConnected(true)
-
-    return () => {
-      socket.disconnect()
-      setWsConnected(false)
-    }
-  }, [wsServerReady, isAuthenticated, user?.id])
-
-  // Fallback WebSocket connections using hooks
-  const { isConnected: codesWsConnected } = useCodesWebSocket(
-    null, // Disable hooks since we're using direct connection
-    null
-  )
-  const { isConnected: accountsWsConnected } = useCustomerAccountWebSocket(
-    null, // Disable hooks since we're using direct connection
-    null
-  )
-  const { isConnected: notificationsWsConnected } = useClientNotifications(
-    null, // Disable hooks since we're using direct connection
-    null
-  )
-
-  // WebSocket connection status is managed directly in the connection useEffect above
+  const [lastWsEvent, setLastWsEvent] = useState(null)
+  const [joinStatus, setJoinStatus] = useState({ joined: false, attempts: 0, rooms: [] })
+  const joinIntervalRef = useRef(null)
 
   useEffect(() => {
     // Check if user is authenticated via cookie on page load
@@ -268,7 +100,6 @@ export default function LandingPage() {
 
         if (response.ok) {
           const data = await response.json()
-          console.log('🔍 User auth data from /api/auth/me:', data)
           // Update Redux state with user data from cookie
           dispatch(
             loginSuccess({
@@ -277,13 +108,12 @@ export default function LandingPage() {
               email: data.user.username
             })
           )
-          console.log('🔍 User ID for WebSocket:', data.user.id)
         } else {
           // No valid cookie, redirect to login
           router.push('/')
         }
       } catch (error) {
-        console.error('Auth check error:', error)
+        // Silent error handling
         router.push('/')
       } finally {
         setIsLoading(false)
@@ -299,11 +129,11 @@ export default function LandingPage() {
 
   // Fetch user's licenses (unified view)
   const fetchMyCodes = async () => {
-    console.log('🔄 Starting fetchMyCodes...')
+    // Starting fetchMyCodes
     setLoadingCodes(true)
     try {
       // Fetch unified licenses
-      console.log('📡 Fetching from /api/my-licenses...')
+      // Fetching from /api/my-licenses
       const licensesResponse = await fetch('/api/my-licenses', {
         credentials: 'include'
       })
@@ -332,6 +162,174 @@ export default function LandingPage() {
       fetchMyCodes()
     }
   }, [isAuthenticated])
+
+  // Initialize WebSocket connection (don't wait for auth; we'll join later)
+  useEffect(() => {
+    if (socket) return
+
+    // Ensure server initialized using same pattern as admin
+    fetch('/api/init/socketio', { cache: 'no-store' }).catch(() => {})
+
+    ;(async () => {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000')
+      console.log('🛰️ [Landing] Preparing socket connection to', baseUrl)
+      const io = await getSocketIO()
+      const s = io(baseUrl, {
+      path: '/api/socketio',
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 15,
+      reconnectionDelay: 1000,
+      withCredentials: true,
+      timeout: 15000,
+      forceNew: true,
+      autoConnect: true
+      })
+
+      setSocket(s)
+
+    if (joinIntervalRef.current) {
+      clearInterval(joinIntervalRef.current)
+      joinIntervalRef.current = null
+    }
+    const joinRef = { stopped: false }
+
+    const attemptJoin = () => {
+      if (!user) return
+      const idsToTry = []
+      if (user.id) idsToTry.push(user.id)
+      if (user._id && user._id !== user.id) idsToTry.push(user._id)
+      if (idsToTry.length === 0) return
+      idsToTry.forEach((val) => {
+        console.log('🔗 Attempting join-user for:', val)
+        s.emit('join-user', val)
+      })
+      setJoinStatus((prev) => ({ ...prev, attempts: prev.attempts + 1 }))
+    }
+
+    s.on('connect', () => {
+      setWsConnected(true)
+      setLastWsEvent('connect')
+      // Start immediate attempt + repeating attempts until a room join succeeds
+      attemptJoin()
+      joinIntervalRef.current = setInterval(() => {
+        setJoinStatus((st) => st.joined ? st : st) // force state read
+        if (!joinStatus.joined) {
+          attemptJoin()
+        } else if (joinIntervalRef.current) {
+          clearInterval(joinIntervalRef.current)
+          joinIntervalRef.current = null
+        }
+      }, 2000)
+    })
+
+    s.on('disconnect', (reason) => {
+      console.warn('🔌 Disconnected (landing):', reason)
+      setWsConnected(false)
+      setLastWsEvent('disconnect')
+    })
+
+    s.on('connect_error', (err) => {
+      console.warn('⚠️ WebSocket connect_error (landing):', err.message)
+      setLastWsEvent('connect_error')
+    })
+    s.on('error', (err) => {
+      console.warn('⚠️ WebSocket generic error (landing):', err?.message || err)
+    })
+    s.on('reconnect_failed', () => {
+      console.warn('❌ WebSocket reconnect_failed (landing)')
+    })
+    s.on('reconnect_attempt', (n) => {
+      console.log('♻️ Reconnect attempt', n)
+    })
+
+    s.on('room-joined', (data) => {
+      console.log('📥 room-joined event:', data)
+      if (!data?.success) {
+        // Retry join once more after delay
+        setTimeout(() => {
+          if (user?.id) s.emit('join-user', user.id)
+          if (user?._id && user._id !== user?.id) s.emit('join-user', user._id)
+        }, 500)
+      } else if (data?.room) {
+        setJoinStatus((prev) => {
+          const newRooms = prev.rooms.includes(data.room)
+            ? prev.rooms
+            : [...prev.rooms, data.room]
+          const userIdRooms = newRooms.filter(r => r.startsWith('user-'))
+          const joined = userIdRooms.length > 0
+          if (joined && data.room.startsWith('user-')) {
+            console.log('✅ User room joined successfully:', data.room)
+          }
+            if (joined && joinIntervalRef.current) {
+              clearInterval(joinIntervalRef.current)
+              joinIntervalRef.current = null
+            }
+          return { ...prev, rooms: newRooms, joined }
+        })
+      }
+    })
+
+    // Codes updated (e.g., status change paid/activated)
+    s.on('codes-updated', (payload) => {
+      setLastWsEvent('codes-updated')
+      fetchMyCodes()
+      showNotification(t('license_list_updated'), 'success')
+    })
+
+    // Fallback broadcast (in case user room missed join)
+    s.on('codes-updated-broadcast', (payload) => {
+      // Only refresh if this broadcast pertains to current user (userId matches) or if unsure
+      if (!payload?.userId || payload.userId === user?.id || payload.userId === user?._id) {
+        setLastWsEvent('codes-updated-broadcast')
+        fetchMyCodes()
+        showNotification(t('license_updated_broadcast'), 'success')
+      }
+    })
+
+    s.on('customer-account-updated', () => {
+      setLastWsEvent('customer-account-updated')
+      fetchMyCodes()
+    })
+
+    s.on('client-notification', (data) => {
+      setLastWsEvent('client-notification')
+      if (data?.message) {
+        showNotification(data.message, data.type || 'info')
+      }
+    })
+
+    s.on('broadcast-notification', (data) => {
+      setLastWsEvent('broadcast-notification')
+      if (data?.message) {
+        showNotification(data.message, data.type || 'info')
+      }
+    })
+
+    })()
+
+    return () => {
+      if (joinIntervalRef.current) {
+        clearInterval(joinIntervalRef.current)
+        joinIntervalRef.current = null
+      }
+    }
+  }, [socket, user])
+
+  // Re-emit join when user changes AFTER socket established
+  useEffect(() => {
+    if (!socket || !wsConnected) return
+    if (user?.id) {
+      console.log('🔄 Re-joining (user.id effect):', user.id)
+      socket.emit('join-user', user.id)
+    }
+    if (user?._id && user._id !== user?.id) {
+      console.log('🔄 Re-joining (user._id effect):', user._id)
+      socket.emit('join-user', user._id)
+    }
+  }, [user?.id, user?._id, wsConnected, socket])
+
+  // Removed fallback polling - relying solely on WebSocket events for updates
 
   // Real-time countdown timer
   useEffect(() => {
@@ -520,7 +518,7 @@ export default function LandingPage() {
   const submitExtendLicense = async (e) => {
     e.preventDefault()
     if (!selectedCode || !extendPlan) {
-      alert('Please select an extension plan')
+      showModalAlert('Please select an extension plan', 'warning')
       return
     }
 
@@ -540,19 +538,24 @@ export default function LandingPage() {
 
       const data = await response.json()
       if (response.ok) {
-        alert(
-          `Extension request submitted successfully!\n\nLicense: ${data.licenseCode}\nCurrent expiry: ${data.currentExpiry}\nRequested extension: ${data.requestedDays} days\nStatus: Pending admin approval\n\nPlease wait for admin verification before the extension takes effect.`
+        showModalAlert(
+          `Extension request submitted successfully!\n\nLicense: ${data.licenseCode}\nCurrent expiry: ${data.currentExpiry}\nRequested extension: ${data.requestedDays} days\nStatus: Pending admin approval\n\nPlease wait for admin verification before the extension takes effect.`,
+          'success',
+          'Extension Request Submitted',
+          () => {
+            setShowExtendModal(false)
+            setSelectedCode(null)
+            setExtendPlan('30')
+            fetchMyCodes() // Refresh the codes list
+          }
         )
-        setShowExtendModal(false)
-        setSelectedCode(null)
-        setExtendPlan('30')
-        fetchMyCodes() // Refresh the codes list
+        return
       } else {
-        alert(data.error || 'Failed to submit extension request')
+        showModalAlert(data.error || 'Failed to submit extension request', 'error')
       }
     } catch (error) {
       console.error('Error extending code:', error)
-      alert('Failed to extend code')
+      showModalAlert('Failed to extend code', 'error')
     } finally {
       setExtendingCode(false)
     }
@@ -587,7 +590,7 @@ export default function LandingPage() {
 
   const handlePurchaseLicense = async () => {
     if (!codeForm.accountNumber) {
-      alert('Please enter your trading account number')
+      showModalAlert('Please enter your trading account number', 'warning')
       return
     }
 
@@ -613,15 +616,17 @@ export default function LandingPage() {
         // Refresh licenses list
         fetchMyCodes()
         // Show success message
-        alert(
-          `License purchased: ${data.license}\nPlan: ${codeForm.plan} days\nPrice: $${data.price}\n\nPlease proceed to payment.`
+        showModalAlert(
+          `License purchased: ${data.license}\nPlan: ${codeForm.plan} days\nPrice: $${data.price}\n\nPlease proceed to payment.`,
+          'success',
+          'License Purchase Successful'
         )
       } else {
-        alert(data.error || 'Failed to purchase license')
+        showModalAlert(data.error || 'Failed to purchase license', 'error')
       }
     } catch (error) {
       console.error('Error purchasing license:', error)
-      alert('Network error. Please try again.')
+      showModalAlert('Network error. Please try again.', 'error')
     } finally {
       setGeneratingCode(false)
     }
@@ -650,145 +655,21 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
-              <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
+              <h1 className="text-xl font-bold text-gray-900">{t('dashboard')}</h1>
             </div>
             <div className="flex items-center space-x-4">
-              {/* WebSocket Status Indicator */}
-              <div className="flex items-center space-x-2">
-                <div
-                  className={`w-2 h-2 rounded-full ${
-                    !wsServerReady 
-                      ? 'bg-yellow-400 animate-pulse' 
-                      : wsConnected 
-                        ? 'bg-green-400 animate-pulse' 
-                        : 'bg-red-400'
-                  }`}
-                ></div>
-                <span className="text-xs text-gray-500">
-                  {!wsServerReady 
-                    ? 'Initializing...' 
-                    : wsConnected 
-                      ? 'Live Updates' 
-                      : 'Connecting...'}
-                </span>
-                <button
-                  onClick={async () => {
-                    try {
-                      const response = await fetch('/api/debug/websocket', {
-                        method: 'GET'
-                      })
-                      const data = await response.json()
-                      console.log('Client WebSocket Debug Info:', data)
-                      console.log('Local connection states:', {
-                        codesWsConnected,
-                        accountsWsConnected,
-                        notificationsWsConnected
-                      })
-                      showNotification(
-                        `WS Debug: ${data.connectedClients || 0} clients connected`,
-                        'info'
-                      )
-                    } catch (error) {
-                      console.error('Debug error:', error)
-                    }
-                  }}
-                  className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-                >
-                  Debug
-                </button>
-                <button
-                  onClick={async () => {
-                    try {
-                      console.log('Testing notifications for user:', user?.id)
-                      const response = await fetch('/api/test/notifications', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId: user?.id })
-                      })
-                      const data = await response.json()
-                      console.log('Test notifications response:', data)
-                      showNotification(
-                        'Test notifications sent - check console for details',
-                        'info'
-                      )
-                    } catch (error) {
-                      console.error('Test notifications error:', error)
-                      showNotification('Test notifications failed', 'error')
-                    }
-                  }}
-                  className="px-2 py-1 text-xs bg-green-500 text-white rounded hover:bg-green-600 transition-colors"
-                >
-                  Test Notify
-                </button>
-                <button
-                  onClick={async () => {
-                    try {
-                      console.log('🔍 Testing WebSocket for user:', user?.id)
-                      const response = await fetch('/api/debug/test-user-websocket', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId: user?.id })
-                      })
-                      const data = await response.json()
-                      console.log('🔍 WebSocket test response:', data)
-                      showNotification(
-                        `WebSocket test completed - Room size: ${data.roomInfo?.userRoomSize || 0}`,
-                        data.success ? 'success' : 'error'
-                      )
-                    } catch (error) {
-                      console.error('🔍 WebSocket test error:', error)
-                      showNotification('WebSocket test failed', 'error')
-                    }
-                  }}
-                  className="px-2 py-1 text-xs bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors"
-                >
-                  Test WS
-                </button>
-                <button
-                  onClick={async () => {
-                    try {
-                      console.log('🔍 Checking environment and WebSocket status')
-                      const response = await fetch('/api/debug/env')
-                      const data = await response.json()
-                      console.log('🔍 Environment data:', data)
-                      console.log('🔍 Client-side URL:', window.location.href)
-                      console.log('🔍 User in state:', user)
-                      console.log('🔍 WebSocket status:', { codesWsConnected, accountsWsConnected, notificationsWsConnected })
-                      showNotification(
-                        `Env check - Clients: ${data.socketClients}, URL: ${data.appUrl}`,
-                        'info'
-                      )
-                    } catch (error) {
-                      console.error('🔍 Environment check error:', error)
-                      showNotification('Environment check failed', 'error')
-                    }
-                  }}
-                  className="px-2 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600 transition-colors"
-                >
-                  Env
-                </button>
-                <button
-                  onClick={async () => {
-                    try {
-                      console.log('🔄 Force refreshing table data...')
-                      await fetchMyCodes()
-                      showNotification('Table data refreshed manually', 'success')
-                    } catch (error) {
-                      console.error('🔄 Force refresh error:', error)
-                      showNotification('Force refresh failed', 'error')
-                    }
-                  }}
-                  className="px-2 py-1 text-xs bg-cyan-500 text-white rounded hover:bg-cyan-600 transition-colors"
-                >
-                  Refresh
-                </button>
+              {/* Language Toggle */}
+              <div className="flex gap-1">
+                {['en','th'].map(l => (
+                  <button key={l} onClick={() => changeLanguage(l)} className={`px-2 py-1 text-xs rounded-md font-semibold transition-colors ${language===l ? 'bg-yellow-400 text-black' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>{l.toUpperCase()}</button>
+                ))}
               </div>
-              <span className="text-gray-700">Welcome, {user?.name}</span>
+              <span className="text-gray-700">{t('welcome')}, {user?.name}</span>
               <button
                 onClick={handleLogout}
                 className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition duration-200"
               >
-                Logout
+                {t('logout')}
               </button>
             </div>
           </div>
@@ -799,161 +680,237 @@ export default function LandingPage() {
       <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
         {/* Welcome Section */}
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            Welcome to Your Q-DRAGON Dashboard!
-          </h1>
-          <p className="text-xl text-gray-600 mb-8">
-            Professional XAU/USD Trading Platform - Purchase your trading
-            licenses below.
-          </p>
+          <h1 className="text-4xl font-bold text-gray-900 mb-4">{t('welcome_dashboard_heading')}</h1>
+          <p className="text-xl text-gray-600 mb-8">{t('dashboard_subtitle')}</p>
         </div>
 
         {/* License Purchase Section */}
-        <div className="bg-gradient-to-r from-yellow-400 to-amber-500 rounded-xl shadow-xl p-8 mb-8 text-white">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-3xl font-bold mb-2">
-                Purchase Trading License
-              </h2>
-              <p className="text-yellow-100">
-                Get direct access to professional trading platform
-              </p>
-            </div>
-            <div className="hidden md:block">
-              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
-                <svg
-                  className="w-8 h-8"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4zM18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z"></path>
-                </svg>
+        <div className="relative overflow-hidden bg-gradient-to-br from-indigo-600 via-purple-600 to-blue-700 rounded-2xl shadow-2xl mb-8 text-white">
+          {/* Background Pattern */}
+          <div className="absolute inset-0 opacity-10">
+            <div className="absolute inset-0" style={{
+              backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+            }} />
+          </div>
+          
+          <div className="relative p-8 lg:p-12">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-8">
+              <div className="mb-6 lg:mb-0">
+                <div className="flex items-center mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-xl flex items-center justify-center mr-4 shadow-lg">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-3xl lg:text-4xl font-bold">{t('purchase_trading_license')}</h2>
+                    <p className="text-purple-200 mt-1 text-lg">{t('purchase_subtitle')}</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="hidden lg:flex items-center space-x-4">
+                <div className="flex items-center space-x-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2">
+                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                  <span className="text-sm font-medium">{t('live_trading')}</span>
+                </div>
+                <div className="flex items-center space-x-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2">
+                  <svg className="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                  </svg>
+                  <span className="text-sm font-medium">{t('premium')}</span>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-            {/* Account Number Input */}
-            <div>
-              <label className="block text-yellow-100 text-sm font-medium mb-2">
-                Trading Account Number
-              </label>
-              <input
-                type="text"
-                name="accountNumber"
-                value={codeForm.accountNumber}
-                onChange={handleCodeFormChange}
-                placeholder="e.g., 1234567"
-                className="w-full px-4 py-3 rounded-lg bg-white/90 text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-white focus:bg-white transition duration-200"
-                required
-              />
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+              {/* Account Number Input */}
+              <div className="relative">
+                <label className="block text-purple-200 text-sm font-semibold mb-3 flex items-center">
+                  <svg className="w-4 h-4 mr-2 text-purple-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                  </svg>
+                  {t('trading_account_number')}
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    name="accountNumber"
+                    value={codeForm.accountNumber}
+                    onChange={handleCodeFormChange}
+                    placeholder={t('enter_account_number_placeholder')}
+                    className="w-full px-4 py-3 pl-11 rounded-xl bg-white/95 backdrop-blur-sm text-gray-900 placeholder-gray-500 border border-white/20 focus:ring-2 focus:ring-purple-300 focus:border-transparent focus:bg-white transition-all duration-300 shadow-lg"
+                    required
+                  />
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              {/* Platform Selection */}
+              <div className="relative">
+                <label className="block text-purple-200 text-sm font-semibold mb-3 flex items-center">
+                  <svg className="w-4 h-4 mr-2 text-purple-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                  {t('trading_platform_label')}
+                </label>
+                <div className="relative">
+                  <select
+                    name="platform"
+                    value={codeForm.platform}
+                    onChange={handleCodeFormChange}
+                    className="w-full px-4 py-3 pl-11 rounded-xl bg-white/95 backdrop-blur-sm text-gray-900 border border-white/20 focus:ring-2 focus:ring-purple-300 focus:border-transparent focus:bg-white transition-all duration-300 shadow-lg appearance-none"
+                  >
+                    <option value="exness">Exness</option>
+                    <option value="xm">XM</option>
+                    <option value="ic-markets">IC Markets</option>
+                    <option value="pepperstone">Pepperstone</option>
+                    <option value="fxpro">FxPro</option>
+                    <option value="other">Other</option>
+                  </select>
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              {/* Plan Selection */}
+              <div className="relative">
+                <label className="block text-purple-200 text-sm font-semibold mb-3 flex items-center">
+                  <svg className="w-4 h-4 mr-2 text-purple-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {t('subscription_plan')}
+                </label>
+                <div className="relative">
+                  <select
+                    name="plan"
+                    value={codeForm.plan}
+                    onChange={handleCodeFormChange}
+                    className="w-full px-4 py-3 pl-11 rounded-xl bg-white/95 backdrop-blur-sm text-gray-900 border border-white/20 focus:ring-2 focus:ring-purple-300 focus:border-transparent focus:bg-white transition-all duration-300 shadow-lg appearance-none"
+                  >
+                    <option value="30">30 Days - $99</option>
+                    <option value="60">60 Days - $189</option>
+                    <option value="90">90 Days - $269</option>
+                  </select>
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Platform Selection */}
-            <div>
-              <label className="block text-yellow-100 text-sm font-medium mb-2">
-                Trading Platform
-              </label>
-              <select
-                name="platform"
-                value={codeForm.platform}
-                onChange={handleCodeFormChange}
-                className="w-full px-4 py-3 rounded-lg bg-white/90 text-gray-900 focus:ring-2 focus:ring-white focus:bg-white transition duration-200"
+            <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
+              <button
+                onClick={handlePurchaseLicense}
+                disabled={generatingCode || !codeForm.accountNumber}
+                className="group relative w-full sm:w-auto bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-white font-bold py-4 px-8 rounded-2xl transition-all duration-300 flex items-center justify-center shadow-2xl hover:shadow-yellow-500/25 transform hover:-translate-y-1 hover:scale-105 disabled:from-gray-400 disabled:to-gray-500 disabled:transform-none disabled:shadow-none"
               >
-                <option value="exness">Exness</option>
-                <option value="xm">XM</option>
-                <option value="ic-markets">IC Markets</option>
-                <option value="pepperstone">Pepperstone</option>
-                <option value="fxpro">FxPro</option>
-                <option value="other">Other</option>
-              </select>
+                <div className="absolute inset-0 bg-gradient-to-r from-yellow-300 to-orange-400 rounded-2xl blur opacity-30 group-hover:opacity-40 transition duration-300"></div>
+                <div className="relative flex items-center">
+                  {generatingCode ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-3 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span className="text-lg">{t('purchasing_license')}</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-6 h-6 mr-3 group-hover:rotate-12 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      <span className="text-lg">{t('purchase_license_now')}</span>
+                    </>
+                  )}
+                </div>
+              </button>
+              
+              <div className="flex items-center text-purple-200 text-sm">
+                <svg className="w-4 h-4 mr-2 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                {t('instant_activation')}
+              </div>
             </div>
 
-            {/* Plan Selection */}
-            <div>
-              <label className="block text-yellow-100 text-sm font-medium mb-2">
-                Subscription Plan
-              </label>
-              <select
-                name="plan"
-                value={codeForm.plan}
-                onChange={handleCodeFormChange}
-                className="w-full px-4 py-3 rounded-lg bg-white/90 text-gray-900 focus:ring-2 focus:ring-white focus:bg-white transition duration-200"
-              >
-                <option value="30">30 Days - $99</option>
-                <option value="60">60 Days - $189</option>
-                <option value="90">90 Days - $269</option>
-              </select>
-            </div>
-          </div>
-
-          <button
-            onClick={handlePurchaseLicense}
-            disabled={generatingCode || !codeForm.accountNumber}
-            className="w-full md:w-auto bg-white text-yellow-600 font-bold py-4 px-8 rounded-lg hover:bg-yellow-50 disabled:bg-gray-300 disabled:text-gray-500 transition duration-200 flex items-center justify-center shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-          >
-            {generatingCode ? (
-              <>
-                <svg
-                  className="animate-spin -ml-1 mr-3 h-6 w-6"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-                Purchasing License...
-              </>
-            ) : (
-              <>
-                <svg
-                  className="w-6 h-6 mr-2"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"
-                  ></path>
-                </svg>
-                Purchase License
-              </>
+            {generatedCode && (
+              <div className="mt-8 bg-gradient-to-r from-white/10 to-white/5 backdrop-blur-sm rounded-2xl border border-white/20 shadow-2xl overflow-hidden">
+                <div className="bg-gradient-to-r from-green-400/20 to-emerald-400/20 px-6 py-4 border-b border-white/10">
+                  <div className="flex items-center">
+                    <div className="w-10 h-10 bg-gradient-to-br from-green-400 to-emerald-500 rounded-xl flex items-center justify-center mr-4">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-xl text-white mb-1">{t('license_created_success')}</h3>
+                      <p className="text-green-200 text-sm">{t('license_ready_for_payment_activation')}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="p-6">
+                  <div className="bg-gradient-to-r from-gray-900/50 to-gray-800/50 rounded-xl p-4 border border-gray-600/30">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-purple-200 text-sm font-medium">{t('license_code')}</span>
+                      <button 
+                        onClick={() => navigator.clipboard.writeText(generatedCode)}
+                        className="text-purple-300 hover:text-white transition-colors duration-200 p-1 rounded-lg hover:bg-white/10"
+                        title={t('copy_to_clipboard')}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="bg-black/30 rounded-lg p-4 font-mono text-2xl font-bold tracking-wider text-center text-white border border-gray-500/30">
+                      {generatedCode}
+                    </div>
+                  </div>
+                  <div className="mt-4 flex items-center justify-center space-x-4 text-sm">
+                    <div className="flex items-center text-purple-200">
+                      <svg className="w-4 h-4 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      {t('activate_within_24h')}
+                    </div>
+                    <div className="w-1 h-1 bg-purple-400 rounded-full"></div>
+                    <div className="flex items-center text-purple-200">
+                      <svg className="w-4 h-4 mr-2 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.99-4.99v0A9 9 0 1120 12h-4" />
+                      </svg>
+                      {t('secure_payment_required')}
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
-          </button>
-
-          {generatedCode && (
-            <div className="mt-6 bg-white/20 rounded-lg p-4">
-              <h3 className="font-bold text-lg mb-2">License Created:</h3>
-              <div className="bg-white/30 rounded p-3 font-mono text-xl font-bold tracking-wider">
-                {generatedCode}
-              </div>
-              <p className="text-yellow-100 text-sm mt-2">
-                Complete payment to activate your license
-              </p>
-            </div>
-          )}
+          </div>
         </div>
 
         {/* My Trading Licenses Section */}
         <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">
-              My Trading Licenses
-            </h2>
+            <h2 className="text-2xl font-bold text-gray-900">{t('my_trading_licenses') || t('license_header')}</h2>
             <button
               onClick={fetchMyCodes}
               disabled={loadingCodes}
@@ -994,7 +951,7 @@ export default function LandingPage() {
                   ></path>
                 </svg>
               )}
-              Refresh
+              {t('refresh')}
             </button>
           </div>
 
@@ -1005,7 +962,7 @@ export default function LandingPage() {
                 <div className="text-2xl font-bold text-green-600">
                   {myCodes.filter((code) => code.status === 'activated').length}
                 </div>
-                <div className="text-sm text-green-700">Active Licenses</div>
+                <div className="text-sm text-green-700">{t('active_licenses')}</div>
               </div>
               <div className="bg-yellow-50 rounded-lg p-4">
                 <div className="text-2xl font-bold text-yellow-600">
@@ -1014,7 +971,7 @@ export default function LandingPage() {
                       .length
                   }
                 </div>
-                <div className="text-sm text-yellow-700">Pending Payment</div>
+                <div className="text-sm text-yellow-700">{t('pending_payment')}</div>
               </div>
               <div className="bg-gray-50 rounded-lg p-4">
                 <div className="text-2xl font-bold text-gray-600">
@@ -1025,7 +982,7 @@ export default function LandingPage() {
                     ).length
                   }
                 </div>
-                <div className="text-sm text-gray-700">Expired/Cancelled</div>
+                <div className="text-sm text-gray-700">{t('expired_cancelled')}</div>
               </div>
               <div className="bg-blue-50 rounded-lg p-4">
                 <div className="text-2xl font-bold text-blue-600">
@@ -1043,7 +1000,7 @@ export default function LandingPage() {
                     return expiringSoon
                   })()}
                 </div>
-                <div className="text-sm text-blue-700">Expiring Soon</div>
+                <div className="text-sm text-blue-700">{t('expiring_soon')}</div>
               </div>
             </div>
           )}
@@ -1063,42 +1020,22 @@ export default function LandingPage() {
                   d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                 ></path>
               </svg>
-              <p className="text-lg font-medium">
-                No trading licenses purchased yet
-              </p>
-              <p className="text-sm">
-                Purchase your first trading license above to get started
-              </p>
+              <p className="text-lg font-medium">{t('no_licenses_yet')}</p>
+              <p className="text-sm">{t('purchase_first_license_hint')}</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full table-auto">
                 <thead>
                   <tr className="bg-gray-50">
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                      License
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                      Platform
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                      Account
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                      Plan
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                      Status
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                      Expires
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                      Time Left
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                      Actions
-                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">{t('license_header')}</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">{t('platform_header')}</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">{t('account_header')}</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">{t('plan_header')}</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">{t('status_header')}</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">{t('expires_header')}</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">{t('time_left_header')}</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">{t('actions_header')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -1195,7 +1132,7 @@ export default function LandingPage() {
                                 )
                               })()
                             : code.status === 'pending_payment'
-                              ? 'Pay to activate'
+          ? t('pay_to_activate')
                               : '-'}
                         </td>
                         <td className="px-4 py-3 text-sm">
@@ -1229,9 +1166,7 @@ export default function LandingPage() {
                               )
                             })()
                           ) : code.status === 'pending_payment' ? (
-                            <span className="text-gray-400 text-xs">
-                              Pay to see countdown
-                            </span>
+                            <span className="text-gray-400 text-xs">{t('pay_to_see_countdown')}</span>
                           ) : (
                             <span className="text-gray-400">-</span>
                           )}
@@ -1242,18 +1177,14 @@ export default function LandingPage() {
                               onClick={() => handleExtendLicense(code)}
                               className="px-3 py-1 rounded text-xs transition duration-200 bg-green-500 hover:bg-green-600 text-white"
                             >
-                              Extend
+                              {t('extend')}
                             </button>
                           )}
                           {code.status === 'pending_payment' && (
-                            <span className="text-xs text-gray-400">
-                              Pay to extend
-                            </span>
+                            <span className="text-xs text-gray-400">{t('pay_to_activate')}</span>
                           )}
                           {code.status === 'expired' && (
-                            <span className="text-xs text-red-400">
-                              Expired
-                            </span>
+                            <span className="text-xs text-red-400">{t('expired')}</span>
                           )}
                         </td>
                       </tr>
@@ -1291,7 +1222,7 @@ export default function LandingPage() {
                         clipRule="evenodd"
                       />
                     </svg>
-                    Licenses Expiring Soon
+                    {t('licenses_expiring_soon')}
                   </h3>
                   <div className="space-y-2">
                     {expiringSoon.map((license) => {
@@ -1323,7 +1254,7 @@ export default function LandingPage() {
                               onClick={() => handleExtendLicense(license)}
                               className="px-3 py-1 rounded text-xs bg-orange-500 hover:bg-orange-600 text-white transition duration-200"
                             >
-                              Extend Now
+                              {t('extend_now')}
                             </button>
                           </div>
                         </div>
@@ -1412,7 +1343,7 @@ export default function LandingPage() {
 
       {/* Extend Code Modal */}
       {showExtendModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+  <div className="fixed inset-0 bg-gradient-to-br from-black/40 via-gray-800/30 to-black/40 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full mx-4">
             <div className="text-center mb-6">
               <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4">
@@ -1430,17 +1361,15 @@ export default function LandingPage() {
                   />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-gray-900 mb-2">
-                Extend Trading License
-              </h3>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">{t('extend_trading_license')}</h3>
               <p className="text-gray-600 mb-4">
-                Code:{' '}
+                {t('code_label')}{' '}
                 <span className="font-mono font-bold text-blue-600">
                   {selectedCode?.code}
                 </span>
               </p>
               <p className="text-sm text-gray-500 mb-4">
-                Current Plan: {selectedCode?.plan} days
+                {t('current_plan_label')} {selectedCode?.plan} {t('days')}
               </p>
             </div>
 
@@ -1450,7 +1379,7 @@ export default function LandingPage() {
                   htmlFor="extendPlan"
                   className="block text-sm font-medium text-gray-700 mb-2"
                 >
-                  Extension Plan *
+                  {t('extension_plan')}
                 </label>
                 <select
                   id="extendPlan"
@@ -1465,10 +1394,7 @@ export default function LandingPage() {
                   <option value="180">180 Days (Semi-Annual Extension)</option>
                   <option value="365">365 Days (Annual Extension)</option>
                 </select>
-                <p className="text-xs text-gray-500 mt-1">
-                  Select extension plan to add to your current trading license
-                  validity
-                </p>
+                <p className="text-xs text-gray-500 mt-1">{t('extension_plan_helper')}</p>
               </div>
 
               <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
@@ -1487,18 +1413,14 @@ export default function LandingPage() {
                     ></path>
                   </svg>
                   <div>
-                    <h3 className="text-sm font-medium text-orange-800 mb-1">
-                      Admin Approval Required
-                    </h3>
+                    <h3 className="text-sm font-medium text-orange-800 mb-1">{t('admin_approval_required')}</h3>
                     <div className="text-sm text-orange-700">
                       <ul className="list-disc list-inside space-y-1">
-                        <li>Extension request requires admin verification</li>
-                        <li>Request will be submitted for admin approval</li>
-                        <li>
-                          Extension takes effect only after admin approval
-                        </li>
-                        <li>You will receive notification once processed</li>
-                        <li>Extended codes maintain the same license key</li>
+                        <li>{t('extension_bullet_admin_verification')}</li>
+                        <li>{t('extension_bullet_request_submitted')}</li>
+                        <li>{t('extension_bullet_effect_after_approval')}</li>
+                        <li>{t('extension_bullet_receive_notification')}</li>
+                        <li>{t('extension_bullet_same_license_key')}</li>
                       </ul>
                     </div>
                   </div>
@@ -1515,7 +1437,7 @@ export default function LandingPage() {
                   }}
                   className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-4 rounded-lg transition duration-200"
                 >
-                  Cancel
+                  {t('cancel')}
                 </button>
                 <button
                   type="submit"
@@ -1543,10 +1465,10 @@ export default function LandingPage() {
                           d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                         ></path>
                       </svg>
-                      Extending...
+                      {t('extending')}
                     </>
                   ) : (
-                    'Submit Extension Request'
+                    t('submit_extension_request')
                   )}
                 </button>
               </div>
@@ -1584,6 +1506,64 @@ export default function LandingPage() {
           </div>
         ))}
       </div>
+
+      {/* Alert Modal */}
+      {alertModalVisible && (
+        <div className="fixed inset-0 bg-gradient-to-br from-black/50 via-gray-800/40 to-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full mx-4 transform transition-all duration-200">
+            <div className="text-center">
+              {/* Icon based on type */}
+              <div className={`mx-auto flex items-center justify-center h-12 w-12 rounded-full mb-4 ${
+                modalContent.type === 'error' ? 'bg-red-100' :
+                modalContent.type === 'success' ? 'bg-green-100' :
+                modalContent.type === 'warning' ? 'bg-yellow-100' :
+                'bg-blue-100'
+              }`}>
+                {modalContent.type === 'error' ? (
+                  <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                ) : modalContent.type === 'success' ? (
+                  <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : modalContent.type === 'warning' ? (
+                  <svg className="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                ) : (
+                  <svg className="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+              </div>
+              
+              {/* Title */}
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                {modalContent.title}
+              </h3>
+              
+              {/* Message */}
+              <div className="text-gray-600 mb-6 whitespace-pre-line text-sm leading-relaxed">
+                {modalContent.message}
+              </div>
+              
+              {/* OK Button */}
+              <button
+                onClick={hideModalAlert}
+                className={`w-full px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
+                  modalContent.type === 'error' ? 'bg-red-600 hover:bg-red-700 text-white' :
+                  modalContent.type === 'success' ? 'bg-green-600 hover:bg-green-700 text-white' :
+                  modalContent.type === 'warning' ? 'bg-yellow-600 hover:bg-yellow-700 text-white' :
+                  'bg-blue-600 hover:bg-blue-700 text-white'
+                }`}
+              >
+                {t('ok')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

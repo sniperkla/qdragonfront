@@ -1,10 +1,6 @@
 import { connectToDatabase } from '@/lib/mongodb'
 import mongoose from 'mongoose'
-import {
-  emitCustomerAccountUpdate,
-  emitNotificationToAdminAndClient,
-  emitExtensionRequestUpdate
-} from '@/lib/websocket'
+import { emitExtensionRequestUpdate, emitAdminNotification, emitCustomerAccountUpdate, emitCodesUpdate, emitNotificationToAdminAndClient } from '@/lib/websocket'
 
 // Extension Request Schema (updated to handle both CodeRequest and CustomerAccount sources)
 const ExtensionRequestSchema = new mongoose.Schema({
@@ -242,34 +238,44 @@ export async function PUT(request) {
           newExpiry: newExpiryThai
         })
 
-        // Emit WebSocket updates
+        // WebSocket emissions (approve)
         try {
-          await emitCustomerAccountUpdate(extensionRequest.userId.toString(), {
-            accountId: customerAccount._id,
-            license: extensionRequest.licenseCode,
-            expireDate: newExpiryThai,
-            status: 'valid',
-            action: 'extended',
-            extendedDays: extensionRequest.requestedDays,
-            extendedBy: 'admin'
-          })
-
+          let userId = null
+          if (extensionRequest.userId) {
+            userId = extensionRequest.userId.toString()
+          } else if (extensionRequest.codeId?.userId) {
+            userId = extensionRequest.codeId.userId.toString()
+          }
           await emitExtensionRequestUpdate({
-            requestId: extensionRequest._id,
-            licenseCode: extensionRequest.licenseCode,
             action: 'approved',
-            status: 'approved',
-            extendedDays: extensionRequest.requestedDays
+            requestId: extensionRequest._id.toString(),
+            licenseCode: extensionRequest.licenseCode,
+            extendedDays: extensionRequest.requestedDays,
+            newExpiry: newExpiryThai,
+            status: 'approved'
           })
-
-          await emitNotificationToAdminAndClient(
-            extensionRequest.userId.toString(),
-            `🎉 Your extension request for ${extensionRequest.licenseCode} has been approved! Extended by ${extensionRequest.requestedDays} days.`,
-            'success'
-          )
-        } catch (wsError) {
-          console.error('WebSocket emission error:', wsError)
-          // Don't fail the main request if WebSocket fails
+          await emitAdminNotification(`Extension approved: ${extensionRequest.licenseCode} (+${extensionRequest.requestedDays} days)`, 'success')
+          if (userId) {
+            await emitCustomerAccountUpdate(userId, {
+              action: 'extended',
+              license: extensionRequest.licenseCode,
+              newExpiry: newExpiryThai,
+              daysAdded: extensionRequest.requestedDays
+            })
+            await emitCodesUpdate(userId, {
+              action: 'extended',
+              license: extensionRequest.licenseCode,
+              newExpiry: newExpiryThai,
+              daysAdded: extensionRequest.requestedDays
+            })
+            await emitNotificationToAdminAndClient(
+              userId,
+              `✅ Your license ${extensionRequest.licenseCode} was extended by ${extensionRequest.requestedDays} days (approved)`,
+              'success'
+            )
+          }
+        } catch (wsErr) {
+          console.warn('WebSocket approve emission failed:', wsErr.message)
         }
 
         return new Response(
@@ -305,24 +311,31 @@ export async function PUT(request) {
         reason: rejectionReason
       })
 
-      // Emit WebSocket notifications for rejection
+      // WebSocket emissions (reject)
       try {
         await emitExtensionRequestUpdate({
-          requestId: extensionRequest._id,
-          licenseCode: extensionRequest.licenseCode,
           action: 'rejected',
-          status: 'rejected',
-          rejectionReason: rejectionReason
+            requestId: extensionRequest._id.toString(),
+          licenseCode: extensionRequest.licenseCode,
+          reason: rejectionReason,
+          status: 'rejected'
         })
-
-        await emitNotificationToAdminAndClient(
-          extensionRequest.userId.toString(),
-          `❌ Your extension request for ${extensionRequest.licenseCode} has been rejected. Reason: ${rejectionReason}`,
-          'error'
-        )
-      } catch (wsError) {
-        console.error('WebSocket emission error:', wsError)
-        // Don't fail the main request if WebSocket fails
+        await emitAdminNotification(`Extension rejected: ${extensionRequest.licenseCode}`, 'warning')
+        let userId = null
+        if (extensionRequest.userId) {
+          userId = extensionRequest.userId.toString()
+        } else if (extensionRequest.codeId?.userId) {
+          userId = extensionRequest.codeId.userId.toString()
+        }
+        if (userId) {
+          await emitNotificationToAdminAndClient(
+            userId,
+            `⚠️ Extension request for ${extensionRequest.licenseCode} was rejected: ${rejectionReason}`,
+            'error'
+          )
+        }
+      } catch (wsErr) {
+        console.warn('WebSocket reject emission failed:', wsErr.message)
       }
 
       return new Response(
@@ -365,13 +378,23 @@ export async function DELETE(request) {
 
     await connectToDatabase()
 
-    const deletedRequest = await ExtensionRequest.findByIdAndDelete(requestId)
+  const requestDoc = await ExtensionRequest.findById(requestId)
+  const deletedRequest = await ExtensionRequest.findByIdAndDelete(requestId)
 
     if (!deletedRequest) {
       return new Response(
         JSON.stringify({ error: 'Extension request not found' }),
         { status: 404 }
       )
+    }
+
+    // Emit WebSocket to admin (and possibly user if we can resolve user from license)
+    try {
+      const { emitExtensionRequestUpdate, emitAdminNotification } = await import('@/lib/websocket')
+      await emitExtensionRequestUpdate({ action: 'deleted', requestId })
+      await emitAdminNotification(`Extension request ${requestId} deleted`, 'info')
+    } catch (emitErr) {
+      console.warn('WebSocket emission on extension delete failed (non-fatal):', emitErr.message)
     }
 
     return new Response(

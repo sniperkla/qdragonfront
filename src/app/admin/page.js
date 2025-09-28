@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAdminWebSocket } from '../../hooks/useWebSocket'
 import { useTranslation } from '../../hooks/useTranslation'
 
 export default function AdminPage() {
@@ -27,12 +26,10 @@ export default function AdminPage() {
     name: ''
   })
   const [confirmText, setConfirmText] = useState('')
-  const [autoRefresh, setAutoRefresh] = useState(true)
-  const [lastCodeCount, setLastCodeCount] = useState(0)
-  const [lastCustomerCount, setLastCustomerCount] = useState(0)
   const [newItemNotification, setNewItemNotification] = useState({
     show: false,
-    message: ''
+    message: '',
+    targetTab: null
   })
   const [toast, setToast] = useState({
     show: false,
@@ -73,46 +70,136 @@ export default function AdminPage() {
 
   const router = useRouter()
 
-  // WebSocket handlers
-  const handleExtensionUpdate = (data) => {
-    console.log('Received extension request update via WebSocket:', data)
-    // Refresh extension requests
-    fetchExtensionRequests()
-    // Also refresh customer accounts to show updated expiry dates
-    fetchAllCustomers()
-    showNotification(`📬 Extension request ${data.action}: ${data.licenseCode}`)
-  }
+  const [wsConnected, setWsConnected] = useState(false)
+  const [wsInitializing, setWsInitializing] = useState(false)
+  const [lastWsEvent, setLastWsEvent] = useState(null)
+  // Track current tab in ref for socket handlers without re-binding
+  const activeTabRef = useRef('codes')
+  useEffect(() => { activeTabRef.current = activeTab }, [activeTab])
 
-  const handleAdminNotification = (data) => {
-    console.log('Received admin notification via WebSocket:', data)
-    console.log('Showing toast with message:', data.message, 'type:', data.type)
-    showToast(data.message, data.type)
-  }
-
-  // Initialize WebSocket server on component mount
+  // WebSocket (reintroduced): initialize server then connect
   useEffect(() => {
-    const initWebSocket = async () => {
+    if (!isAuthenticated) return
+    let socket
+    let cancelled = false
+
+    const initAndConnect = async () => {
       try {
-        console.log('🔧 Initializing WebSocket server...')
-        const response = await fetch('/api/init/socketio', { method: 'GET' })
-        const data = await response.json()
-        if (data.success && data.initialized) {
-          console.log('✅ WebSocket server initialized successfully')
-        } else {
-          console.warn('⚠️ WebSocket server initialization failed:', data)
-        }
-      } catch (error) {
-        console.error('❌ Failed to initialize WebSocket server:', error)
+        setWsInitializing(true)
+        // Try to ensure server is up
+        await fetch('/api/init/socketio').catch(() => {})
+        const { io } = require('socket.io-client')
+        socket = io(
+          process.env.NODE_ENV === 'production'
+            ? process.env.NEXT_PUBLIC_APP_URL
+            : 'http://localhost:3000',
+          {
+            path: '/api/socketio',
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionAttempts: 10,
+            reconnectionDelay: 1000
+          }
+        )
+
+        socket.on('connect', () => {
+          if (cancelled) return
+          setWsConnected(true)
+          setWsInitializing(false)
+          socket.emit('join-admin')
+          // Initial full sync
+          fetchAllCodes()
+          fetchAllCustomers()
+          fetchExtensionRequests()
+        })
+
+        socket.on('disconnect', () => {
+          if (cancelled) return
+          setWsConnected(false)
+        })
+
+        // Code/license related updates
+        socket.on('codes-updated', (payload) => {
+          setLastWsEvent({ type: 'codes', ts: Date.now(), payload })
+          fetchAllCodes()
+        })
+        socket.on('customer-account-updated', () => {
+          setLastWsEvent({ type: 'customer-account', ts: Date.now() })
+          fetchAllCustomers()
+        })
+        socket.on('extension-request-updated', (payload) => {
+          // Diagnostic logging to verify payload shape in production
+          try {
+            console.log('[WS] extension-request-updated payload:', payload)
+          } catch (e) {}
+          setLastWsEvent({ type: 'extension', ts: Date.now(), payload })
+          fetchExtensionRequests()
+          // Broaden auto-switch logic: treat as new if action === 'created', or status pending, or heuristic (has requestedDays but no processedAt)
+          const isLikelyNew = !!(
+            payload && (
+              payload.action === 'created' ||
+              payload.status === 'pending' ||
+              (!payload.action && !payload.processedAt && (payload.requestedDays || payload.extendDays))
+            )
+          )
+          if (isLikelyNew && activeTabRef.current !== 'extension-requests') {
+            showNotification('[EXTENSIONS] New extension request received')
+            setActiveTab('extension-requests')
+            playNotificationSound()
+          }
+        })
+        // Fallback broadcast listener if admin room not joined in time
+        socket.on('extension-request-updated-broadcast', (payload) => {
+          try { console.log('[WS] extension-request-updated-broadcast payload:', payload) } catch (e) {}
+          setLastWsEvent({ type: 'extension-broadcast', ts: Date.now(), payload })
+          fetchExtensionRequests()
+          const isLikelyNew = !!(
+            payload && (
+              payload.action === 'created' ||
+              payload.status === 'pending' ||
+              (!payload.action && !payload.processedAt && (payload.requestedDays || payload.extendDays))
+            )
+          )
+          if (isLikelyNew && activeTabRef.current !== 'extension-requests') {
+            showNotification('[EXTENSIONS] New extension request received')
+            setActiveTab('extension-requests')
+            playNotificationSound()
+          }
+        })
+        socket.on('extension-processed', () => {
+          setLastWsEvent({ type: 'extension-processed', ts: Date.now() })
+          fetchExtensionRequests()
+        })
+        socket.on('new-code-generated', (payload) => {
+          setLastWsEvent({ type: 'new-code', ts: Date.now(), payload })
+          fetchAllCodes()
+          // Auto-switch to Trading Codes tab if user currently viewing another tab
+          if (activeTabRef.current !== 'codes') {
+            showNotification('[CODES] New trading code added')
+            setActiveTab('codes')
+          }
+        })
+        socket.on('admin-notification', (data) => {
+          if (data?.message) {
+            showNotification(data.message)
+          }
+        })
+      } catch (e) {
+        setWsInitializing(false)
+        console.warn('WebSocket setup error', e)
       }
     }
-    initWebSocket()
-  }, [])
 
-  // WebSocket connection
-  const { isConnected: wsConnected } = useAdminWebSocket(
-    handleExtensionUpdate,
-    handleAdminNotification
-  )
+    initAndConnect()
+
+    return () => {
+      cancelled = true
+      if (socket) {
+        socket.disconnect()
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated])
 
   // Format date to Thai Buddhist Era format with time
   const formatThaiDateTime = (dateString) => {
@@ -140,7 +227,7 @@ export default function AdminPage() {
           fetchExtensionRequests()
         }
       } catch (error) {
-        console.error('Admin auth check failed:', error)
+        // Auth check failed - handled by loading state
       } finally {
         setLoading(false)
       }
@@ -149,19 +236,31 @@ export default function AdminPage() {
   }, [])
 
   // Notification functions
+  // Map message tokens to tabs
+  const resolveTabFromMessage = (msg = '') => {
+    const lower = msg.toLowerCase()
+    if (lower.includes('[codes]') || lower.includes('trading code') || lower.includes('license purchase') || lower.includes('new trading code')) return 'codes'
+    if (lower.includes('[customers]') || lower.includes('customer account')) return 'customers'
+    if (lower.includes('[extensions]') || lower.includes('extension request')) return 'extension-requests'
+    if (lower.includes('[create]')) return 'create-account'
+    return null
+  }
+
   const showNotification = (message) => {
-    setNewItemNotification({ show: true, message })
+    const targetTab = resolveTabFromMessage(message)
+    setNewItemNotification({ show: true, message, targetTab })
     // Auto-hide notification after 5 seconds
     setTimeout(() => {
-      setNewItemNotification({ show: false, message: '' })
+      setNewItemNotification((prev) => prev.show ? { show: false, message: '', targetTab: null } : prev)
     }, 5000)
   }
 
   const showToast = (message, type = 'success') => {
-    setToast({ show: true, message, type })
-    // Auto-hide toast after 3 seconds
+    const targetTab = resolveTabFromMessage(message)
+    setToast({ show: true, message, type, targetTab })
+    // Auto-hide toast after 3 seconds unless hovered
     setTimeout(() => {
-      setToast({ show: false, message: '', type: 'success' })
+      setToast((prev) => prev.show ? { show: false, message: '', type: 'success' } : prev)
     }, 3000)
   }
 
@@ -186,72 +285,9 @@ export default function AdminPage() {
       oscillator.start(audioContext.currentTime)
       oscillator.stop(audioContext.currentTime + 0.3)
     } catch (error) {
-      console.log('Could not play notification sound:', error)
+      // Audio not available - silent fallback
     }
   }
-
-  // Auto-refresh functionality for real-time updates
-  useEffect(() => {
-    let interval
-
-    if (isAuthenticated && autoRefresh) {
-      interval = setInterval(async () => {
-        try {
-          // Silently fetch updated data
-          const [codesResponse, customersResponse] = await Promise.all([
-            fetch('/api/admin/codes', { credentials: 'include' }),
-            fetch('/api/admin/customers', { credentials: 'include' })
-          ])
-
-          if (codesResponse.ok && customersResponse.ok) {
-            const codesData = await codesResponse.json()
-            const customersData = await customersResponse.json()
-
-            // Check for new codes
-            if (
-              codesData.codes &&
-              codesData.codes.length > lastCodeCount &&
-              lastCodeCount > 0
-            ) {
-              const newCodesCount = codesData.codes.length - lastCodeCount
-              showNotification(
-                `🆕 ${newCodesCount} new trading code${newCodesCount > 1 ? 's' : ''} generated!`
-              )
-              // Play notification sound
-              playNotificationSound()
-            }
-
-            // Check for new customers
-            if (
-              customersData.accounts &&
-              customersData.accounts.length > lastCustomerCount &&
-              lastCustomerCount > 0
-            ) {
-              const newCustomersCount =
-                customersData.accounts.length - lastCustomerCount
-              showNotification(
-                `🎉 ${newCustomersCount} new customer account${newCustomersCount > 1 ? 's' : ''} activated!`
-              )
-              // Play notification sound
-              playNotificationSound()
-            }
-
-            // Update state
-            setCodes(codesData.codes || [])
-            setCustomers(customersData.accounts || [])
-            setLastCodeCount(codesData.codes?.length || 0)
-            setLastCustomerCount(customersData.accounts?.length || 0)
-          }
-        } catch (error) {
-          console.error('Auto-refresh error:', error)
-        }
-      }, 10000) // Check every 10 seconds (reduced server load)
-    }
-
-    return () => {
-      if (interval) clearInterval(interval)
-    }
-  }, [isAuthenticated, autoRefresh, lastCodeCount, lastCustomerCount])
 
   const handleAdminLogin = async (e) => {
     e.preventDefault()
@@ -275,7 +311,6 @@ export default function AdminPage() {
         showToast(t('invalid_admin_key'), 'error')
       }
     } catch (error) {
-      console.error('Admin login error:', error)
       showToast(t('login') + ' failed', 'error')
     } finally {
       setLoading(false)
@@ -283,6 +318,7 @@ export default function AdminPage() {
   }
 
   const fetchAllCodes = async () => {
+    console.log('🔄 fetchAllCodes called - refreshing codes table...')
     setLoadingCodes(true)
     try {
       const response = await fetch('/api/admin/codes', {
@@ -291,16 +327,21 @@ export default function AdminPage() {
       if (response.ok) {
         const data = await response.json()
         setCodes(data.codes)
-        setLastCodeCount(data.codes?.length || 0)
+        console.log(
+          '✅ Codes table updated with',
+          data.codes?.length || 0,
+          'codes'
+        )
       }
     } catch (error) {
-      console.error('Error fetching codes:', error)
+      console.error('❌ Error fetching codes:', error)
     } finally {
       setLoadingCodes(false)
     }
   }
 
   const fetchAllCustomers = async () => {
+    console.log('🔄 fetchAllCustomers called - refreshing customers table...')
     setLoadingCustomers(true)
     try {
       const response = await fetch('/api/admin/customers', {
@@ -309,10 +350,14 @@ export default function AdminPage() {
       if (response.ok) {
         const data = await response.json()
         setCustomers(data.accounts)
-        setLastCustomerCount(data.accounts?.length || 0)
+        console.log(
+          '✅ Customers table updated with',
+          data.accounts?.length || 0,
+          'accounts'
+        )
       }
     } catch (error) {
-      console.error('Error fetching customers:', error)
+      console.error('❌ Error fetching customers:', error)
     } finally {
       setLoadingCustomers(false)
     }
@@ -351,11 +396,6 @@ export default function AdminPage() {
 
         // If customer account was created, add it directly to the state
         if (data.customerAccountCreated && data.customerAccount) {
-          console.log(
-            'Adding new customer account to state:',
-            data.customerAccount
-          )
-
           // Add the new customer account to the customers list immediately
           setCustomers((prev) => [data.customerAccount, ...prev])
 
@@ -373,7 +413,6 @@ export default function AdminPage() {
         showToast('Failed to update status', 'error')
       }
     } catch (error) {
-      console.error('Error updating status:', error)
       showToast('Update failed', 'error')
     } finally {
       setUpdating((prev) => ({ ...prev, [codeId]: false }))
@@ -411,7 +450,6 @@ export default function AdminPage() {
         showToast('Failed to update customer status', 'error')
       }
     } catch (error) {
-      console.error('Error updating customer status:', error)
       showToast('Update failed', 'error')
     } finally {
       setUpdating((prev) => ({ ...prev, [accountId]: false }))
@@ -458,7 +496,6 @@ export default function AdminPage() {
         showToast('Failed to delete', 'error')
       }
     } catch (error) {
-      console.error('Error deleting:', error)
       showToast('Delete failed', 'error')
     } finally {
       setUpdating((prev) => ({ ...prev, [id]: false }))
@@ -482,7 +519,7 @@ export default function AdminPage() {
         setExtensionRequests(data.requests)
       }
     } catch (error) {
-      console.error('Error fetching extension requests:', error)
+      // Error handled by UI state
     } finally {
       setLoadingExtensions(false)
     }
@@ -513,7 +550,6 @@ export default function AdminPage() {
         showToast(data.error || 'Failed to approve extension', 'error')
       }
     } catch (error) {
-      console.error('Error approving extension:', error)
       showToast('Failed to approve extension', 'error')
     } finally {
       setProcessingExtension((prev) => ({ ...prev, [requestId]: false }))
@@ -565,7 +601,6 @@ export default function AdminPage() {
         showToast(data.error || 'Failed to reject extension', 'error')
       }
     } catch (error) {
-      console.error('Error rejecting extension:', error)
       showToast('Failed to reject extension', 'error')
     } finally {
       setProcessingExtension((prev) => ({
@@ -641,7 +676,6 @@ export default function AdminPage() {
         showToast(data.error || 'Failed to extend license', 'error')
       }
     } catch (error) {
-      console.error('Error extending license:', error)
       showToast('Network error. Please try again.', 'error')
     } finally {
       setExtendModal((prev) => ({ ...prev, extendingCode: false }))
@@ -694,7 +728,6 @@ export default function AdminPage() {
         showToast(data.error || 'Failed to generate license', 'error')
       }
     } catch (error) {
-      console.error('Error generating license:', error)
       showToast('Failed to generate license', 'error')
     } finally {
       setCreatingAccount(false)
@@ -706,6 +739,24 @@ export default function AdminPage() {
       ...prev,
       [field]: value
     }))
+  }
+
+  // Manual refresh function (real-time updates handled via WebSocket events)
+  const refreshAllTables = async () => {
+    try {
+      console.log('🔄 Manual refreshing all tables...')
+      await Promise.all([
+        fetchAllCodes(),
+        fetchAllCustomers(),
+        fetchExtensionRequests()
+      ])
+      showToast('Tables refreshed successfully!', 'success')
+      showNotification('📊 Tables refreshed successfully!')
+      playNotificationSound()
+    } catch (error) {
+      console.error('Error refreshing tables:', error)
+      showToast('Error refreshing tables', 'error')
+    }
   }
 
   const filteredCodes = codes.filter((code) => {
@@ -752,7 +803,10 @@ export default function AdminPage() {
               Q-DRAGON {t('admin_panel')}
             </h1>
             <p className="text-gray-600">
-              {t('enter_admin_key')} {language === 'th' ? 'เพื่อเข้าถึงระบบจัดการการชำระเงิน' : 'to access payment management'}
+              {t('enter_admin_key')}{' '}
+              {language === 'th'
+                ? 'เพื่อเข้าถึงระบบจัดการการชำระเงิน'
+                : 'to access payment management'}
             </p>
           </div>
 
@@ -762,8 +816,8 @@ export default function AdminPage() {
               <button
                 onClick={() => changeLanguage('th')}
                 className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                  language === 'th' 
-                    ? 'bg-white text-yellow-600 shadow-sm' 
+                  language === 'th'
+                    ? 'bg-white text-yellow-600 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
@@ -772,8 +826,8 @@ export default function AdminPage() {
               <button
                 onClick={() => changeLanguage('en')}
                 className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                  language === 'en' 
-                    ? 'bg-white text-yellow-600 shadow-sm' 
+                  language === 'en'
+                    ? 'bg-white text-yellow-600 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
@@ -825,20 +879,24 @@ export default function AdminPage() {
                 Q-DRAGON {t('admin_panel')}
               </h1>
               <p className="text-gray-600">
-                {language === 'th' ? 'จัดการการชำระเงินและการเปิดใช้งานรหัสเทรดดิ้ง' : 'Manage trading code payments and activations'}
+                {language === 'th'
+                  ? 'จัดการการชำระเงินและการเปิดใช้งานรหัสเทรดดิ้ง'
+                  : 'Manage trading code payments and activations'}
               </p>
               <div className="flex items-center justify-between mt-2">
                 <div className="flex items-center">
-                  <div
-                    className={`w-2 h-2 rounded-full mr-2 ${wsConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}
-                  ></div>
-                  <span
-                    className={`text-sm ${wsConnected ? 'text-green-600' : 'text-red-600'}`}
-                  >
-                    {wsConnected
-                      ? t('websocket_connected')
-                      : t('websocket_disconnected')}
+                  <div className={`w-2 h-2 rounded-full mr-2 ${wsInitializing ? 'bg-yellow-400 animate-pulse' : wsConnected ? 'bg-green-500 animate-pulse' : 'bg-red-400'}`}></div>
+                  <span className="text-sm text-gray-600">
+                    {wsInitializing ? 'Connecting...' : wsConnected ? 'Live (WebSocket)' : 'Offline'}
                   </span>
+                  {!wsConnected && !wsInitializing && (
+                    <button
+                      onClick={() => window.location.reload()}
+                      className="ml-2 px-2 py-1 text-xs bg-gray-200 hover:bg-gray-300 rounded"
+                    >
+                      Retry
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -848,8 +906,8 @@ export default function AdminPage() {
                 <button
                   onClick={() => changeLanguage('th')}
                   className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                    language === 'th' 
-                      ? 'bg-white text-yellow-600 shadow-sm' 
+                    language === 'th'
+                      ? 'bg-white text-yellow-600 shadow-sm'
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
@@ -858,31 +916,16 @@ export default function AdminPage() {
                 <button
                   onClick={() => changeLanguage('en')}
                   className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                    language === 'en' 
-                      ? 'bg-white text-yellow-600 shadow-sm' 
+                    language === 'en'
+                      ? 'bg-white text-yellow-600 shadow-sm'
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
                   EN
                 </button>
               </div>
-              
-              <label className="flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={autoRefresh}
-                  onChange={(e) => setAutoRefresh(e.target.checked)}
-                  className="sr-only"
-                />
-                <div
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${autoRefresh ? 'bg-green-600' : 'bg-gray-300'}`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${autoRefresh ? 'translate-x-6' : 'translate-x-1'}`}
-                  />
-                </div>
-                <span className="ml-2 text-sm text-gray-700">{t('auto_refresh')}</span>
-              </label>
+
+              {/* Auto-refresh removed - using real-time WebSocket updates */}
               <button
                 onClick={() => {
                   fetch('/api/admin/logout', {
@@ -997,7 +1040,7 @@ export default function AdminPage() {
                         ></path>
                       </svg>
                     )}
-                    Refresh
+                    {t('refresh')}
                   </button>
 
                   <select
@@ -1005,9 +1048,16 @@ export default function AdminPage() {
                     onChange={(e) => setFilter(e.target.value)}
                     className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500"
                   >
-                    <option value="all">{t('all')} {t('status')}</option>
-                    <option value="pending_payment">{t('pending')} {language === 'th' ? 'การชำระเงิน' : 'Payment'}</option>
-                    <option value="paid">{language === 'th' ? 'ชำระแล้ว' : 'Paid'}</option>
+                    <option value="all">
+                      {t('all')} {t('status')}
+                    </option>
+                    <option value="pending_payment">
+                      {t('pending')}{' '}
+                      {language === 'th' ? 'การชำระเงิน' : 'Payment'}
+                    </option>
+                    <option value="paid">
+                      {language === 'th' ? 'ชำระแล้ว' : 'Paid'}
+                    </option>
                     <option value="activated">{t('activated')}</option>
                     <option value="expired">{t('expired')}</option>
                     <option value="cancelled">{t('cancelled')}</option>
@@ -1016,7 +1066,11 @@ export default function AdminPage() {
 
                 <input
                   type="text"
-                  placeholder={language === 'th' ? 'ค้นหาตามรหัส, ชื่อผู้ใช้, หรือบัญชี...' : 'Search by code, username, or account...'}
+                  placeholder={
+                    language === 'th'
+                      ? 'ค้นหาตามรหัส, ชื่อผู้ใช้, หรือบัญชี...'
+                      : 'Search by code, username, or account...'
+                  }
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 min-w-64"
@@ -1161,7 +1215,7 @@ export default function AdminPage() {
                                 disabled={updating[code._id]}
                                 className="bg-gray-800 hover:bg-gray-900 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
                               >
-                                {updating[code._id] ? '...' : 'Delete'}
+                                {updating[code._id] ? '...' : t('delete')}
                               </button>
                             )}
                           </div>
@@ -1243,7 +1297,7 @@ export default function AdminPage() {
                         ></path>
                       </svg>
                     )}
-                    Refresh
+                    {t('refresh')}
                   </button>
 
                   <select
@@ -1251,16 +1305,26 @@ export default function AdminPage() {
                     onChange={(e) => setCustomerFilter(e.target.value)}
                     className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500"
                   >
-                    <option value="all">{t('all')} {t('status')}</option>
-                    <option value="valid">{language === 'th' ? 'ใช้งานได้' : 'Valid'}</option>
+                    <option value="all">
+                      {t('all')} {t('status')}
+                    </option>
+                    <option value="valid">
+                      {language === 'th' ? 'ใช้งานได้' : 'Valid'}
+                    </option>
                     <option value="expired">{t('expired')}</option>
-                    <option value="suspended">{language === 'th' ? 'ระงับ' : 'Suspended'}</option>
+                    <option value="suspended">
+                      {language === 'th' ? 'ระงับ' : 'Suspended'}
+                    </option>
                   </select>
                 </div>
 
                 <input
                   type="text"
-                  placeholder={language === 'th' ? 'ค้นหาตามชื่อผู้ใช้หรือใบอนุญาต...' : 'Search by username or license...'}
+                  placeholder={
+                    language === 'th'
+                      ? 'ค้นหาตามชื่อผู้ใช้หรือใบอนุญาต...'
+                      : 'Search by username or license...'
+                  }
                   value={customerSearch}
                   onChange={(e) => setCustomerSearch(e.target.value)}
                   className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 min-w-64"
@@ -1284,13 +1348,17 @@ export default function AdminPage() {
                       {count}
                     </div>
                     <div className="text-sm text-gray-600 capitalize">
-                      {status === 'all' 
-                        ? (language === 'th' ? 'ลูกค้าทั้งหมด' : 'Total Customers')
-                        : (language === 'th' && status === 'valid' ? 'ใช้งานได้' :
-                           language === 'th' && status === 'expired' ? 'หมดอายุ' :
-                           language === 'th' && status === 'suspended' ? 'ระงับ' :
-                           status)
-                      }
+                      {status === 'all'
+                        ? language === 'th'
+                          ? 'ลูกค้าทั้งหมด'
+                          : 'Total Customers'
+                        : language === 'th' && status === 'valid'
+                          ? 'ใช้งานได้'
+                          : language === 'th' && status === 'expired'
+                            ? 'หมดอายุ'
+                            : language === 'th' && status === 'suspended'
+                              ? 'ระงับ'
+                              : status}
                     </div>
                   </div>
                 )
@@ -1413,7 +1481,7 @@ export default function AdminPage() {
                                   disabled={updating[customer._id]}
                                   className="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
                                 >
-                                  {updating[customer._id] ? '...' : 'Extend'}
+                                  {updating[customer._id] ? '...' : t('extend')}
                                 </button>
                               )}
                               {customer.status === 'valid' && (
@@ -1466,7 +1534,7 @@ export default function AdminPage() {
                                   disabled={updating[customer._id]}
                                   className="bg-gray-800 hover:bg-gray-900 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
                                 >
-                                  {updating[customer._id] ? '...' : 'Delete'}
+                                  {updating[customer._id] ? '...' : t('delete')}
                                 </button>
                               )}
                             </div>
@@ -1520,9 +1588,7 @@ export default function AdminPage() {
               <h2 className="text-2xl font-bold text-gray-900 mb-2">
                 {t('generate_license_key')}
               </h2>
-              <p className="text-gray-600">
-                {t('create_trading_license')}
-              </p>
+              <p className="text-gray-600">{t('create_trading_license')}</p>
             </div>
 
             <form
@@ -1662,21 +1728,11 @@ export default function AdminPage() {
                     </h3>
                     <div className="text-sm text-blue-700">
                       <ul className="list-disc list-inside space-y-1">
-                        <li>
-                          {t('unique_license_generated')}
-                        </li>
-                        <li>
-                          {t('immediately_activated')}
-                        </li>
-                        <li>
-                          {t('expiry_calculated')}
-                        </li>
-                        <li>
-                          {t('no_user_account')}
-                        </li>
-                        <li>
-                          {t('direct_trading_access')}
-                        </li>
+                        <li>{t('unique_license_generated')}</li>
+                        <li>{t('immediately_activated')}</li>
+                        <li>{t('expiry_calculated')}</li>
+                        <li>{t('no_user_account')}</li>
+                        <li>{t('direct_trading_access')}</li>
                         <li>
                           <strong>{t('extend_days_note')}</strong>
                         </li>
@@ -1801,7 +1857,7 @@ export default function AdminPage() {
                         ></path>
                       </svg>
                     )}
-                    Refresh
+                    {t('refresh')}
                   </button>
 
                   <select
@@ -1809,10 +1865,16 @@ export default function AdminPage() {
                     onChange={(e) => setExtensionFilter(e.target.value)}
                     className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500"
                   >
-                    <option value="all">{language === 'th' ? 'คำขอทั้งหมด' : 'All Requests'}</option>
+                    <option value="all">
+                      {language === 'th' ? 'คำขอทั้งหมด' : 'All Requests'}
+                    </option>
                     <option value="pending">{t('pending')}</option>
-                    <option value="approved">{language === 'th' ? 'อนุมัติแล้ว' : 'Approved'}</option>
-                    <option value="rejected">{language === 'th' ? 'ปฏิเสธแล้ว' : 'Rejected'}</option>
+                    <option value="approved">
+                      {language === 'th' ? 'อนุมัติแล้ว' : 'Approved'}
+                    </option>
+                    <option value="rejected">
+                      {language === 'th' ? 'ปฏิเสธแล้ว' : 'Rejected'}
+                    </option>
                   </select>
                 </div>
               </div>
@@ -1835,13 +1897,17 @@ export default function AdminPage() {
                       {count}
                     </div>
                     <div className="text-sm text-gray-600 capitalize">
-                      {status === 'all' 
-                        ? (language === 'th' ? 'คำขอทั้งหมด' : 'Total Requests')
-                        : (language === 'th' && status === 'pending' ? 'รอดำเนินการ' :
-                           language === 'th' && status === 'approved' ? 'อนุมัติแล้ว' :
-                           language === 'th' && status === 'rejected' ? 'ปฏิเสธแล้ว' :
-                           status)
-                      }
+                      {status === 'all'
+                        ? language === 'th'
+                          ? 'คำขอทั้งหมด'
+                          : 'Total Requests'
+                        : language === 'th' && status === 'pending'
+                          ? 'รอดำเนินการ'
+                          : language === 'th' && status === 'approved'
+                            ? 'อนุมัติแล้ว'
+                            : language === 'th' && status === 'rejected'
+                              ? 'ปฏิเสธแล้ว'
+                              : status}
                     </div>
                   </div>
                 )
@@ -1928,7 +1994,7 @@ export default function AdminPage() {
                                   >
                                     {processingExtension[request._id]
                                       ? '...'
-                                      : 'Approve'}
+                                      : t('approve')}
                                   </button>
                                   <button
                                     onClick={() =>
@@ -1942,7 +2008,7 @@ export default function AdminPage() {
                                   >
                                     {processingExtension[request._id]
                                       ? '...'
-                                      : 'Reject'}
+                                      : t('reject')}
                                   </button>
                                 </>
                               )}
@@ -2004,7 +2070,7 @@ export default function AdminPage() {
 
       {/* Rejection Reason Modal */}
       {rejectionModal.show && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+  <div className="fixed inset-0 bg-gradient-to-br from-black/40 via-gray-800/30 to-black/40 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full mx-4">
             <div className="text-center mb-6">
               <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
@@ -2115,8 +2181,8 @@ export default function AdminPage() {
 
       {/* Admin Extend Modal */}
       {extendModal.show && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full mx-4">
+  <div className="fixed inset-0 bg-gradient-to-br from-black/40 via-gray-800/30 to-black/40 backdrop-blur-sm flex justify-center z-50 overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full mx-4 my-10 max-h-[90vh] overflow-y-auto">
             <div className="text-center mb-6">
               <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-purple-100 mb-4">
                 <svg
@@ -2336,7 +2402,7 @@ export default function AdminPage() {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmation.show && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+  <div className="fixed inset-0 bg-gradient-to-br from-black/40 via-gray-800/30 to-black/40 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full mx-4">
             <div className="text-center mb-6">
               <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
@@ -2418,7 +2484,15 @@ export default function AdminPage() {
       {/* Real-time Notification */}
       {newItemNotification.show && (
         <div className="fixed top-4 right-4 z-50">
-          <div className="bg-green-500 text-white px-6 py-4 rounded-lg shadow-lg border-l-4 border-green-600 animate-bounce">
+          <div
+            className={`bg-green-500 text-white px-6 py-4 rounded-lg shadow-lg border-l-4 border-green-600 animate-bounce ${newItemNotification.targetTab ? 'cursor-pointer hover:bg-green-600 transition-colors' : ''}`}
+            onClick={() => {
+              if (newItemNotification.targetTab) {
+                setActiveTab(newItemNotification.targetTab)
+                setNewItemNotification({ show: false, message: '', targetTab: null })
+              }
+            }}
+          >
             <div className="flex items-center">
               <svg
                 className="w-6 h-6 mr-3"
@@ -2436,17 +2510,18 @@ export default function AdminPage() {
               <div>
                 <p className="font-semibold">{newItemNotification.message}</p>
                 <p className="text-sm opacity-90">
-                  Check the tables below for details
+                  {newItemNotification.targetTab ? 'Click to open related tab' : 'Check the tables below for details'}
                 </p>
               </div>
               <button
-                onClick={() =>
-                  setNewItemNotification({ show: false, message: '' })
-                }
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setNewItemNotification({ show: false, message: '', targetTab: null })
+                }}
                 className="ml-4 text-white hover:text-gray-200"
               >
                 <svg
-                  className="w-5 h-5"
+                  className="w-4 h-4"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -2474,7 +2549,13 @@ export default function AdminPage() {
                 : toast.type === 'error'
                   ? 'bg-red-500 border-red-600 text-white'
                   : 'bg-blue-500 border-blue-600 text-white'
-            }`}
+            } ${toast.targetTab ? 'cursor-pointer hover:brightness-110 transition' : ''}`}
+            onClick={() => {
+              if (toast.targetTab) {
+                setActiveTab(toast.targetTab)
+                setToast({ show: false, message: '', type: 'success' })
+              }
+            }}
           >
             <div className="flex items-center">
               {toast.type === 'success' && (
@@ -2509,9 +2590,10 @@ export default function AdminPage() {
               )}
               <p className="font-medium">{toast.message}</p>
               <button
-                onClick={() =>
+                onClick={(e) => {
+                  e.stopPropagation()
                   setToast({ show: false, message: '', type: 'success' })
-                }
+                }}
                 className="ml-4 text-white hover:text-gray-200"
               >
                 <svg

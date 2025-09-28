@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server'
 import { connectToDatabase } from '@/lib/mongodb'
 import CustomerAccount from '@/lib/customerAccountModel'
-import {
-  emitCustomerAccountUpdate,
-  emitNotificationToAdminAndClient
-} from '@/lib/websocket'
+import { emitCodesUpdate, emitCustomerAccountUpdate, emitNotificationToAdminAndClient } from '@/lib/websocket'
 
 export async function POST(request) {
   try {
@@ -124,33 +121,32 @@ export async function POST(request) {
       newStatus: updateResult?.status
     })
 
-    // Emit WebSocket updates
+    // Emit WebSocket updates so landing page reflects new expiry automatically
     try {
-      // Find user associated with this customer account to emit to correct user
       const User = (await import('@/lib/userModel')).default
-      const user = await User.findOne({ username: customerAccount.user })
-
+      const user = await User.findOne({ username: customerAccount.user }, '_id')
       if (user) {
-        await emitCustomerAccountUpdate(user._id.toString(), {
-          accountId: customerAccount._id,
-          license: customerAccount.license,
-          expireDate: newExpiryThaiFormat,
-          status: 'valid',
+        const userId = user._id.toString()
+        await emitCustomerAccountUpdate(userId, {
           action: 'extended',
-          extendedDays: parseInt(extendDays),
-          extendedBy: 'admin'
+          license: customerAccount.license,
+          newExpiry: newExpiryThaiFormat,
+          daysAdded: parseInt(extendDays)
         })
-
-        // Send notification to both admin and the specific client
+        await emitCodesUpdate(userId, {
+          action: 'extended',
+          license: customerAccount.license,
+          newExpiry: newExpiryThaiFormat,
+          daysAdded: parseInt(extendDays)
+        })
         await emitNotificationToAdminAndClient(
-          user._id.toString(),
+          userId,
           `✅ License ${customerAccount.license} extended by ${extendDays} days`,
           'success'
         )
       }
     } catch (wsError) {
-      console.error('WebSocket emission error:', wsError)
-      // Don't fail the main request if WebSocket fails
+      console.error('WebSocket emission error (extend-customer):', wsError)
     }
 
     return NextResponse.json({

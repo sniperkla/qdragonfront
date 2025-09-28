@@ -4,7 +4,7 @@ import { sendVerificationEmail } from '@/lib/emailService'
 
 export async function POST(req) {
   try {
-    const { email } = await req.json()
+  const { email, language } = await req.json()
 
     if (!email) {
       return new Response(JSON.stringify({ error: 'Email is required' }), {
@@ -42,7 +42,8 @@ export async function POST(req) {
     const emailResult = await sendVerificationEmail(
       email,
       user.username,
-      verificationToken
+      verificationToken,
+      language || 'en'
     )
 
     if (!emailResult.success) {

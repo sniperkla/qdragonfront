@@ -5,7 +5,7 @@ import crypto from 'crypto'
 
 export async function POST(req) {
   try {
-    const { email } = await req.json()
+  const { email, language } = await req.json()
 
     // Input validation
     if (!email) {
@@ -77,7 +77,8 @@ export async function POST(req) {
     const emailResult = await sendPasswordResetEmail(
       user.email,
       user.username,
-      resetToken
+      resetToken,
+      language || 'en'
     )
 
     if (!emailResult.success) {

@@ -4,10 +4,7 @@ import CodeRequest from '@/lib/codeRequestModel'
 import CustomerAccount from '@/lib/customerAccountModel'
 import User from '@/lib/userModel'
 import mongoose from 'mongoose'
-import {
-  emitAdminNotification,
-  emitExtensionRequestUpdate
-} from '@/lib/websocket'
+import { emitExtensionRequestUpdate, emitAdminNotification } from '@/lib/websocket'
 
 // Extension Request Schema
 const ExtensionRequestSchema = new mongoose.Schema({
@@ -429,24 +426,21 @@ export async function POST(request) {
       currentExpiry: workingCustomerAccount.expireDate
     })
 
-    // Emit WebSocket updates to admin
+    // Emit WebSocket notifications so admin dashboard updates in real-time
     try {
-      await emitAdminNotification(
-        `New extension request: ${licenseCode} (${actualExtendDays} days) from ${user.username}`,
-        'info'
-      )
-
       await emitExtensionRequestUpdate({
-        requestId: extensionRequest._id,
-        licenseCode: licenseCode,
-        username: user.username,
-        requestedDays: parseInt(actualExtendDays),
         action: 'created',
+        requestId: extensionRequest._id.toString(),
+        licenseCode,
+        requestedDays: parseInt(actualExtendDays),
+        requestedPlan: extendPlan,
+        userId: authData.id,
+        username: user.username,
         status: 'pending'
       })
-    } catch (wsError) {
-      console.error('WebSocket emission error:', wsError)
-      // Don't fail the main request if WebSocket fails
+      await emitAdminNotification(`Extension request submitted for ${licenseCode} (+${actualExtendDays} days)`, 'info')
+    } catch (wsErr) {
+      console.warn('WebSocket emission failed (extend-license create):', wsErr.message)
     }
 
     return new Response(

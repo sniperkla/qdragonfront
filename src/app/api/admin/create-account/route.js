@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server'
 import mongoose from 'mongoose'
 import CustomerAccount from '../../../../lib/customerAccountModel'
-import {
-  emitCustomerAccountUpdate,
-  emitNotificationToAdminAndClient
-} from '@/lib/websocket'
+// WebSocket imports removed
 
 // Admin authentication middleware
 const verifyAdmin = async (request) => {
@@ -164,24 +161,7 @@ export async function POST(request) {
       const User = (await import('@/lib/userModel')).default
       const user = await User.findOne({ username })
 
-      if (user) {
-        await emitCustomerAccountUpdate(user._id.toString(), {
-          accountId: customerAccount._id,
-          license: customerAccount.license,
-          platform: customerAccount.platform,
-          accountNumber: customerAccount.accountNumber,
-          expireDate: customerAccount.expireDate,
-          status: 'valid',
-          action: 'created',
-          createdBy: 'admin'
-        })
-
-        await emitNotificationToAdminAndClient(
-          user._id.toString(),
-          `🎉 New license created for you: ${customerAccount.license}`,
-          'success'
-        )
-      }
+      // WebSocket emissions removed
     } catch (wsError) {
       console.error('WebSocket emission error:', wsError)
       // Don't fail the main request if WebSocket fails

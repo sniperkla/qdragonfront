@@ -22,7 +22,8 @@ const validateEmailConfig = () => {
 export const sendVerificationEmail = async (
   email,
   username,
-  verificationToken
+  verificationToken,
+  language = 'en'
 ) => {
   try {
     console.log('Attempting to send verification email to:', email)
@@ -32,17 +33,71 @@ export const sendVerificationEmail = async (
     // Validate configuration
     validateEmailConfig()
 
+    const lang = ['en', 'th'].includes(language) ? language : 'en'
+    const subjects = {
+      en: 'Verify Your Q-DRAGON Trading Account',
+      th: 'ยืนยันบัญชีเทรด Q-DRAGON ของคุณ'
+    }
+    const expiresText = {
+      en: 'This code expires in 24 hours',
+      th: 'โค้ดนี้หมดอายุภายใน 24 ชั่วโมง'
+    }
+    const welcomeHeadline = {
+      en: `Welcome to Q-DRAGON, ${username}!`,
+      th: `ยินดีต้อนรับสู่ Q-DRAGON, ${username}!`
+    }
+    const introParagraph = {
+      en: 'Thank you for registering with Q-DRAGON, the professional XAU/USD trading platform. To complete your account setup and start trading, please verify your email address.',
+      th: 'ขอบคุณที่ลงทะเบียนกับ Q-DRAGON แพลตฟอร์มเทรด XAU/USD ระดับมืออาชีพ กรุณายืนยันอีเมลเพื่อเริ่มใช้งานและเทรด'
+    }
+    const codeLabel = { en: 'Your Verification Code', th: 'โค้ดยืนยันของคุณ' }
+    const nextTitle = { en: "What's Next?", th: 'ขั้นตอนถัดไป' }
+    const nextItems = {
+      en: [
+        'Verify your email address',
+        'Complete your trader profile',
+        'Access professional XAU/USD trading tools',
+        'Start your gold trading journey'
+      ],
+      th: [
+        'ยืนยันอีเมลของคุณ',
+        'กรอกโปรไฟล์นักเทรดให้สมบูรณ์',
+        'เข้าถึงเครื่องมือเทรด XAU/USD ระดับมืออาชีพ',
+        'เริ่มต้นการเทรดทองคำ'
+      ]
+    }
+    const securityNoticeStrong = {
+      en: 'Security Notice:',
+      th: 'ประกาศด้านความปลอดภัย:'
+    }
+    const securityBody = {
+      en: 'Never share your verification code with anyone. Q-DRAGON staff will never ask for your verification code via phone or email.',
+      th: 'ห้ามเปิดเผยโค้ดยืนยันแก่ผู้อื่น ทีมงาน Q-DRAGON จะไม่สอบถามโค้ดยืนยันผ่านโทรศัพท์หรืออีเมล'
+    }
+    const footerLine = {
+      en: 'This email was sent to',
+      th: 'อีเมลนี้ถูกส่งไปยัง'
+    }
+    const ignoreLine = {
+      en: "If you didn't request this, please ignore this email.",
+      th: 'หากคุณไม่ได้ร้องขอให้เพิกเฉยอีเมลนี้'
+    }
+
+    const listItemsHtml = nextItems[lang]
+      .map((li) => `<li>${li}</li>`)
+      .join('')
+
     const emailData = {
       from: `Q-DRAGON Trading Platform <${process.env.EMAIL_FROM}>`,
       to: [email],
-      subject: 'Verify Your Q-DRAGON Trading Account',
+      subject: subjects[lang],
       html: `
         <!DOCTYPE html>
         <html>
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Verify Your Q-DRAGON Account</title>
+          <title>${subjects[lang]}</title>
         </head>
         <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f5f5f5;">
           <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 20px;">
@@ -57,44 +112,33 @@ export const sendVerificationEmail = async (
             
             <!-- Content -->
             <div style="padding: 0 20px;">
-              <h2 style="color: #333; margin-bottom: 20px;">Welcome to Q-DRAGON, ${username}!</h2>
-              
-              <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
-                Thank you for registering with Q-DRAGON, the professional XAU/USD trading platform. 
-                To complete your account setup and start trading, please verify your email address.
-              </p>
+              <h2 style="color: #333; margin-bottom: 20px;">${welcomeHeadline[lang]}</h2>
+              <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">${introParagraph[lang]}</p>
               
               <div style="background-color: #fef3c7; border: 1px solid #fbbf24; border-radius: 8px; padding: 20px; margin: 30px 0; text-align: center;">
-                <h3 style="color: #92400e; margin: 0 0 15px 0;">Your Verification Code</h3>
+                <h3 style="color: #92400e; margin: 0 0 15px 0;">${codeLabel[lang]}</h3>
                 <div style="font-size: 32px; font-weight: bold; color: #92400e; letter-spacing: 3px; font-family: monospace;">
                   ${verificationToken}
                 </div>
-                <p style="color: #92400e; margin: 15px 0 0 0; font-size: 14px;">
-                  This code expires in 24 hours
-                </p>
+                <p style="color: #92400e; margin: 15px 0 0 0; font-size: 14px;">${expiresText[lang]}</p>
               </div>
               
               <p style="color: #666; line-height: 1.6; margin-bottom: 30px;">
-                Enter this verification code on the verification page to activate your trading account.
-                If you didn't create an account with Q-DRAGON, please ignore this email.
+                ${lang === 'en'
+                  ? `Enter this verification code on the verification page to activate your trading account. If you didn't create an account with Q-DRAGON, please ignore this email.`
+                  : 'นำโค้ดยืนยันนี้ไปกรอกในหน้าการยืนยันเพื่อเปิดใช้งานบัญชี หากคุณไม่ได้สมัครสมาชิก โปรดเพิกเฉยอีเมลนี้'}
               </p>
               
               <!-- Features -->
               <div style="background-color: #f9fafb; border-radius: 8px; padding: 20px; margin: 30px 0;">
-                <h3 style="color: #333; margin: 0 0 15px 0;">What's Next?</h3>
-                <ul style="color: #666; line-height: 1.8; margin: 0; padding-left: 20px;">
-                  <li>Verify your email address</li>
-                  <li>Complete your trader profile</li>
-                  <li>Access professional XAU/USD trading tools</li>
-                  <li>Start your gold trading journey</li>
-                </ul>
+                <h3 style="color: #333; margin: 0 0 15px 0;">${nextTitle[lang]}</h3>
+                <ul style="color: #666; line-height: 1.8; margin: 0; padding-left: 20px;">${listItemsHtml}</ul>
               </div>
               
               <!-- Security Note -->
               <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 15px; margin: 20px 0;">
                 <p style="color: #991b1b; margin: 0; font-size: 14px;">
-                  <strong>Security Notice:</strong> Never share your verification code with anyone. 
-                  Q-DRAGON staff will never ask for your verification code via phone or email.
+                  <strong>${securityNoticeStrong[lang]}</strong> ${securityBody[lang]}
                 </p>
               </div>
             </div>
@@ -106,7 +150,7 @@ export const sendVerificationEmail = async (
                 Professional • Secure • Reliable
               </p>
               <p style="color: #9ca3af; font-size: 12px; margin: 10px 0 0 0;">
-                This email was sent to ${email}. If you didn't request this, please ignore this email.
+                ${footerLine[lang]} ${email}. ${ignoreLine[lang]}.
               </p>
             </div>
           </div>
@@ -147,7 +191,8 @@ export const sendVerificationEmail = async (
 export const sendPasswordResetEmail = async (
   email,
   username,
-  resetToken
+  resetToken,
+  language = 'en'
 ) => {
   try {
     console.log('Attempting to send password reset email to:', email)
@@ -158,17 +203,67 @@ export const sendPasswordResetEmail = async (
     // Create reset URL
     const resetUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`
 
+    const lang = ['en', 'th'].includes(language) ? language : 'en'
+    const subjects = {
+      en: 'Reset Your Q-DRAGON Password',
+      th: 'รีเซ็ตรหัสผ่าน Q-DRAGON ของคุณ'
+    }
+    const headline = { en: 'Password Reset Request', th: 'คำขอรีเซ็ตรหัสผ่าน' }
+    const greeting = {
+      en: `Hello ${username},`,
+      th: `สวัสดี ${username}`
+    }
+    const intro = {
+      en: 'We received a request to reset your password for your Q-DRAGON trading account. If you made this request, click the button below to reset your password.',
+      th: 'เราพบคำขอรีเซ็ตรหัสผ่านสำหรับบัญชี Q-DRAGON ของคุณ หากเป็นคุณที่ทำ กรุณาคลิกปุ่มด้านล่างเพื่อรีเซ็ต'
+    }
+    const buttonText = { en: 'Reset Password', th: 'รีเซ็ตรหัสผ่าน' }
+    const orCopy = {
+      en: 'Or copy and paste this link into your browser:',
+      th: 'หรือคัดลอกลิงก์นี้ไปวางในเบราว์เซอร์:'
+    }
+    const securityInfoTitle = { en: 'Security Information', th: 'ข้อมูลความปลอดภัย' }
+    const securityList = {
+      en: [
+        'This password reset link expires in 1 hour',
+        "If you didn't request this reset, please ignore this email",
+        'Never share your password reset link with anyone',
+        'Contact support if you have concerns about your account security'
+      ],
+      th: [
+        'ลิงก์รีเซ็ตรหัสผ่านหมดอายุภายใน 1 ชั่วโมง',
+        'หากไม่ได้เป็นผู้ร้องขอให้เพิกเฉยอีเมลนี้',
+        'อย่าแชร์ลิงก์รีเซ็ตรหัสผ่านให้ใคร',
+        'ติดต่อฝ่ายสนับสนุนหากกังวลเกี่ยวกับความปลอดภัยบัญชี'
+      ]
+    }
+    const footerNotice = {
+      en: 'If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.',
+      th: 'หากคุณไม่ได้ร้องขอการรีเซ็ตรหัสผ่าน สามารถเพิกเฉยอีเมลนี้ได้ รหัสผ่านของคุณจะยังไม่ถูกเปลี่ยน'
+    }
+    const footerLine = {
+      en: 'This email was sent to',
+      th: 'อีเมลนี้ถูกส่งไปยัง'
+    }
+    const ignoreLine = {
+      en: "If you didn't request this, please ignore this email.",
+      th: 'หากคุณไม่ได้ร้องขอให้เพิกเฉยอีเมลนี้'
+    }
+    const securityListHtml = securityList[lang]
+      .map((li) => `<li>${li}</li>`)
+      .join('')
+
     const emailData = {
       from: `Q-DRAGON Trading Platform <${process.env.EMAIL_FROM}>`,
       to: [email],
-      subject: 'Reset Your Q-DRAGON Password',
+      subject: subjects[lang],
       html: `
         <!DOCTYPE html>
         <html>
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Reset Your Q-DRAGON Password</title>
+          <title>${subjects[lang]}</title>
         </head>
         <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f5f5f5;">
           <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 20px;">
@@ -183,24 +278,15 @@ export const sendPasswordResetEmail = async (
             
             <!-- Content -->
             <div style="padding: 0 20px;">
-              <h2 style="color: #333; margin-bottom: 20px;">Password Reset Request</h2>
-              
-              <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
-                Hello ${username},<br><br>
-                We received a request to reset your password for your Q-DRAGON trading account. 
-                If you made this request, click the button below to reset your password.
-              </p>
+              <h2 style="color: #333; margin-bottom: 20px;">${headline[lang]}</h2>
+              <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">${greeting[lang]}<br><br>${intro[lang]}</p>
               
               <!-- Reset Button -->
               <div style="text-align: center; margin: 40px 0;">
-                <a href="${resetUrl}" style="display: inline-block; background: linear-gradient(135deg, #fbbf24, #f59e0b); color: white; text-decoration: none; padding: 15px 30px; border-radius: 8px; font-weight: bold; font-size: 16px;">
-                  Reset Password
-                </a>
+                <a href="${resetUrl}" style="display: inline-block; background: linear-gradient(135deg, #fbbf24, #f59e0b); color: white; text-decoration: none; padding: 15px 30px; border-radius: 8px; font-weight: bold; font-size: 16px;">${buttonText[lang]}</a>
               </div>
               
-              <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
-                Or copy and paste this link into your browser:
-              </p>
+              <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">${orCopy[lang]}</p>
               
               <div style="background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; margin: 20px 0; word-break: break-all;">
                 <a href="${resetUrl}" style="color: #f59e0b; text-decoration: none;">${resetUrl}</a>
@@ -208,19 +294,11 @@ export const sendPasswordResetEmail = async (
               
               <!-- Security Info -->
               <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 15px; margin: 30px 0;">
-                <h3 style="color: #991b1b; margin: 0 0 10px 0; font-size: 16px;">Security Information</h3>
-                <ul style="color: #991b1b; margin: 0; padding-left: 20px; font-size: 14px;">
-                  <li>This password reset link expires in 1 hour</li>
-                  <li>If you didn't request this reset, please ignore this email</li>
-                  <li>Never share your password reset link with anyone</li>
-                  <li>Contact support if you have concerns about your account security</li>
-                </ul>
+                <h3 style="color: #991b1b; margin: 0 0 10px 0; font-size: 16px;">${securityInfoTitle[lang]}</h3>
+                <ul style="color: #991b1b; margin: 0; padding-left: 20px; font-size: 14px;">${securityListHtml}</ul>
               </div>
               
-              <p style="color: #666; line-height: 1.6; margin-bottom: 30px; font-size: 14px;">
-                If you didn't request a password reset, you can safely ignore this email. 
-                Your password will remain unchanged.
-              </p>
+              <p style="color: #666; line-height: 1.6; margin-bottom: 30px; font-size: 14px;">${footerNotice[lang]}</p>
             </div>
             
             <!-- Footer -->
@@ -230,7 +308,7 @@ export const sendPasswordResetEmail = async (
                 Professional • Secure • Reliable
               </p>
               <p style="color: #9ca3af; font-size: 12px; margin: 10px 0 0 0;">
-                This email was sent to ${email}. If you didn't request this, please ignore this email.
+                ${footerLine[lang]} ${email}. ${ignoreLine[lang]}.
               </p>
             </div>
           </div>

@@ -121,7 +121,8 @@ export async function DELETE(req) {
 
     await connectToDatabase();
 
-    const deletedAccount = await CustomerAccount.findByIdAndDelete(accountId);
+  const accountToDelete = await CustomerAccount.findById(accountId);
+  const deletedAccount = await CustomerAccount.findByIdAndDelete(accountId);
 
     if (!deletedAccount) {
       return new Response(JSON.stringify({ error: 'Customer account not found' }), { status: 404 });
@@ -134,6 +135,29 @@ export async function DELETE(req) {
     } catch (codeError) {
       console.error('Error deleting associated code request:', codeError);
       // Don't fail the main request if code request deletion fails
+    }
+
+    // WebSocket notify user if possible
+    try {
+      if (accountToDelete) {
+        // Attempt to find userId by username (account.user stores username)
+        let userId = null;
+        try {
+          const User = (await import('@/lib/userModel')).default;
+          const u = await User.findOne({ username: accountToDelete.user }, '_id');
+          if (u) userId = u._id.toString();
+        } catch (uErr) {
+          console.warn('Lookup user for account delete emission failed:', uErr.message);
+        }
+        if (userId) {
+          const { emitCodesUpdate, emitCustomerAccountUpdate, emitNotificationToAdminAndClient } = await import('@/lib/websocket');
+          await emitCodesUpdate(userId, { action: 'account-deleted', license: accountToDelete.license });
+            await emitCustomerAccountUpdate(userId, { action: 'account-deleted', license: accountToDelete.license });
+          await emitNotificationToAdminAndClient(userId, `Your license account ${accountToDelete.license} was deleted by admin`, 'warning');
+        }
+      }
+    } catch (emitErr) {
+      console.warn('WebSocket emission on customer delete failed (non-fatal):', emitErr.message);
     }
 
     return new Response(JSON.stringify({

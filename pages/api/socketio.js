@@ -18,10 +18,17 @@ export function initializeSocketServer(httpServer) {
     transports: ['websocket', 'polling'],
     allowEIO3: true,
     cors: {
-      origin:
-        process.env.NODE_ENV === 'production'
-          ? process.env.NEXT_PUBLIC_APP_URL
-          : ['http://localhost:3000', 'http://127.0.0.1:3000'],
+      origin: (origin, callback) => {
+        // Allow localhost in dev, and reflect any origin in production if not explicitly set
+        const allowedDev = ['http://localhost:3000', 'http://127.0.0.1:3000']
+        const configuredProd = process.env.NEXT_PUBLIC_APP_URL
+        if (!origin) return callback(null, true) // Same-origin / server-side
+        if (allowedDev.includes(origin)) return callback(null, true)
+        if (configuredProd && origin === configuredProd) return callback(null, true)
+        // Fallback: allow temporarily (can tighten later)
+        console.warn('⚠️ Allowing dynamic origin (temporary):', origin)
+        return callback(null, true)
+      },
       methods: ['GET', 'POST'],
       credentials: true
     },
@@ -38,6 +45,11 @@ export function initializeSocketServer(httpServer) {
       io.engine.clientsCount
     )
 
+    // Debug: list current rooms right after connect
+    try {
+      console.log('🧪 Initial rooms for socket', socket.id, Array.from(socket.rooms || []))
+    } catch(_) {}
+
     // Handle connection errors
     socket.on('error', (error) => {
       console.error('🔌 Socket error:', error)
@@ -46,12 +58,16 @@ export function initializeSocketServer(httpServer) {
     // Join user-specific room
     socket.on('join-user', (userId) => {
       try {
-        console.log(`👤 User ${userId} joined room: user-${userId}`)
+        console.log(`👤 join-user received for userId=${userId} (socket ${socket.id})`)
         socket.join(`user-${userId}`)
         socket.userId = userId
         console.log(
           `📊 Room user-${userId} now has ${io.sockets.adapter.rooms.get(`user-${userId}`)?.size || 0} members`
         )
+        // Debug: show all rooms after join
+        try {
+          console.log('🧪 Rooms after join for socket', socket.id, Array.from(socket.rooms || []))
+        } catch(_) {}
 
         // Acknowledge successful room join
         socket.emit('room-joined', { room: `user-${userId}`, success: true })
@@ -97,6 +113,9 @@ export function initializeSocketServer(httpServer) {
         'Remaining clients:',
         io.engine.clientsCount
       )
+      try {
+        console.log('🧪 Rooms at disconnect for socket', socket.id, Array.from(socket.rooms || []))
+      } catch(_) {}
     })
   })
 

@@ -1,5 +1,6 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useTranslation } from '../../hooks/useTranslation'
 import { useRouter } from 'next/navigation'
 import { useDispatch } from 'react-redux'
 import { loginSuccess } from '../../store/slices/authSlice'
@@ -50,33 +51,33 @@ const debugLogger = {
 }
 
 export default function LoginPage() {
+  const { t, language, changeLanguage } = useTranslation()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [checkingAuth, setCheckingAuth] = useState(true)
+  const [authSlow, setAuthSlow] = useState(false)
+  const authAbortRef = useRef(null)
   const router = useRouter()
   const dispatch = useDispatch()
 
   // Check if user is already authenticated
   useEffect(() => {
+    const controller = new AbortController()
+    authAbortRef.current = controller
+    const timeoutId = setTimeout(() => setAuthSlow(true), 4000)
+
     const checkAuth = async () => {
       try {
         debugLogger.log('Checking existing authentication')
         const response = await fetch('/api/auth/me', {
-          credentials: 'include'
+          credentials: 'include',
+          signal: controller.signal
         })
-
         if (response.ok) {
           const data = await response.json()
-          debugLogger.log(
-            'User already authenticated, redirecting to landing',
-            {
-              username: data.user.username
-            }
-          )
-
-          // Update Redux state with user data from cookie
+          debugLogger.log('User already authenticated, redirecting to landing', { username: data.user.username })
           dispatch(
             loginSuccess({
               id: data.user.id,
@@ -84,25 +85,77 @@ export default function LoginPage() {
               email: data.user.username
             })
           )
-
-          // Redirect to landing page since user is already logged in
           router.push('/landing')
           return
         } else {
-          debugLogger.log(
-            'No existing authentication found, showing login form'
-          )
+          debugLogger.log('No existing authentication found, showing login form')
         }
       } catch (error) {
-        debugLogger.error('Auth check error', error)
-        // If there's an error checking auth, just show the login form
+        if (error.name === 'AbortError') {
+          debugLogger.log('Auth check aborted by user')
+        } else {
+          debugLogger.error('Auth check error', error)
+        }
       } finally {
         setCheckingAuth(false)
+        clearTimeout(timeoutId)
       }
     }
-
     checkAuth()
+
+    return () => {
+      controller.abort()
+      clearTimeout(timeoutId)
+    }
   }, [router, dispatch])
+
+  const retryAuthCheck = () => {
+    setCheckingAuth(true)
+    setAuthSlow(false)
+    // trigger effect by changing a dummy state? Simpler: replicate logic here.
+    const controller = new AbortController()
+    authAbortRef.current = controller
+    const timeoutId = setTimeout(() => setAuthSlow(true), 4000)
+    ;(async () => {
+      try {
+        debugLogger.log('Retrying authentication check')
+        const response = await fetch('/api/auth/me', {
+          credentials: 'include',
+          signal: controller.signal
+        })
+        if (response.ok) {
+          const data = await response.json()
+            debugLogger.log('User already authenticated (retry), redirecting to landing', { username: data.user.username })
+            dispatch(
+              loginSuccess({
+                id: data.user.id,
+                name: data.user.username,
+                email: data.user.username
+              })
+            )
+            router.push('/landing')
+            return
+        } else {
+          debugLogger.log('Retry auth: still unauthenticated')
+        }
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          debugLogger.log('Retry auth check aborted')
+        } else {
+          debugLogger.error('Retry auth check error', error)
+        }
+      } finally {
+        setCheckingAuth(false)
+        clearTimeout(timeoutId)
+      }
+    })()
+  }
+
+  const skipAuthCheck = () => {
+    if (authAbortRef.current) authAbortRef.current.abort()
+    setCheckingAuth(false)
+    setAuthSlow(false)
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -152,7 +205,7 @@ export default function LoginPage() {
         )
         const verifyUrl = `/verify-email?email=${encodeURIComponent(
           data.email
-        )}&username=${encodeURIComponent(data.username)}`
+        )}&username=${encodeURIComponent(data.username)}&lang=${language}`
         debugLogger.log('Verify URL created', { verifyUrl })
         router.push(verifyUrl)
       } else {
@@ -179,29 +232,21 @@ export default function LoginPage() {
     router.push('/forgot-password')
   }
 
-  // Show loading while checking authentication
-  if (checkingAuth) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="bg-white rounded-lg p-8 w-full max-w-md text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">กำลังตรวจสอบการเข้าสู่ระบบ...</p>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 to-purple-900 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-900 to-purple-900 flex items-center justify-center p-4 overflow-y-auto relative">
       {/* Background Image */}
-      <div className="absolute inset-0">
+      <div className="fixed inset-0 w-full h-full">
         <img
           src="/qdragon1.jpg"
           alt="Q-Dragon Background"
           className="w-full h-full object-cover object-center"
           style={{
             minHeight: '100vh',
-            minWidth: '100vw'
+            minWidth: '100vw',
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            zIndex: -1
           }}
         />
         {/* Dark overlay for better text readability */}
@@ -210,10 +255,20 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/10 via-transparent to-amber-500/10"></div>
       </div>
 
-      {/* Login Card */}
-      <div className="relative z-10 max-w-md w-full bg-white/5 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/30 ring-1 ring-white/20">
+  {/* Login Card (blur and dim if checking auth) */}
+  <div className={`relative z-10 max-w-md w-full bg-white/5 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/30 ring-1 ring-white/20 transition-all ${checkingAuth ? 'opacity-40 pointer-events-none scale-[0.98]' : 'opacity-100'} `}>
         {/* Header */}
         <div className="text-center pt-6 sm:pt-8 pb-4 sm:pb-6 px-6 sm:px-8">
+          <div className="absolute top-3 right-3 flex gap-2">
+            {['en','th'].map(l => (
+              <button
+                key={l}
+                type="button"
+                onClick={() => changeLanguage(l)}
+                className={`px-2 py-1 text-xs rounded-md font-semibold transition-colors ${language===l ? 'bg-yellow-400 text-black' : 'bg-white/20 text-white hover:bg-white/30'}`}
+              >{l.toUpperCase()}</button>
+            ))}
+          </div>
           <div className="inline-flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32  rounded-full mb-3 sm:mb-4 shadow-lg overflow-hidden">
             {/* Logo Image */}
             <img
@@ -228,12 +283,8 @@ export default function LoginPage() {
             {/* Fallback Dragon Icon */}
             <span className="text-3xl sm:text-4xl hidden">🐉</span>
           </div>
-          <p className="text-white/90 text-sm sm:text-base">
-            Gold Trading Platform
-          </p>
-          <p className="text-xs sm:text-sm text-yellow-300 font-medium">
-            XAU/USD Professional Trading
-          </p>
+          <p className="text-white/90 text-sm sm:text-base">{t('platform_tagline')}</p>
+          <p className="text-xs sm:text-sm text-yellow-300 font-medium">{t('sub_tagline')}</p>
         </div>
 
         {/* Login Form */}
@@ -244,7 +295,7 @@ export default function LoginPage() {
                 htmlFor="username"
                 className="block text-xs sm:text-sm font-medium text-white/90 mb-2"
               >
-                Username
+                {t('username_label')}
               </label>
               <div className="relative">
                 <input
@@ -254,7 +305,7 @@ export default function LoginPage() {
                   onChange={(e) => setUsername(e.target.value)}
                   required
                   className="w-full px-4 py-3 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition duration-200 pl-12 text-sm sm:text-base text-white placeholder-white/60 bg-white/10 backdrop-blur-sm"
-                  placeholder="Enter your username"
+                  placeholder={t('username_placeholder')}
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <svg
@@ -279,7 +330,7 @@ export default function LoginPage() {
                 htmlFor="password"
                 className="block text-xs sm:text-sm font-medium text-white/90 mb-2"
               >
-                Password
+                {t('password_label')}
               </label>
               <div className="relative">
                 <input
@@ -289,7 +340,7 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   className="w-full px-4 py-3 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition duration-200 pl-12 text-sm sm:text-base text-white placeholder-white/60 bg-white/10 backdrop-blur-sm"
-                  placeholder="Enter your password"
+                  placeholder={t('password_placeholder')}
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <svg
@@ -322,7 +373,7 @@ export default function LoginPage() {
                     clipRule="evenodd"
                   ></path>
                 </svg>
-                {error}
+                {error || t('login_failed')}
               </div>
             )}
 
@@ -353,7 +404,7 @@ export default function LoginPage() {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     ></path>
                   </svg>
-                  Signing In...
+                  {t('signing_in')}
                 </>
               ) : (
                 <>
@@ -370,7 +421,7 @@ export default function LoginPage() {
                       d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"
                     ></path>
                   </svg>
-                  <span className="text-white/150">Sign In to Trade</span>
+                  <span className="text-white/150">{t('sign_in_cta')}</span>
                 </>
               )}
             </button>
@@ -384,7 +435,7 @@ export default function LoginPage() {
               </div>
               <div className="relative flex justify-center text-xs sm:text-sm">
                 <span className="px-2 bg-white text-black">
-                  New to Q-Dragon?
+                  {t('new_to_platform')}
                 </span>
               </div>
             </div>
@@ -406,7 +457,7 @@ export default function LoginPage() {
                   d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
                 ></path>
               </svg>
-              Create New Account
+              {t('create_new_account')}
             </button>
 
             <button
@@ -426,14 +477,14 @@ export default function LoginPage() {
                   d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                 ></path>
               </svg>
-              Forgot Password?
+              {t('forgot_password')}
             </button>
           </div>
 
           {/* Footer */}
           <div className="mt-6 sm:mt-8 text-center text-xs text-white/70">
-            <p>Secure • Professional • Reliable</p>
-            <p className="mt-1">© 2025 Q-Dragon Trading Platform</p>
+            <p>{t('secure_reliable')}</p>
+            <p className="mt-1">{t('copyright')}</p>
           </div>
         </div>
       </div>
@@ -442,6 +493,40 @@ export default function LoginPage() {
       <div className="absolute top-10 left-10 w-12 h-12 sm:w-20 sm:h-20 bg-yellow-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse"></div>
       <div className="absolute top-10 right-10 w-12 h-12 sm:w-20 sm:h-20 bg-amber-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse animation-delay-2000"></div>
       <div className="absolute bottom-10 left-20 w-12 h-12 sm:w-20 sm:h-20 bg-yellow-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse animation-delay-4000"></div>
+
+      {/* Auth Checking Modal Overlay */}
+      {checkingAuth && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" />
+          <div className="relative z-50 w-full max-w-sm mx-auto bg-white rounded-xl shadow-2xl p-8 text-center border border-gray-200 animate-scale-in">
+            <div className="mx-auto mb-5 w-14 h-14 rounded-full bg-gradient-to-tr from-yellow-400 to-amber-500 flex items-center justify-center shadow-lg">
+              <svg className="w-8 h-8 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-semibold text-gray-800 mb-2 tracking-tight">
+              {authSlow ? t('auth_check_slow_title') : t('auth_check_title')}
+            </h2>
+            <p className="text-gray-600 text-sm mb-5 leading-relaxed">
+              {authSlow ? t('auth_check_slow_message') : t('auth_check_description')}
+            </p>
+            <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
+              <span className="inline-flex h-2 w-2 bg-amber-500 rounded-full animate-ping" />
+              <span className="font-medium tracking-wide">{t('checking_auth')}</span>
+            </div>
+            {authSlow && (
+              <div className="mt-6 flex items-center justify-center gap-3">
+                <button type="button" onClick={retryAuthCheck} className="px-4 py-2 rounded-md text-sm font-medium bg-amber-500 hover:bg-amber-600 text-white shadow-md transition-colors">
+                  {t('auth_check_retry')}
+                </button>
+                <button type="button" onClick={skipAuthCheck} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 text-gray-800 shadow-sm transition-colors">
+                  {t('auth_check_skip')}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Debug Button */}
       {(process.env.NODE_ENV === 'development' ||
