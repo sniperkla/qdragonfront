@@ -1571,14 +1571,21 @@ export default function AdminPage() {
                           </td>
                           <td className="px-6 py-4">
                             <span
-                              className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold tracking-wide rounded-full uppercase ${
                                 customer.status === 'valid'
-                                  ? 'bg-green-100 text-green-800'
+                                  ? 'bg-green-500/90 text-white shadow-sm'
                                   : customer.status === 'expired'
-                                    ? 'bg-red-100 text-red-800'
-                                    : 'bg-yellow-100 text-yellow-800'
+                                    ? 'bg-gradient-to-r from-red-600 to-red-500 text-white shadow-lg ring-2 ring-red-300/40 animate-pulse'
+                                    : 'bg-yellow-400/90 text-gray-900 shadow-sm'
                               }`}
+                              title={customer.status === 'expired' ? 'This license has fully expired' : ''}
                             >
+                              {customer.status === 'expired' && (
+                                <span className="relative flex h-2 w-2">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white/60"></span>
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                                </span>
+                              )}
                               {customer.status === 'valid' ? t('valid') : customer.status === 'expired' ? t('expired') : customer.status === 'suspended' ? t('suspended') : customer.status}
                             </span>
                           </td>
@@ -1603,7 +1610,7 @@ export default function AdminPage() {
                           <td className="px-6 py-4">
                             <div className="flex gap-2">
                               {(customer.status === 'valid' ||
-                                customer.status === 'expired') && (
+                                customer.status === 'expired') && customer.plan !== 999999 && (
                                 <button
                                   onClick={() => showExtendModal(customer)}
                                   disabled={updating[customer._id]}
@@ -1688,9 +1695,7 @@ export default function AdminPage() {
                     ></path>
                   </svg>
                   <p className="text-lg font-medium">No customers found</p>
-                  <p className="text-sm">
-                    No customer accounts match your current filter
-                  </p>
+                  <p className="text-sm">No customer accounts match your current filter</p>
                 </div>
               )}
             </div>
