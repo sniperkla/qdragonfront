@@ -25,6 +25,9 @@ const CodeRequestSchema = new mongoose.Schema(
     activatedAt: { type: Date },
     expiresAt: { type: Date, required: true },
     isActive: { type: Boolean, default: false }
+    ,activationEmailSent: { type: Boolean, default: false }
+    ,activationEmailSentAt: { type: Date }
+    ,activationEmailResentCount: { type: Number, default: 0 }
   },
   {
     timestamps: true

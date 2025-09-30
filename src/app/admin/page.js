@@ -19,6 +19,8 @@ export default function AdminPage() {
   const [loadingCustomers, setLoadingCustomers] = useState(false)
   const [customerFilter, setCustomerFilter] = useState('all')
   const [customerSearch, setCustomerSearch] = useState('')
+  const [bulkSelecting, setBulkSelecting] = useState(false)
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState([])
   const [deleteConfirmation, setDeleteConfirmation] = useState({
     show: false,
     type: '',
@@ -41,7 +43,9 @@ export default function AdminPage() {
     platform: 'mt4',
     accountNumber: '',
     plan: 'lifetime',
-    extendDays: ''
+    extendDays: '',
+    demoDays: '', // number of days for demo (if demo username)
+    isDemo: false
   })
   const [creatingAccount, setCreatingAccount] = useState(false)
 
@@ -327,6 +331,8 @@ export default function AdminPage() {
       if (response.ok) {
         const data = await response.json()
         setCodes(data.codes)
+        // Reset selection after refresh to avoid stale IDs
+        setSelectedCustomerIds([])
         console.log(
           '✅ Codes table updated with',
           data.codes?.length || 0,
@@ -456,6 +462,70 @@ export default function AdminPage() {
       showToast('Update failed', 'error')
     } finally {
       setUpdating((prev) => ({ ...prev, [accountId]: false }))
+    }
+  }
+
+  // Bulk selection helpers
+  const toggleSelectCustomer = (id) => {
+    setSelectedCustomerIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
+  }
+  const selectAllVisibleCustomers = () => {
+    const visible = customers.filter((customer) => {
+      const matchesFilter = customerFilter === 'all' || customer.status === customerFilter
+      const matchesSearch = customerSearch === '' || customer.user.toLowerCase().includes(customerSearch.toLowerCase()) || customer.license.toLowerCase().includes(customerSearch.toLowerCase())
+      return matchesFilter && matchesSearch
+    }).map((c) => c._id)
+    setSelectedCustomerIds(visible)
+  }
+  const clearSelection = () => setSelectedCustomerIds([])
+
+  const interpolate = (template, vars={}) => {
+    return template.replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? vars[k] : `{${k}}`))
+  }
+
+  const performBulkAction = async (action) => {
+    if (!['suspend', 'delete'].includes(action)) return
+    if (selectedCustomerIds.length === 0) {
+      showToast(t('no_customers_selected'), 'error')
+      return
+    }
+    // Confirmation for delete
+    if (action === 'delete') {
+      const confirmMsg = interpolate(t('bulk_delete_confirm'), { count: selectedCustomerIds.length })
+      if (!window.confirm(confirmMsg)) return
+    }
+    if (action === 'suspend') {
+      const confirmMsg = interpolate(t('bulk_suspend_confirm'), { count: selectedCustomerIds.length })
+      if (!window.confirm(confirmMsg)) return
+    }
+    try {
+      const response = await fetch('/api/admin/customers/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ action, ids: selectedCustomerIds })
+      })
+      const data = await response.json()
+      if (response.ok) {
+        if (action === 'suspend') {
+          showToast(interpolate(t('bulk_suspend_processed'), { success: data.processedCount, skipped: data.skippedCount }), 'success')
+        } else {
+          showToast(interpolate(t('bulk_delete_processed'), { success: data.processedCount, skipped: data.skippedCount }), 'success')
+        }
+        // Update local state optimistically
+        if (action === 'suspend') {
+          setCustomers((prev) => prev.map((c) => selectedCustomerIds.includes(c._id) ? (c.status === 'valid' ? { ...c, status: 'suspended' } : c) : c))
+        } else if (action === 'delete') {
+          setCustomers((prev) => prev.filter((c) => !selectedCustomerIds.includes(c._id)))
+        }
+        setSelectedCustomerIds([])
+        // Full refresh for consistency
+        setTimeout(() => fetchAllCustomers(), 400)
+      } else {
+        showToast(data.error || 'Bulk action failed', 'error')
+      }
+    } catch (err) {
+      showToast('Network error performing bulk action', 'error')
     }
   }
 
@@ -719,7 +789,9 @@ export default function AdminPage() {
           platform: 'mt4',
           accountNumber: '',
           plan: 'lifetime',
-          extendDays: ''
+          extendDays: '',
+          demoDays: '',
+          isDemo: false
         })
 
         // Refresh customer list
@@ -946,7 +1018,7 @@ export default function AdminPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Tabs */}
         <div className="bg-white rounded-xl shadow-lg mb-8">
           <div className="border-b border-gray-200">
@@ -1140,7 +1212,7 @@ export default function AdminPage() {
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
                         {language === 'th' ? 'ราคา' : 'Price'}
                       </th>
-                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
+                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900 whitespace-nowrap min-w-[110px]">
                         {t('status')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
@@ -1333,6 +1405,12 @@ export default function AdminPage() {
                     <option value="expired">{t('expired')}</option>
                     <option value="suspended">{t('suspended')}</option>
                   </select>
+                  <button
+                    onClick={() => setBulkSelecting((b) => !b)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium border ${bulkSelecting ? 'bg-blue-600 text-white border-blue-700' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'}`}
+                  >
+                    {bulkSelecting ? t('bulk_mode_on') : t('bulk_mode')}
+                  </button>
                 </div>
 
                 <input
@@ -1347,6 +1425,28 @@ export default function AdminPage() {
                   className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 min-w-64"
                 />
               </div>
+              {bulkSelecting && (
+                <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
+                  <div className="text-sm text-blue-700 font-medium flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7h18M3 12h18M3 17h18" /></svg>
+                    {selectedCustomerIds.length} {t('selected') || 'selected'}
+                    <button onClick={selectAllVisibleCustomers} className="ml-2 text-xs underline">{t('select_visible')}</button>
+                    <button onClick={clearSelection} className="ml-1 text-xs underline">{t('clear_selection')}</button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => performBulkAction('suspend')}
+                      disabled={selectedCustomerIds.length === 0}
+                      className="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded text-xs disabled:opacity-50"
+                    >{t('suspend_selected')}</button>
+                    <button
+                      onClick={() => performBulkAction('delete')}
+                      disabled={selectedCustomerIds.length === 0}
+                      className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded text-xs disabled:opacity-50"
+                    >{t('delete_selected')}</button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Customer Stats */}
@@ -1386,10 +1486,13 @@ export default function AdminPage() {
                 <table className="w-full">
                   <thead className="bg-gray-50">
                     <tr>
+                      {bulkSelecting && (
+                        <th className="px-3 py-4 text-left text-sm font-medium text-gray-900">Sel</th>
+                      )}
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
                         {t('user')}
                       </th>
-                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
+                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900 whitespace-nowrap">
                         {t('license')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
@@ -1404,7 +1507,7 @@ export default function AdminPage() {
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
                         {t('expire_date')}
                       </th>
-                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
+                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900 whitespace-nowrap min-w-[110px]">
                         {t('status')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
@@ -1436,10 +1539,20 @@ export default function AdminPage() {
                       })
                       .map((customer) => (
                         <tr key={customer._id} className="hover:bg-gray-50">
+                          {bulkSelecting && (
+                            <td className="px-3 py-4 text-sm">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                                checked={selectedCustomerIds.includes(customer._id)}
+                                onChange={() => toggleSelectCustomer(customer._id)}
+                              />
+                            </td>
+                          )}
                           <td className="px-6 py-4 text-sm font-medium text-gray-900">
                             {customer.user}
                           </td>
-                          <td className="px-6 py-4 font-mono text-sm text-blue-600 font-bold">
+                          <td className="px-6 py-4 font-mono text-sm text-blue-600 font-bold whitespace-nowrap">
                             {customer.license}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-900 capitalize">
@@ -1524,18 +1637,7 @@ export default function AdminPage() {
                                   {updating[customer._id] ? '...' : t('reactivate_action')}
                                 </button>
                               )}
-                              {customer.status === 'expired' && (
-                                <button
-                                  onClick={() =>
-                                    updateCustomerStatus(customer._id, 'valid')
-                                  }
-                                  disabled={updating[customer._id]}
-                                  className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
-                                >
-                                  {updating[customer._id] ? '...' : t('renew_action')}
-                                </button>
-                              )}
-                              {customer.status === 'suspended' && (
+                              {(customer.status === 'suspended' || customer.status === 'expired') && (
                                 <button
                                   onClick={() =>
                                     handleDeleteClick(
@@ -1639,13 +1741,12 @@ export default function AdminPage() {
                   <input
                     type="text"
                     id="accountNumber"
-                    value={manualAccountForm.accountNumber}
-                    onChange={(e) =>
-                      handleFormChange('accountNumber', e.target.value)
-                    }
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
-                    placeholder={t('enter_account_number')}
-                    required
+                    value={manualAccountForm.isDemo ? '' : manualAccountForm.accountNumber}
+                    onChange={(e) => handleFormChange('accountNumber', e.target.value)}
+                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 ${manualAccountForm.isDemo ? 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed' : 'border-gray-300'}`}
+                    placeholder={manualAccountForm.isDemo ? 'DEMO' : t('enter_account_number')}
+                    disabled={manualAccountForm.isDemo}
+                    required={!manualAccountForm.isDemo}
                   />
                 </div>
 
@@ -1683,8 +1784,9 @@ export default function AdminPage() {
                     id="plan"
                     value={manualAccountForm.plan}
                     onChange={(e) => handleFormChange('plan', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 ${manualAccountForm.isDemo ? 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed' : 'border-gray-300'}`}
                     required
+                    disabled={manualAccountForm.isDemo}
                   >
                     <option value="7">7 Days (Trial)</option>
                     <option value="30">30 Days (Monthly)</option>
@@ -1709,13 +1811,46 @@ export default function AdminPage() {
                     onChange={(e) =>
                       handleFormChange('extendDays', e.target.value)
                     }
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 ${manualAccountForm.isDemo ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed' : 'border-gray-300'}`}
                     placeholder={t('additional_days')}
                     min="0"
                     max="9999"
+                    disabled={manualAccountForm.isDemo}
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    {t('add_extra_days')}
+                    {manualAccountForm.isDemo ? t('demo_mode_extra_days_disabled') : t('add_extra_days')}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                      {t('demo_license_title')}
+                  </label>
+                  <div className="flex items-center gap-2 mb-2">
+                    <input
+                      type="checkbox"
+                      id="isDemo"
+                      checked={manualAccountForm.isDemo}
+                      onChange={(e) => handleFormChange('isDemo', e.target.checked)}
+                      className="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300 rounded"
+                    />
+                      <label htmlFor="isDemo" className="text-sm text-gray-700">
+                        {t('mark_as_demo')}
+                    </label>
+                  </div>
+                  <input
+                    type="number"
+                    id="demoDays"
+                    value={manualAccountForm.demoDays}
+                    onChange={(e) => handleFormChange('demoDays', e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-100"
+                      placeholder={t('demo_days_placeholder')}
+                    min="1"
+                    max="60"
+                    disabled={!manualAccountForm.isDemo}
+                  />
+                    <p className="text-xs text-gray-500 mt-1">
+                      {t('demo_days_help')}
                   </p>
                 </div>
               </div>

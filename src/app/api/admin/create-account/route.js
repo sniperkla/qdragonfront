@@ -35,22 +35,7 @@ const generateLicenseKey = () => {
   return result
 }
 
-// Calculate expiry date
-const calculateExpiryDate = (planDays, extendDays = 0) => {
-  const now = new Date()
-
-  if (planDays === 'lifetime') {
-    // Set to a very far future date for lifetime plans
-    const lifetimeDate = new Date(now)
-    lifetimeDate.setFullYear(now.getFullYear() + 100)
-    return lifetimeDate.toISOString().split('T')[0]
-  }
-
-  const expiryDate = new Date(now)
-  const totalDays = parseInt(planDays) + parseInt(extendDays || 0)
-  expiryDate.setDate(now.getDate() + totalDays)
-  return expiryDate.toISOString().split('T')[0]
-}
+// (legacy helper removed – inline logic used below)
 
 // Format date to Thai Buddhist Era format with time
 const formatThaiDateTime = (date) => {
@@ -75,24 +60,34 @@ export async function POST(request) {
     }
 
     const body = await request.json()
-    console.log('Request body received:', { ...body, password: '[REDACTED]' })
+    const { username, platform, accountNumber, plan, extendDays, isDemo, demoDays } = body
 
-    const { username, platform, accountNumber, plan, extendDays } = body
-
-    // Validate required fields
-    if (!username || !platform || !accountNumber || !plan) {
-      return NextResponse.json(
-        { error: 'All fields are required' },
-        { status: 400 }
-      )
+    // Basic field validation (accountNumber optional if demo)
+    if (!username || !platform || !plan || (!accountNumber && !isDemo)) {
+      return NextResponse.json({ error: 'All fields are required' }, { status: 400 })
     }
 
-    // Validate extendDays if provided
+    // Initialize demo logic
+  // Keep original username even for demo accounts; only force accountNumber
+  let finalUsername = username
+    let finalAccountNumber = accountNumber
+    let demoMode = false
+    let demoDuration = null
+    if (isDemo) {
+      demoMode = true
+      finalAccountNumber = 'DEMO'
+      if (!demoDays || isNaN(demoDays) || parseInt(demoDays) <= 0) {
+        return NextResponse.json({ error: 'demoDays must be a positive number' }, { status: 400 })
+      }
+      if (parseInt(demoDays) > 60) {
+        return NextResponse.json({ error: 'demoDays cannot exceed 60' }, { status: 400 })
+      }
+      demoDuration = parseInt(demoDays)
+    }
+
+    // Validate extendDays if provided (ignored for demo, but we let it pass if empty)
     if (extendDays && (isNaN(extendDays) || parseInt(extendDays) < 0)) {
-      return NextResponse.json(
-        { error: 'Extend days must be a valid positive number' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Extend days must be a valid positive number' }, { status: 400 })
     }
 
     // Connect to MongoDB
@@ -100,56 +95,61 @@ export async function POST(request) {
       await mongoose.connect(process.env.MONGODB_URI)
     }
 
-    // Check if account number already exists
-    const existingAccount = await CustomerAccount.findOne({ accountNumber })
-    if (existingAccount) {
-      return NextResponse.json(
-        { error: 'Account number already exists' },
-        { status: 400 }
-      )
+    // Uniqueness check (skip for demo)
+    if (!demoMode) {
+      const existingAccount = await CustomerAccount.findOne({ accountNumber: finalAccountNumber })
+      if (existingAccount) {
+        return NextResponse.json({ error: 'Account number already exists' }, { status: 400 })
+      }
     }
 
-    // Generate license key
+    // Generate license key (prefix DEMO- for demo accounts)
     let licenseKey
     let licenseExists = true
-
-    // Ensure unique license key
     while (licenseExists) {
-      licenseKey = generateLicenseKey()
-      const existingLicense = await CustomerAccount.findOne({
-        license: licenseKey
-      })
+      const raw = generateLicenseKey()
+      licenseKey = demoMode ? `DEMO-${raw}` : raw
+      const existingLicense = await CustomerAccount.findOne({ license: licenseKey })
       licenseExists = !!existingLicense
     }
 
-    // Create expiry date object for Thai format
+    // Create expiry date object (demo uses demoDuration days regardless of selected plan UI state)
     const expiryDateTime = new Date()
-    if (plan !== 'lifetime') {
+    if (demoMode) {
+      // Demo: exact demoDuration days
+      expiryDateTime.setDate(expiryDateTime.getDate() + demoDuration)
+    } else if (plan === 'lifetime') {
+      // Lifetime: +100 years then convert to BE in formatter (+543) -> far future
+      expiryDateTime.setFullYear(expiryDateTime.getFullYear() + 100)
+    } else {
       const totalDays = parseInt(plan) + parseInt(extendDays || 0)
       expiryDateTime.setDate(expiryDateTime.getDate() + totalDays)
-    } else {
-      expiryDateTime.setFullYear(expiryDateTime.getFullYear() + 100)
     }
 
     // Format expiry date in Thai Buddhist Era format for database storage
     const expireDateThai = formatThaiDateTime(expiryDateTime)
 
     // Calculate total plan days for database storage
-    const totalPlanDays =
-      plan === 'lifetime' ? 999999 : parseInt(plan) + parseInt(extendDays || 0)
+    const totalPlanDays = demoMode
+      ? demoDuration
+      : (plan === 'lifetime'
+          ? 999999
+          : parseInt(plan) + parseInt(extendDays || 0))
 
     // Create customer account
     const customerAccount = new CustomerAccount({
       user: username,
       license: licenseKey,
-      platform,
-      accountNumber,
-      plan: totalPlanDays,
+  platform,
+  accountNumber: finalAccountNumber,
+      plan: demoMode ? demoDuration : totalPlanDays,
       expireDate: expireDateThai, // Store Thai formatted date
       status: 'valid', // Manual accounts are immediately valid
       activatedAt: new Date(),
       createdBy: 'admin',
-      adminGenerated: true
+      adminGenerated: true,
+      isDemo: demoMode,
+      demoDays: demoMode ? demoDuration : undefined
     })
 
     await customerAccount.save()
@@ -181,7 +181,9 @@ export async function POST(request) {
         expireDate: customerAccount.expireDate,
         expireDateThai: customerAccount.expireDate, // Already in Thai format
         status: customerAccount.status,
-        activatedAt: customerAccount.activatedAt
+        activatedAt: customerAccount.activatedAt,
+        isDemo: customerAccount.isDemo,
+        demoDays: customerAccount.demoDays
       }
     })
   } catch (error) {

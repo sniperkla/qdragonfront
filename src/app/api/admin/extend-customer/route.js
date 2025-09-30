@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { connectToDatabase } from '@/lib/mongodb'
 import CustomerAccount from '@/lib/customerAccountModel'
 import { emitCodesUpdate, emitCustomerAccountUpdate, emitNotificationToAdminAndClient } from '@/lib/websocket'
+import User from '@/lib/userModel'
+import { sendAdminExtensionEmail } from '@/lib/emailService'
 
 export async function POST(request) {
   try {
@@ -123,27 +125,45 @@ export async function POST(request) {
 
     // Emit WebSocket updates so landing page reflects new expiry automatically
     try {
-      const User = (await import('@/lib/userModel')).default
-      const user = await User.findOne({ username: customerAccount.user }, '_id')
+      const user = await User.findOne({ username: customerAccount.user }, '_id email preferredLanguage username')
       if (user) {
         const userId = user._id.toString()
+        const daysAdded = parseInt(extendDays)
         await emitCustomerAccountUpdate(userId, {
           action: 'extended',
           license: customerAccount.license,
           newExpiry: newExpiryThaiFormat,
-          daysAdded: parseInt(extendDays)
+          daysAdded
         })
         await emitCodesUpdate(userId, {
           action: 'extended',
           license: customerAccount.license,
           newExpiry: newExpiryThaiFormat,
-          daysAdded: parseInt(extendDays)
+          daysAdded
         })
         await emitNotificationToAdminAndClient(
           userId,
           `✅ License ${customerAccount.license} extended by ${extendDays} days`,
           'success'
         )
+
+        // Send extension email notification
+        if (user.email) {
+          try {
+            const emailResult = await sendAdminExtensionEmail(user.email, user.username || customerAccount.user, {
+              licenseCode: customerAccount.license,
+              addedDays: daysAdded,
+              oldExpiry: customerAccount.expireDate,
+              newExpiry: newExpiryThaiFormat,
+              language: user.preferredLanguage || 'en'
+            })
+            if (!emailResult.success) {
+              console.warn('Admin extension email failed:', emailResult.error)
+            }
+          } catch (emailErr) {
+            console.warn('Error sending admin extension email:', emailErr.message)
+          }
+        }
       }
     } catch (wsError) {
       console.error('WebSocket emission error (extend-customer):', wsError)

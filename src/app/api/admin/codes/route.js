@@ -4,6 +4,7 @@ import CustomerAccount from '@/lib/customerAccountModel'
 import User from '@/lib/userModel'
 // WebSocket emit helpers
 import { emitCodesUpdate, emitCustomerAccountUpdate, emitAdminNotification, emitNotificationToAdminAndClient } from '@/lib/websocket'
+import { sendLicenseActivatedEmail } from '@/lib/emailService'
 
 // Get all code requests (admin only)
 export async function GET(req) {
@@ -140,6 +141,29 @@ export async function PUT(req) {
           expireDate: customerAccount.expireDate,
           status: customerAccount.status
         })
+
+        // Send activation email (once)
+        if (!codeRequest.activationEmailSent) {
+          try {
+            const userDoc = await User.findById(codeRequest.userId?._id || codeRequest.userId).select('email username preferredLanguage')
+            if (userDoc?.email) {
+              const sendResult = await sendLicenseActivatedEmail(userDoc.email, userDoc.username || codeRequest.username, {
+                licenseCode: codeRequest.code,
+                planDays: codeRequest.plan,
+                expireDateThai: customerAccount.expireDate,
+                language: userDoc.preferredLanguage || 'en'
+              })
+              if (sendResult.success) {
+                await CodeRequest.findByIdAndUpdate(codeRequest._id, {
+                  activationEmailSent: true,
+                  activationEmailSentAt: new Date()
+                })
+              }
+            }
+          } catch (actEmailErr) {
+            console.warn('Failed to send activation email:', actEmailErr.message)
+          }
+        }
       } catch (customerError) {
         console.error('Error creating customer account:', customerError)
         // Don't fail the main request if customer account creation fails

@@ -13,6 +13,8 @@ const CustomerAccountSchema = new mongoose.Schema(
     platform: { type: String, required: true },
     accountNumber: { type: String, required: true },
     plan: { type: Number, required: true }, // 30, 60, or 90 days
+  isDemo: { type: Boolean, default: false }, // Marks demo accounts
+  demoDays: { type: Number }, // Original number of demo days granted
     activatedAt: { type: Date, default: Date.now },
     createdAt: { type: Date, default: Date.now },
     createdBy: { type: String, default: 'user' }, // 'user' or 'admin'

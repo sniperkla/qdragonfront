@@ -1,6 +1,8 @@
 import { connectToDatabase } from '@/lib/mongodb'
 import mongoose from 'mongoose'
 import { emitExtensionRequestUpdate, emitAdminNotification, emitCustomerAccountUpdate, emitCodesUpdate, emitNotificationToAdminAndClient } from '@/lib/websocket'
+import User from '@/lib/userModel'
+import { sendExtensionDecisionEmail } from '@/lib/emailService'
 
 // Extension Request Schema (updated to handle both CodeRequest and CustomerAccount sources)
 const ExtensionRequestSchema = new mongoose.Schema({
@@ -273,6 +275,22 @@ export async function PUT(request) {
               `✅ Your license ${extensionRequest.licenseCode} was extended by ${extensionRequest.requestedDays} days (approved)`,
               'success'
             )
+
+            // Send approval email
+            try {
+              const userDoc = await User.findById(userId).select('email username preferredLanguage')
+              if (userDoc?.email) {
+                await sendExtensionDecisionEmail(userDoc.email, userDoc.username, {
+                  licenseCode: extensionRequest.licenseCode,
+                  decision: 'approved',
+                  addedDays: extensionRequest.requestedDays,
+                  newExpiry: newExpiryThai,
+                  language: userDoc.preferredLanguage || 'en'
+                })
+              }
+            } catch (emailErr) {
+              console.warn('Failed to send extension approval email:', emailErr.message)
+            }
           }
         } catch (wsErr) {
           console.warn('WebSocket approve emission failed:', wsErr.message)
@@ -333,6 +351,21 @@ export async function PUT(request) {
             `⚠️ Extension request for ${extensionRequest.licenseCode} was rejected: ${rejectionReason}`,
             'error'
           )
+
+          // Send rejection email
+          try {
+            const userDoc = await User.findById(userId).select('email username preferredLanguage')
+            if (userDoc?.email) {
+              await sendExtensionDecisionEmail(userDoc.email, userDoc.username, {
+                licenseCode: extensionRequest.licenseCode,
+                decision: 'rejected',
+                rejectionReason,
+                language: userDoc.preferredLanguage || 'en'
+              })
+            }
+          } catch (emailErr) {
+            console.warn('Failed to send extension rejection email:', emailErr.message)
+          }
         }
       } catch (wsErr) {
         console.warn('WebSocket reject emission failed:', wsErr.message)

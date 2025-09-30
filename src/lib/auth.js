@@ -13,7 +13,9 @@ export function verifyAuth(request) {
       return acc
     }, {})
 
-    const token = cookies['auth-token']
+  // Current cookie name used by login route is auth_token.
+  // For backward compatibility also check legacy name auth-token.
+  const token = cookies['auth_token'] || cookies['auth-token']
     if (!token) {
       return null
     }

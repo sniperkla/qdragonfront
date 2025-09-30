@@ -2,7 +2,8 @@ import { verifyAuth } from '@/lib/auth'
 import { connectToDatabase } from '@/lib/mongodb'
 import CodeRequest from '@/lib/codeRequestModel'
 import User from '@/lib/userModel'
-import { emitNewCodeGenerated, emitAdminNotification } from '@/lib/websocket'
+import { emitNewCodeGenerated, emitAdminNotification, emitCodesUpdate } from '@/lib/websocket'
+import { sendPurchaseConfirmationEmail } from '@/lib/emailService'
 
 // Purchase license API (simplified from generate-code)
 export async function POST(req) {
@@ -111,6 +112,34 @@ export async function POST(req) {
       await emitAdminNotification(`New license purchase: ${licenseCode} (${planInfo.days}d)`, 'info')
     } catch (wsErr) {
       console.warn('WebSocket emission failed (purchase-license):', wsErr.message)
+    }
+
+    // Emit user-specific codes update (so client fetches history real-time)
+    try {
+      await emitCodesUpdate(authData.id, {
+        action: 'purchase-created',
+        codeId: licenseRequest._id.toString(),
+        license: licenseCode,
+        status: 'pending_payment'
+      })
+    } catch (userEmitErr) {
+      console.warn('Failed to emit user codes update (purchase):', userEmitErr.message)
+    }
+
+    // Send purchase confirmation email (non-blocking but awaited here for simplicity)
+    try {
+      if (user.email) {
+        await sendPurchaseConfirmationEmail(user.email, user.username, {
+          licenseCode,
+          planDays: planInfo.days,
+          price: planInfo.price,
+          status: 'pending_payment',
+          currency: 'USD',
+          language: user.preferredLanguage || 'en'
+        })
+      }
+    } catch (emailErr) {
+      console.warn('Failed to send purchase confirmation email:', emailErr.message)
     }
 
     return new Response(
