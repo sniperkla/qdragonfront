@@ -565,3 +565,142 @@ export const sendAdminExtensionEmail = async (
     return { success: false, error: err.message }
   }
 }
+
+// Send top-up approval email notification
+export const sendTopUpApprovalEmail = async (
+  email,
+  username,
+  {
+    amount,
+    credits,
+    newBalance,
+    language = 'en'
+  }
+) => {
+  try {
+    validateEmailConfig()
+    const lang = ['en', 'th'].includes(language) ? language : 'en'
+    const subjects = {
+      en: 'Top-Up Approved - Credits Added',
+      th: 'เติมเครดิตสำเร็จ - เครดิตถูกเพิ่มแล้ว'
+    }
+    const greeting = { en: `Hello ${username},`, th: `สวัสดี ${username},` }
+    const body = {
+      en: `Great news! Your top-up request has been approved by our admin team. Your credits have been added to your account.`,
+      th: `ข่าวดี! คำขอเติมเครดิตของคุณได้รับการอนุมัติจากทีมผู้ดูแลระบบแล้ว เครดิตถูกเพิ่มเข้าบัญชีของคุณเรียบร้อยแล้ว`
+    }
+    const summaryLabel = { en: 'Top-Up Summary', th: 'สรุปการเติมเครดิต' }
+    const amountLabel = { en: 'Amount Paid', th: 'จำนวนเงินที่ชำระ' }
+    const creditsLabel = { en: 'Credits Added', th: 'เครดิตที่เพิ่ม' }
+    const newBalanceLabel = { en: 'New Balance', th: 'ยอดเครดิตใหม่' }
+    const nextStepsTitle = { en: "What's Next?", th: 'ขั้นตอนถัดไป' }
+    const nextSteps = {
+      en: [
+        'Use credits to purchase new licenses',
+        'Extend existing licenses',
+        'Change your account number (if needed)',
+        'Access all premium features'
+      ],
+      th: [
+        'ใช้เครดิตซื้อใบอนุญาตใหม่',
+        'ขยายระยะเวลาใบอนุญาตที่มีอยู่',
+        'เปลี่ยนหมายเลขบัญชี (ถ้าต้องการ)',
+        'เข้าถึงฟีเจอร์พรีเมียมทั้งหมด'
+      ]
+    }
+    const footerNote = {
+      en: 'Your credits are now active and ready to use. Log in to your account to start using them.',
+      th: 'เครดิตของคุณพร้อมใช้งานแล้ว เข้าสู่ระบบเพื่อเริ่มใช้งาน'
+    }
+
+    const nextStepsHtml = nextSteps[lang]
+      .map((step) => `<li style="margin-bottom:8px;color:#374151;">${step}</li>`)
+      .join('')
+
+    const emailData = {
+      from: `Q-DRAGON Trading Platform <${process.env.EMAIL_FROM}>`,
+      to: [email],
+      subject: subjects[lang],
+      html: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subjects[lang]}</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f5f5f5;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 20px;">
+    <!-- Header -->
+    <div style="text-align: center; padding: 30px 0; background: linear-gradient(135deg, #10b981, #059669); border-radius: 10px; margin-bottom: 30px;">
+      <div style="display: inline-block; width: 60px; height: 60px; background-color: white; border-radius: 50%; line-height: 60px; font-size: 24px; font-weight: bold; color: #059669; margin-bottom: 10px;">
+        ✓
+      </div>
+      <h1 style="color: white; margin: 0; font-size: 28px;">Q-DRAGON</h1>
+      <p style="color: rgba(255,255,255,0.9); margin: 5px 0 0 0; font-size: 14px;">Gold Trading Platform</p>
+    </div>
+    
+    <!-- Content -->
+    <div style="padding: 0 20px;">
+      <h2 style="color: #059669; margin-bottom: 20px;">${subjects[lang]}</h2>
+      <p style="color: #374151; line-height: 1.6; margin-bottom: 20px;">${greeting[lang]}<br><br>${body[lang]}</p>
+      
+      <!-- Top-Up Summary -->
+      <div style="background-color: #d1fae5; border: 1px solid #10b981; border-radius: 8px; padding: 20px; margin: 30px 0;">
+        <h3 style="color: #065f46; margin: 0 0 15px 0;">${summaryLabel[lang]}</h3>
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 8px 0; font-weight: bold; color: #065f46;">${amountLabel[lang]}</td>
+            <td style="padding: 8px 0; color: #065f46; text-align: right; font-size: 18px;">$${amount}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; font-weight: bold; color: #065f46;">${creditsLabel[lang]}</td>
+            <td style="padding: 8px 0; color: #065f46; text-align: right; font-size: 18px;">+${credits}</td>
+          </tr>
+          <tr style="border-top: 2px solid #10b981;">
+            <td style="padding: 12px 0 0 0; font-weight: bold; color: #065f46; font-size: 18px;">${newBalanceLabel[lang]}</td>
+            <td style="padding: 12px 0 0 0; color: #065f46; text-align: right; font-size: 24px; font-weight: bold;">${newBalance}</td>
+          </tr>
+        </table>
+      </div>
+      
+      <!-- Next Steps -->
+      <div style="background-color: #f0fdf4; border-radius: 8px; padding: 20px; margin: 30px 0;">
+        <h3 style="color: #065f46; margin: 0 0 15px 0;">${nextStepsTitle[lang]}</h3>
+        <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+          ${nextStepsHtml}
+        </ul>
+      </div>
+      
+      <p style="color: #6b7280; line-height: 1.6; margin-bottom: 30px; font-size: 14px; text-align: center; padding: 15px; background-color: #f9fafb; border-radius: 8px;">
+        ${footerNote[lang]}
+      </p>
+    </div>
+    
+    <!-- Footer -->
+    <div style="text-align: center; padding: 30px 20px; border-top: 1px solid #e5e7eb; margin-top: 40px;">
+      <p style="color: #9ca3af; font-size: 14px; margin: 0;">
+        © 2025 Q-DRAGON Trading Platform<br>
+        Professional • Secure • Reliable
+      </p>
+      <p style="color: #9ca3af; font-size: 12px; margin: 10px 0 0 0;">
+        ${lang === 'en' ? 'This email was sent to' : 'อีเมลนี้ถูกส่งไปยัง'} ${email}
+      </p>
+    </div>
+  </div>
+</body>
+</html>`
+    }
+
+    const result = await resend.emails.send(emailData)
+    if (result.error) {
+      console.error('Resend API error:', result.error)
+      throw new Error(`Failed to send email: ${result.error.message}`)
+    }
+
+    console.log('Top-up approval email sent successfully:', result.data?.id)
+    return { success: true, messageId: result.data?.id }
+  } catch (error) {
+    console.error('Error sending top-up approval email:', error)
+    return { success: false, error: error.message }
+  }
+}

@@ -124,7 +124,7 @@ export async function POST(req) {
         platform,
         plan: planInfo.days,
         price: planInfo.price,
-        currency: 'USD',
+        currency: 'THB',
         status: 'pending_payment',
         message:
           'Trading code generated successfully. Please proceed to payment.'

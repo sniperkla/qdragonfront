@@ -13,7 +13,7 @@ const CodeRequestSchema = new mongoose.Schema(
     plan: { type: Number, required: true }, // 30, 60, or 90 days
     code: { type: String, required: true },
     price: { type: Number, required: true },
-    currency: { type: String, default: 'USD' },
+    currency: { type: String, default: 'THB' },
     status: {
       type: String,
       enum: ['pending_payment', 'paid', 'activated', 'expired', 'cancelled'],

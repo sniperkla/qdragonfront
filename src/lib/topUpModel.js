@@ -8,8 +8,8 @@ const TopUpSchema = new mongoose.Schema(
       required: true
     },
     username: { type: String, required: true },
-    amount: { type: Number, required: true }, // Amount paid in USD
-    points: { type: Number, required: true }, // Points to be credited (1 USD = 1 point)
+    amount: { type: Number, required: true }, // Amount paid in THB
+    points: { type: Number, required: true }, // Points to be credited (1 THB = 1 point)
     paymentMethod: { type: String, required: true }, // bank_transfer, paypal, etc.
     paymentProof: { type: String }, // URL or description of payment proof
     status: {

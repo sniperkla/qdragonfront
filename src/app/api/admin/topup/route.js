@@ -168,6 +168,30 @@ export async function PUT(req) {
           emitErr.message
         )
       }
+
+      // Send email notification to user in their preferred language
+      try {
+        // Fetch user's language preference
+        const fullUser = await User.findById(topUp.userId._id)
+        const userLanguage = fullUser?.languagePreference || 'en'
+
+        const { sendTopUpApprovalEmail } = await import('@/lib/emailService')
+        await sendTopUpApprovalEmail(topUp.userId.email, topUp.userId.username, {
+          amount: topUp.amount,
+          credits: topUp.points,
+          newBalance: updatedUser.points,
+          language: userLanguage
+        })
+
+        console.log(
+          `Top-up approval email sent to ${topUp.userId.email} (${userLanguage})`
+        )
+      } catch (emailError) {
+        console.warn(
+          'Email notification failed (non-fatal):',
+          emailError.message
+        )
+      }
     }
 
     // Emit WebSocket notifications

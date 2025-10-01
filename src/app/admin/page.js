@@ -100,6 +100,11 @@ export default function AdminPage() {
     reason: ''
   })
 
+  // System settings state
+  const [systemSettings, setSystemSettings] = useState([])
+  const [loadingSettings, setLoadingSettings] = useState(false)
+  const [editingSettings, setEditingSettings] = useState({})
+
   // Extend modal state
   const [extendModal, setExtendModal] = useState({
     show: false,
@@ -239,6 +244,7 @@ export default function AdminPage() {
           fetchPlanSettings()
           fetchAllCustomers()
           fetchTopUpRequests()
+          fetchSystemSettings()
         }
       } catch (error) {
         // Auth check failed - handled by loading state
@@ -828,6 +834,74 @@ export default function AdminPage() {
     }
   }
 
+  // System Settings Functions
+  const fetchSystemSettings = async () => {
+    setLoadingSettings(true)
+    try {
+      const response = await fetch('/api/admin/system-settings', {
+        credentials: 'include'
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSystemSettings(data.data || [])
+      } else {
+        console.error('Failed to fetch system settings:', response.status)
+        setSystemSettings([])
+      }
+    } catch (error) {
+      console.error('Error fetching system settings:', error)
+      setSystemSettings([])
+    } finally {
+      setLoadingSettings(false)
+    }
+  }
+
+  const updateSystemSetting = async (key, value) => {
+    try {
+      const setting = systemSettings.find(s => s.key === key)
+      const response = await fetch('/api/admin/system-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          key,
+          value,
+          description: setting?.description || '',
+          category: setting?.category || 'general'
+        })
+      })
+
+      const data = await response.json()
+      if (response.ok) {
+        showToast('Setting updated successfully!', 'success')
+        fetchSystemSettings()
+      } else {
+        showToast(data.error || 'Failed to update setting', 'error')
+      }
+    } catch (error) {
+      showToast('Failed to update setting', 'error')
+    }
+  }
+
+  const initializeSystemSettings = async () => {
+    try {
+      const response = await fetch('/api/admin/system-settings', {
+        method: 'POST',
+        credentials: 'include'
+      })
+
+      const data = await response.json()
+      if (response.ok) {
+        showToast('System settings initialized successfully!', 'success')
+        fetchSystemSettings()
+      } else {
+        showToast(data.error || 'Failed to initialize settings', 'error')
+      }
+    } catch (error) {
+      showToast('Failed to initialize settings', 'error')
+    }
+  }
+
   const approveTopUp = async (requestId) => {
     setProcessingTopUp((prev) => ({ ...prev, [requestId]: true }))
     try {
@@ -844,7 +918,7 @@ export default function AdminPage() {
       const data = await response.json()
       if (response.ok) {
         showToast(
-          `Top-up approved! ฿${data.amount} credited as ${data.points} points`,
+          `Top-up approved! ฿${data.amount} credited as ${data.points} credits`,
           'success'
         )
         fetchTopUpRequests()
@@ -875,7 +949,7 @@ export default function AdminPage() {
     }
 
     if (action === 'approve') {
-      const confirmMsg = `Are you sure you want to approve ${selectedTopUpIds.length} top-up request(s)? This will credit points to users immediately.`
+      const confirmMsg = `Are you sure you want to approve ${selectedTopUpIds.length} top-up request(s)? This will credit credits to users immediately.`
       if (!window.confirm(confirmMsg)) return
       
       bulkApproveTopUps()
@@ -1051,6 +1125,19 @@ export default function AdminPage() {
         showToast(
           `Extension approved! ${data.licenseCode} extended by ${data.extendedDays} days`,
           'success'
+        )
+        // Optimistically update local list so UI reflects immediately
+        setExtensionRequests((prev) =>
+          prev.map((r) =>
+            r._id === requestId
+              ? {
+                  ...r,
+                  status: 'approved',
+                  processedAt: new Date().toISOString(),
+                  processedBy: 'admin'
+                }
+              : r
+          )
         )
         fetchExtensionRequests()
         fetchAllCustomers() // Refresh customer list
@@ -1508,6 +1595,16 @@ export default function AdminPage() {
                   : 0}
                 )
               </button>
+              <button
+                onClick={() => setActiveTab('system-settings')}
+                className={`py-4 px-6 text-sm font-medium border-b-2 ${
+                  activeTab === 'system-settings'
+                    ? 'border-yellow-500 text-yellow-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                {language === 'th' ? 'ตั้งค่าระบบ' : 'System Settings'}
+              </button>
             </nav>
           </div>
         </div>
@@ -1610,7 +1707,7 @@ export default function AdminPage() {
                         {language === 'th' ? 'ราคา' : 'Price'}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        {language === 'th' ? 'แต้ม' : 'Points'}
+                        {language === 'th' ? 'เครดิต' : 'Credits'}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
                         {language === 'th' ? 'ราคา/วัน' : 'Price/Day'}
@@ -2186,6 +2283,11 @@ export default function AdminPage() {
                     onChange={(e) =>
                       handleFormChange('accountNumber', e.target.value)
                     }
+                    onKeyPress={(e) => {
+                      if (!manualAccountForm.isDemo && !/[0-9]/.test(e.key)) {
+                        e.preventDefault()
+                      }
+                    }}
                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 ${manualAccountForm.isDemo ? 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed' : 'border-gray-300'}`}
                     placeholder={
                       manualAccountForm.isDemo
@@ -2629,7 +2731,7 @@ export default function AdminPage() {
                         {language === 'th' ? 'จำนวนเงิน' : 'Amount'}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        {language === 'th' ? 'แต้ม' : 'Points'}
+                        {language === 'th' ? 'เครดิต' : 'Credits'}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
                         {t('status')}
@@ -2672,7 +2774,7 @@ export default function AdminPage() {
                             ฿{request.amount.toFixed(2)}
                           </td>
                           <td className="px-6 py-4 text-sm text-blue-600 font-bold">
-                            {request.points} pts
+                            {request.points} crd
                           </td>
                           <td className="px-6 py-4">
                             <span
@@ -3460,7 +3562,7 @@ export default function AdminPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {language === 'th' ? 'แต้มที่ได้รับ' : 'Points Received'} <span className="text-red-500">*</span>
+                    {language === 'th' ? 'เครดิตที่ได้รับ' : 'Credits Received'} <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
@@ -3564,6 +3666,137 @@ export default function AdminPage() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* System Settings Tab */}
+      {activeTab === 'system-settings' && (
+        <div className="bg-white rounded-xl shadow-lg p-8">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-900">
+              {language === 'th' ? 'ตั้งค่าระบบ' : 'System Settings'}
+            </h2>
+            <div className="flex gap-3">
+              <button
+                onClick={fetchSystemSettings}
+                disabled={loadingSettings}
+                className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg flex items-center"
+              >
+                {loadingSettings ? (
+                  <svg className="animate-spin w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                  </svg>
+                )}
+                {t('refresh')}
+              </button>
+              {systemSettings.length === 0 && (
+                <button
+                  onClick={initializeSystemSettings}
+                  className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
+                >
+                  {language === 'th' ? 'เริ่มต้นการตั้งค่า' : 'Initialize Settings'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {loadingSettings ? (
+            <div className="flex justify-center items-center py-12">
+              <svg className="animate-spin w-8 h-8 text-yellow-500" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+          ) : systemSettings.length === 0 ? (
+            <div className="text-center py-12">
+              <svg className="mx-auto w-16 h-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+              </svg>
+              <p className="text-gray-500">
+                {language === 'th' ? 'ไม่มีการตั้งค่า คลิกเพื่อเริ่มต้น' : 'No settings found. Click to initialize.'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Account Number Change Settings */}
+              <div className="border border-gray-200 rounded-lg p-6 bg-gray-50">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                  <svg className="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                  </svg>
+                  {language === 'th' ? 'การเปลี่ยนหมายเลขบัญชี' : 'Account Number Change'}
+                </h3>
+                
+                {systemSettings.filter(s => s.key.includes('account_number')).map(setting => (
+                  <div key={setting.key} className="mb-4 last:mb-0">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      {setting.key === 'account_number_change_cost' 
+                        ? (language === 'th' ? 'ค่าใช้จ่ายในการเปลี่ยน (เครดิต)' : 'Change Cost (Credits)')
+                        : (language === 'th' ? 'เปิดใช้งานฟีเจอร์' : 'Feature Enabled')
+                      }
+                      <span className="ml-2 text-xs text-gray-500">{setting.description}</span>
+                    </label>
+                    
+                    {typeof setting.value === 'boolean' ? (
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={setting.value}
+                          onChange={(e) => updateSystemSetting(setting.key, e.target.checked)}
+                          className="rounded text-yellow-600 focus:ring-yellow-500"
+                        />
+                        <span className="ml-2 text-sm text-gray-700">
+                          {setting.value 
+                            ? (language === 'th' ? 'เปิดใช้งาน' : 'Enabled')
+                            : (language === 'th' ? 'ปิดใช้งาน' : 'Disabled')
+                          }
+                        </span>
+                      </label>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          value={editingSettings[setting.key] !== undefined ? editingSettings[setting.key] : setting.value}
+                          onChange={(e) => setEditingSettings(prev => ({ ...prev, [setting.key]: e.target.value }))}
+                          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 w-48"
+                          min="0"
+                        />
+                        <button
+                          onClick={() => {
+                            const newValue = parseInt(editingSettings[setting.key] || setting.value)
+                            updateSystemSetting(setting.key, newValue)
+                            setEditingSettings(prev => {
+                              const updated = { ...prev }
+                              delete updated[setting.key]
+                              return updated
+                            })
+                          }}
+                          className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg"
+                        >
+                          {language === 'th' ? 'บันทึก' : 'Save'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Other settings categories can be added here */}
+              <div className="text-sm text-gray-500 italic">
+                {language === 'th' 
+                  ? '* การตั้งค่าเหล่านี้มีผลทันทีกับผู้ใช้ทั้งหมด' 
+                  : '* These settings take effect immediately for all users'
+                }
+              </div>
+            </div>
+          )}
         </div>
       )}
 

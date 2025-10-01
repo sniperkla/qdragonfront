@@ -7,22 +7,11 @@ export function useWebSocket(userId = null, isAdmin = false) {
   const [lastUpdate, setLastUpdate] = useState(null)
 
   useEffect(() => {
-    console.log('🔧 Setting up WebSocket connection...', { userId, isAdmin })
-
     // Initialize socket connection
     const wsUrl =
       process.env.NODE_ENV === 'production'
         ? process.env.NEXT_PUBLIC_APP_URL
         : 'http://localhost:3000'
-
-    console.log(
-      '🔧 WebSocket connecting to:',
-      wsUrl,
-      'for user:',
-      userId,
-      'isAdmin:',
-      isAdmin
-    )
 
     socketRef.current = io(wsUrl, {
       path: '/api/socketio',
@@ -40,61 +29,42 @@ export function useWebSocket(userId = null, isAdmin = false) {
 
     // Connection handlers
     socket.on('connect', () => {
-      console.log('🔌 WebSocket connected:', socket.id)
       setIsConnected(true)
 
       // Small delay to ensure server is ready
       setTimeout(() => {
         // Join appropriate rooms
         if (isAdmin) {
-          console.log('🔑 Admin joining admin room...')
           socket.emit('join-admin')
         }
         if (userId) {
-          console.log(
-            '👤 User joining user room:',
-            userId,
-            'socketId:',
-            socket.id
-          )
           socket.emit('join-user', userId)
-        } else {
-          console.log('⚠️ No userId provided, cannot join user room')
         }
       }, 100)
     })
 
     socket.on('disconnect', (reason) => {
-      console.log('🔌 WebSocket disconnected, reason:', reason)
       setIsConnected(false)
     })
 
     socket.on('connect_error', (error) => {
-      console.error('🔌 WebSocket connection error:', error)
-      console.error('🔌 Error type:', error.type)
-      console.error('🔌 Error description:', error.description)
       setIsConnected(false)
     })
 
     socket.on('reconnect', (attemptNumber) => {
-      console.log('🔌 WebSocket reconnected after', attemptNumber, 'attempts')
       setIsConnected(true)
     })
 
     socket.on('reconnect_error', (error) => {
-      console.error('🔌 WebSocket reconnection error:', error)
+      // Silent error
     })
 
     socket.on('disconnect', (reason) => {
-      console.log('🔌 WebSocket disconnected, reason:', reason)
       setIsConnected(false)
 
       // Handle specific disconnect reasons
       if (reason === 'io server disconnect') {
         // The disconnection was initiated by the server, reconnect manually
-        console.log(
-          '🔌 Server initiated disconnect, attempting manual reconnect...'
-        )
         socket.connect()
       }
     })
@@ -129,30 +99,20 @@ export function useWebSocket(userId = null, isAdmin = false) {
     })
 
     socket.on('client-notification', (data) => {
-      console.log('🔍 [DEBUG] Raw client-notification event received:', data)
+      // Silent handler
     })
 
     socket.on('broadcast-notification', (data) => {
-      console.log('🔍 [DEBUG] Raw broadcast-notification event received:', data)
+      // Silent handler
     })
 
     // Handle room join acknowledgments
     socket.on('room-joined', (data) => {
-      if (data.success) {
-        console.log('✅ Successfully joined room:', data.room)
-      } else {
-        console.error(
-          '❌ Failed to join room:',
-          data.room,
-          'Error:',
-          data.error
-        )
-      }
+      // Silent handler
     })
 
     // Cleanup on unmount
     return () => {
-      console.log('🧹 Cleaning up WebSocket connection')
       socket.disconnect()
     }
   }, [userId, isAdmin])
@@ -187,24 +147,16 @@ export function useCodesWebSocket(userId, onUpdate) {
 
   useEffect(() => {
     if (!subscribe) {
-      console.log('⚠️ Codes WebSocket subscribe not available')
       return
     }
 
     if (!userId) {
-      console.log('⚠️ No userId provided for codes WebSocket')
       return
     }
 
-    console.log('🎧 Setting up codes WebSocket listener for user:', userId)
-
     const unsubscribe = subscribe('codes-updated', (data) => {
-      console.log('📨 Codes update received for user', userId, ':', data)
       if (onUpdate) {
-        console.log('🔄 Calling codes update handler')
         onUpdate(data)
-      } else {
-        console.log('⚠️ No codes update handler provided')
       }
     })
 
@@ -219,12 +171,10 @@ export function useCustomerAccountWebSocket(userId, onUpdate) {
 
   useEffect(() => {
     if (!subscribe) {
-      console.log('⚠️ Customer account WebSocket subscribe not available')
       return
     }
 
     if (!userId) {
-      console.log('⚠️ No userId provided for customer account WebSocket')
       return
     }
 

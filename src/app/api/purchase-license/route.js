@@ -53,11 +53,17 @@ export async function POST(req) {
       })
     }
 
-    const planSetting = await PlanSetting.findOne({ days: planDays, isActive: true })
+    const planSetting = await PlanSetting.findOne({
+      days: planDays,
+      isActive: true
+    })
     if (!planSetting) {
-      return new Response(JSON.stringify({ error: 'Selected plan not available' }), {
-        status: 400
-      })
+      return new Response(
+        JSON.stringify({ error: 'Selected plan not available' }),
+        {
+          status: 400
+        }
+      )
     }
 
     // Generate unique license code
@@ -68,7 +74,7 @@ export async function POST(req) {
       return `${prefix}-${timestamp}-${random}`
     }
 
-  const licenseCode = generateLicenseCode()
+    const licenseCode = generateLicenseCode()
 
     // Get user info
     const user = await User.findById(authData.id)
@@ -152,7 +158,7 @@ export async function POST(req) {
           planDays: planSetting.days,
           price: planSetting.price,
           status: 'pending_payment',
-          currency: 'USD',
+          currency: 'THB',
           language: user.preferredLanguage || 'en'
         })
       }
@@ -171,7 +177,7 @@ export async function POST(req) {
         platform,
         plan: planSetting.days,
         price: planSetting.price,
-        currency: 'USD',
+        currency: 'THB',
         status: 'pending_payment',
         message:
           'License purchase initiated successfully. Please proceed to payment.'

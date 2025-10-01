@@ -28,6 +28,15 @@ export default function LandingPage() {
     return numeric
   }
 
+  // Format date with time (HH:MM)
+  const formatDateTime = (dateString, locale = 'en-US') => {
+    const date = new Date(dateString)
+    const dateStr = date.toLocaleDateString(locale)
+    const hours = date.getHours().toString().padStart(2, '0')
+    const minutes = date.getMinutes().toString().padStart(2, '0')
+    return `${dateStr} ${hours}:${minutes}`
+  }
+
   // Code generation form state
   const [showCodeGenerator, setShowCodeGenerator] = useState(false)
   const [codeForm, setCodeForm] = useState({
@@ -58,6 +67,16 @@ export default function LandingPage() {
   // Top-up points modal state
   const [showTopUpModal, setShowTopUpModal] = useState(false)
   const [topUpAmount, setTopUpAmount] = useState('')
+
+  // Change account number modal state
+  const [showChangeAccountModal, setShowChangeAccountModal] = useState(false)
+  const [changeAccountForm, setChangeAccountForm] = useState({
+    licenseCode: '',
+    currentAccountNumber: '',
+    newAccountNumber: '',
+    cost: 1000
+  })
+  const [changingAccount, setChangingAccount] = useState(false)
 
   // Notification state
   const [notifications, setNotifications] = useState([])
@@ -401,7 +420,11 @@ export default function LandingPage() {
     if (historyLoading) return
     setHistoryLoading(true)
     try {
-      const res = await fetch('/api/history', { credentials: 'include' })
+      // Add cache busting + no-store to ensure freshest extension status after admin actions
+      const res = await fetch(`/api/history?ts=${Date.now()}`, {
+        credentials: 'include',
+        cache: 'no-store'
+      })
       const data = await res.json()
       if (res.ok) {
         setPurchaseHistory(data.purchases || [])
@@ -439,7 +462,6 @@ export default function LandingPage() {
         (typeof window !== 'undefined'
           ? window.location.origin
           : 'http://localhost:3000')
-      console.log('🛰️ [Landing] Preparing socket connection to', baseUrl)
       const io = await getSocketIO()
       const s = io(baseUrl, {
         path: '/api/socketio',
@@ -529,9 +551,6 @@ export default function LandingPage() {
               : [...prev.rooms, data.room]
             const userIdRooms = newRooms.filter((r) => r.startsWith('user-'))
             const joined = userIdRooms.length > 0
-            if (joined && data.room.startsWith('user-')) {
-              console.log('✅ User room joined successfully:', data.room)
-            }
             if (joined && joinIntervalRef.current) {
               clearInterval(joinIntervalRef.current)
               joinIntervalRef.current = null
@@ -543,6 +562,7 @@ export default function LandingPage() {
 
       // Codes updated (e.g., status change paid/activated)
       s.on('codes-updated', (payload) => {
+        console.log('🔔 Received codes-updated event:', payload)
         setLastWsEvent('codes-updated')
         fetchMyCodes()
         fetchHistory() // refresh history real-time
@@ -551,6 +571,7 @@ export default function LandingPage() {
 
       // Fallback broadcast (in case user room missed join)
       s.on('codes-updated-broadcast', (payload) => {
+        console.log('🔔 Received codes-updated-broadcast event:', payload)
         // Only refresh if this broadcast pertains to current user (userId matches) or if unsure
         if (
           !payload?.userId ||
@@ -564,13 +585,38 @@ export default function LandingPage() {
         }
       })
 
-      s.on('customer-account-updated', () => {
+      s.on('customer-account-updated', (data) => {
+        console.log('🔔 Received customer-account-updated event:', data)
         setLastWsEvent('customer-account-updated')
         fetchMyCodes()
         fetchHistory()
       })
 
+      // Broadcast fallback for customer account updates (if user room missed join)
+      s.on('customer-account-updated-broadcast', (payload) => {
+        console.log(
+          '🔔 Received customer-account-updated-broadcast event:',
+          payload
+        )
+        setLastWsEvent('customer-account-updated-broadcast')
+        fetchMyCodes()
+        fetchHistory()
+      })
+
+      // Listen for admin processed extension request broadcasts (in case fallback broadcast hits clients)
+      s.on('extension-request-updated-broadcast', (data) => {
+        console.log(
+          '🔔 Received extension-request-updated-broadcast event:',
+          data
+        )
+        setLastWsEvent('extension-request-updated-broadcast')
+        // Proactively refresh history & licenses – event does not always contain userId
+        fetchHistory()
+        fetchMyCodes()
+      })
+
       s.on('client-notification', (data) => {
+        console.log('🔔 Received client-notification event:', data)
         setLastWsEvent('client-notification')
         if (data?.message) {
           showNotification(data.message, data.type || 'info')
@@ -578,6 +624,11 @@ export default function LandingPage() {
           const msg = data.message.toLowerCase()
           if (msg.includes('license') || msg.includes('extension')) {
             fetchHistory()
+            // Schedule a secondary fetch shortly after to avoid race conditions where DB write
+            // completes just after the first fetch
+            setTimeout(() => {
+              fetchHistory()
+            }, 1200)
           }
         }
       })
@@ -591,9 +642,9 @@ export default function LandingPage() {
 
       // Points system events
       s.on('points-updated', (data) => {
+        console.log('🔔 Received points-updated event:', data)
         setLastWsEvent('points-updated')
         if (data?.newPoints !== undefined) {
-          console.log('Points updated via WebSocket:', data)
           // Update user points in Redux state
           dispatch(
             loginSuccess({
@@ -602,28 +653,68 @@ export default function LandingPage() {
             })
           )
           showNotification(
-            `${language === 'th' ? 'แต้มของคุณได้รับการอัปเดต' : 'Your points have been updated'}: ${data.newPoints} ${language === 'th' ? 'แต้ม' : 'points'}`,
+            `${language === 'th' ? 'เครดิตของคุณได้รับการอัปเดต' : 'Your credits have been updated'}: ${data.newPoints} ${language === 'th' ? 'เครดิต' : 'credits'}`,
             'success'
           )
 
-          // Also refresh user data to ensure consistency
+          // Also refresh user data and history to ensure consistency
           refreshUserData()
+          fetchHistory() // Refresh topup history
+        }
+      })
+
+      // Broadcast fallback for points updates
+      s.on('points-updated-broadcast', (data) => {
+        console.log('🔔 Received points-updated-broadcast event:', data)
+        setLastWsEvent('points-updated-broadcast')
+        if (data?.newPoints !== undefined) {
+          dispatch(
+            loginSuccess({
+              ...user,
+              points: normalizePoints(data.newPoints)
+            })
+          )
+          refreshUserData()
+          fetchHistory()
         }
       })
 
       s.on('topup-status-updated', (data) => {
+        console.log('🔔 Received topup-status-updated event:', data)
         setLastWsEvent('topup-status-updated')
         if (data?.status === 'approved' && data?.points) {
           showNotification(
-            `${language === 'th' ? 'คำขอเติมเงินได้รับการอนุมัติ!' : 'Top-up request approved!'} +${data.points} ${language === 'th' ? 'แต้ม' : 'points'}`,
+            `${language === 'th' ? 'คำขอเติมเงินได้รับการอนุมัติ!' : 'Top-up request approved!'} +${data.points} ${language === 'th' ? 'เครดิต' : 'credits'}`,
             'success'
           )
+          fetchHistory() // Refresh topup history
+          // Add delay for DB consistency
+          setTimeout(() => {
+            fetchHistory()
+          }, 1200)
         } else if (data?.status === 'rejected') {
           showNotification(
             `${language === 'th' ? 'คำขอเติมเงินถูกปฏิเสธ' : 'Top-up request rejected'}${data?.reason ? `: ${data.reason}` : ''}`,
             'error'
           )
+          fetchHistory() // Refresh topup history even for rejections
         }
+      })
+
+      // Listen for new code/license generation events (admin creates license)
+      s.on('new-code-generated', (data) => {
+        console.log('🔔 Received new-code-generated event:', data)
+        setLastWsEvent('new-code-generated')
+        fetchMyCodes()
+        fetchHistory() // Refresh purchase history
+      })
+
+      // Listen for topup-processed (admin approval confirmation)
+      s.on('topup-processed', (data) => {
+        console.log('🔔 Received topup-processed event:', data)
+        setLastWsEvent('topup-processed')
+        fetchHistory() // Refresh topup history
+        refreshUserData() // Update points
       })
     })()
 
@@ -830,7 +921,9 @@ export default function LandingPage() {
   // Extend code functionality
   const handleExtendLicense = (license) => {
     setSelectedCode(license)
-    setExtendPlan('30')
+    // Set default to first available non-lifetime plan or '30'
+    const firstNonLifetimePlan = plans.find(p => !p.isLifetime)
+    setExtendPlan(firstNonLifetimePlan ? firstNonLifetimePlan.days.toString() : '30')
     setShowExtendModal(true)
   }
 
@@ -860,13 +953,14 @@ export default function LandingPage() {
         // Check if extension was completed immediately or is pending
         if (data.status === 'completed') {
           showModalAlert(
-            `${language === 'th' ? 'ขยายใบอนุญาตสำเร็จ!' : 'License Extended Successfully!'}\n\n${language === 'th' ? 'ใบอนุญาต' : 'License'}: ${data.licenseCode}\n${language === 'th' ? 'วันหมดอายุเดิม' : 'Old expiry'}: ${data.oldExpiry}\n${language === 'th' ? 'วันหมดอายุใหม่' : 'New expiry'}: ${data.newExpiry}\n${language === 'th' ? 'จำนวนวันที่ขยาย' : 'Extended days'}: ${data.extendedDays} ${language === 'th' ? 'วัน' : 'days'}\n${language === 'th' ? 'แต้มที่ใช้' : 'Points used'}: ${data.pointsUsed} ${language === 'th' ? 'แต้ม' : 'points'}\n${language === 'th' ? 'แต้มคงเหลือ' : 'Remaining points'}: ${data.remainingPoints} ${language === 'th' ? 'แต้ม' : 'points'}`,
+            `${language === 'th' ? 'ขยายใบอนุญาตสำเร็จ!' : 'License Extended Successfully!'}\n\n${language === 'th' ? 'ใบอนุญาต' : 'License'}: ${data.licenseCode}\n${language === 'th' ? 'วันหมดอายุเดิม' : 'Old expiry'}: ${data.oldExpiry}\n${language === 'th' ? 'วันหมดอายุใหม่' : 'New expiry'}: ${data.newExpiry}\n${language === 'th' ? 'จำนวนวันที่ขยาย' : 'Extended days'}: ${data.extendedDays} ${language === 'th' ? 'วัน' : 'days'}\n${language === 'th' ? 'เครดิตที่ใช้' : 'Credits used'}: ${data.pointsUsed} ${language === 'th' ? 'เครดิต' : 'credits'}\n${language === 'th' ? 'เครดิตคงเหลือ' : 'Remaining credits'}: ${data.remainingPoints} ${language === 'th' ? 'เครดิต' : 'credits'}`,
             'success',
             language === 'th' ? 'ขยายใบอนุญาตสำเร็จ' : 'Extension Successful',
             () => {
               setShowExtendModal(false)
               setSelectedCode(null)
-              setExtendPlan('30')
+              const firstNonLifetimePlan = plans.find(p => !p.isLifetime)
+              setExtendPlan(firstNonLifetimePlan ? firstNonLifetimePlan.days.toString() : '30')
               fetchMyCodes() // Refresh the codes list
               refreshUserData() // Refresh user data to get updated points
               fetchHistory() // Refresh extension history immediately
@@ -881,7 +975,8 @@ export default function LandingPage() {
             () => {
               setShowExtendModal(false)
               setSelectedCode(null)
-              setExtendPlan('30')
+              const firstNonLifetimePlan = plans.find(p => !p.isLifetime)
+              setExtendPlan(firstNonLifetimePlan ? firstNonLifetimePlan.days.toString() : '30')
               fetchMyCodes() // Refresh the codes list
             }
           )
@@ -917,6 +1012,120 @@ export default function LandingPage() {
       // Still logout locally even if API fails
       dispatch(logout())
       router.push('/')
+    }
+  }
+
+  // Change account number handlers
+  const handleChangeAccount = async (license) => {
+    try {
+      // Fetch current settings and user credits
+      const response = await fetch('/api/change-account-number', {
+        credentials: 'include'
+      })
+      const data = await response.json()
+
+      if (!data.success) {
+        showModalAlert(data.error || 'Failed to load settings', 'error')
+        return
+      }
+
+      if (!data.data.enabled) {
+        showModalAlert(
+          language === 'th'
+            ? 'ฟีเจอร์การเปลี่ยนหมายเลขบัญชีปิดใช้งานชั่วคราว'
+            : 'Account number change feature is temporarily disabled',
+          'warning'
+        )
+        return
+      }
+
+      setChangeAccountForm({
+        licenseCode: license.code,
+        currentAccountNumber: license.accountNumber,
+        newAccountNumber: '',
+        cost: data.data.cost
+      })
+      setShowChangeAccountModal(true)
+    } catch (error) {
+      showModalAlert('Failed to load change account settings', 'error')
+    }
+  }
+
+  const submitChangeAccount = async (e) => {
+    e.preventDefault()
+
+    if (!changeAccountForm.newAccountNumber.trim()) {
+      showModalAlert(
+        language === 'th'
+          ? 'กรุณาใส่หมายเลขบัญชีใหม่'
+          : 'Please enter new account number',
+        'warning'
+      )
+      return
+    }
+
+    if (
+      changeAccountForm.newAccountNumber ===
+      changeAccountForm.currentAccountNumber
+    ) {
+      showModalAlert(
+        language === 'th'
+          ? 'หมายเลขบัญชีใหม่ต้องแตกต่างจากหมายเลขเดิม'
+          : 'New account number must be different from current one',
+        'warning'
+      )
+      return
+    }
+
+    setChangingAccount(true)
+    try {
+      const response = await fetch('/api/change-account-number', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          licenseCode: changeAccountForm.licenseCode,
+          newAccountNumber: changeAccountForm.newAccountNumber
+        })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        showModalAlert(
+          `${language === 'th' ? 'เปลี่ยนหมายเลขบัญชีสำเร็จ!' : 'Account Number Changed Successfully!'}\n\n${language === 'th' ? 'ใบอนุญาต' : 'License'}: ${data.data.licenseCode}\n${language === 'th' ? 'หมายเลขเดิม' : 'Old number'}: ${data.data.oldAccountNumber}\n${language === 'th' ? 'หมายเลขใหม่' : 'New number'}: ${data.data.newAccountNumber}\n${language === 'th' ? 'เครดิตที่ใช้' : 'Credits used'}: ${data.data.creditsDeducted} ${language === 'th' ? 'เครดิต' : 'credits'}\n${language === 'th' ? 'เครดิตคงเหลือ' : 'Remaining credits'}: ${data.data.remainingCredits} ${language === 'th' ? 'เครดิต' : 'credits'}`,
+          'success',
+          language === 'th' ? 'เปลี่ยนหมายเลขบัญชีสำเร็จ' : 'Change Successful',
+          () => {
+            setShowChangeAccountModal(false)
+            setChangeAccountForm({
+              licenseCode: '',
+              currentAccountNumber: '',
+              newAccountNumber: '',
+              cost: 1000
+            })
+            fetchMyCodes() // Refresh licenses
+            refreshUserData() // Refresh points
+          }
+        )
+      } else {
+        if (response.status === 400 && data.required) {
+          showModalAlert(
+            `${language === 'th' ? 'เครดิตไม่เพียงพอ!' : 'Insufficient Credits!'}\n\n${language === 'th' ? 'ต้องการ' : 'Required'}: ${data.required} ${language === 'th' ? 'เครดิต' : 'credits'}\n${language === 'th' ? 'มีอยู่' : 'Current'}: ${data.current} ${language === 'th' ? 'เครดิต' : 'credits'}\n${language === 'th' ? 'ขาด' : 'Need'}: ${data.required - data.current} ${language === 'th' ? 'เครดิตเพิ่ม' : 'more credits'}`,
+            'error'
+          )
+        } else {
+          showModalAlert(
+            data.error || 'Failed to change account number',
+            'error'
+          )
+        }
+      }
+    } catch (error) {
+      console.error('Error changing account number:', error)
+      showModalAlert('Failed to change account number', 'error')
+    } finally {
+      setChangingAccount(false)
     }
   }
 
@@ -1041,7 +1250,7 @@ export default function LandingPage() {
       console.log('Success response:', data)
 
       showModalAlert(
-        `${language === 'th' ? 'ส่งคำขอเติมเงินสำเร็จ!' : 'Top-up request submitted successfully!'}\n\n${language === 'th' ? 'จำนวนเงิน' : 'Amount'}: $${amount}\n${language === 'th' ? 'แต้มที่จะได้รับ' : 'Points to receive'}: ${amount}\n\n${language === 'th' ? 'รอแอดมินอนุมัติเพื่อรับแต้ม' : 'Please wait for admin approval to receive points'}`,
+        `${language === 'th' ? 'ส่งคำขอเติมเงินสำเร็จ!' : 'Top-up request submitted successfully!'}\n\n${language === 'th' ? 'จำนวนเงิน' : 'Amount'}: $${amount}\n${language === 'th' ? 'เครดิตที่จะได้รับ' : 'Credits to receive'}: ${amount}\n\n${language === 'th' ? 'รอแอดมินอนุมัติเพื่อรับเครดิต' : 'Please wait for admin approval to receive credits'}`,
         'success',
         language === 'th' ? 'คำขอเติมเงิน' : 'Top-up Request'
       )
@@ -1089,9 +1298,9 @@ export default function LandingPage() {
 
     if (userPoints < requiredPoints) {
       showModalAlert(
-        `${language === 'th' ? 'แต้มไม่เพียงพอ' : 'Insufficient points'}\n\n${language === 'th' ? 'แต้มที่ต้องการ' : 'Points needed'}: ${requiredPoints}\n${language === 'th' ? 'แต้มที่มี' : 'Points available'}: ${userPoints}\n\n${language === 'th' ? 'กรุณาเติมเงินเพื่อรับแต้มเพิ่ม' : 'Please top-up to get more points'}`,
+        `${language === 'th' ? 'เครดิตไม่เพียงพอ' : 'Insufficient credits'}\n\n${language === 'th' ? 'เครดิตที่ต้องการ' : 'Credits needed'}: ${requiredPoints}\n${language === 'th' ? 'เครดิตที่มี' : 'Credits available'}: ${userPoints}\n\n${language === 'th' ? 'กรุณาเติมเงินเพื่อรับเครดิตเพิ่ม' : 'Please top-up to get more credits'}`,
         'warning',
-        language === 'th' ? 'แต้มไม่เพียงพอ' : 'Insufficient Points'
+        language === 'th' ? 'เครดิตไม่เพียงพอ' : 'Insufficient Credits'
       )
       return
     }
@@ -1131,7 +1340,7 @@ export default function LandingPage() {
           : `${selectedPlan.days} ${language === 'th' ? 'วัน' : 'days'}`
 
         showModalAlert(
-          `${language === 'th' ? '🎉 ซื้อและเปิดใช้งานใบอนุญาตสำเร็จ!' : '🎉 License purchased and activated successfully!'}\n\n${language === 'th' ? 'รหัสใบอนุญาต' : 'License Code'}: ${data.license.code}\n${language === 'th' ? 'แพลน' : 'Plan'}: ${planLabel}\n${language === 'th' ? 'แต้มที่ใช้' : 'Points used'}: ${requiredPoints}\n${language === 'th' ? 'แต้มคงเหลือ' : 'Remaining points'}: ${data.license.remainingPoints}\n${language === 'th' ? 'สถานะ' : 'Status'}: ${language === 'th' ? '✅ เปิดใช้งานแล้ว' : '✅ Activated'}\n\n${language === 'th' ? '🚀 บัญชีของคุณพร้อมใช้งานทันที!' : '🚀 Your account is ready to use immediately!'}`,
+          `${language === 'th' ? '🎉 ซื้อและเปิดใช้งานใบอนุญาตสำเร็จ!' : '🎉 License purchased and activated successfully!'}\n\n${language === 'th' ? 'รหัสใบอนุญาต' : 'License Code'}: ${data.license.code}\n${language === 'th' ? 'แพลน' : 'Plan'}: ${planLabel}\n${language === 'th' ? 'เครดิตที่ใช้' : 'Credits used'}: ${requiredPoints}\n${language === 'th' ? 'เครดิตคงเหลือ' : 'Remaining credits'}: ${data.license.remainingPoints}\n${language === 'th' ? 'สถานะ' : 'Status'}: ${language === 'th' ? '✅ เปิดใช้งานแล้ว' : '✅ Activated'}\n\n${language === 'th' ? '🚀 บัญชีของคุณพร้อมใช้งานทันที!' : '🚀 Your account is ready to use immediately!'}`,
           'success',
           language === 'th' ? 'ซื้อใบอนุญาต' : 'License Activated'
         )
@@ -1322,6 +1531,11 @@ export default function LandingPage() {
                         name="accountNumber"
                         value={codeForm.accountNumber}
                         onChange={handleCodeFormChange}
+                        onKeyPress={(e) => {
+                          if (!/[0-9]/.test(e.key)) {
+                            e.preventDefault()
+                          }
+                        }}
                         placeholder={t('enter_account_number_placeholder')}
                         className="w-full px-4 py-3 pl-11 rounded-xl bg-white/95 backdrop-blur-sm text-gray-900 placeholder-gray-500 border border-white/20 focus:ring-2 focus:ring-purple-300 focus:border-transparent focus:bg-white transition-all duration-300 shadow-lg"
                         required
@@ -1699,12 +1913,12 @@ export default function LandingPage() {
                 {/* Points Balance Display */}
                 <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 text-center lg:text-right">
                   <p className="text-purple-200 text-sm font-medium mb-1">
-                    {language === 'th' ? 'แต้มของคุณ' : 'Your Points'}
+                    {language === 'th' ? 'เครดิตของคุณ' : 'Your Credits'}
                   </p>
                   <div className="text-4xl font-black text-white mb-2">
                     {user?.points || 0}
                     <span className="text-lg font-semibold ml-2 opacity-80">
-                      {language === 'th' ? 'แต้ม' : 'PTS'}
+                      {language === 'th' ? 'เครดิต' : 'CRD'}
                     </span>
                   </div>
                   <button
@@ -1713,7 +1927,7 @@ export default function LandingPage() {
                   >
                     {/* Animated background shimmer */}
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-1000"></div>
-                    
+
                     {/* Icon with rotation animation */}
                     <svg
                       className="w-4 h-4 relative group-hover:rotate-180 transition-transform duration-500"
@@ -1728,7 +1942,7 @@ export default function LandingPage() {
                         d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                       />
                     </svg>
-                    
+
                     {/* Text */}
                     <span className="relative font-semibold text-sm">
                       {language === 'th' ? 'รีเฟรช' : 'Refresh'}
@@ -1766,6 +1980,11 @@ export default function LandingPage() {
                         ? 'กรอกหมายเลขบัญชีของคุณ'
                         : 'Enter your account number'
                     }
+                    onKeyPress={(e) => {
+                      if (!/[0-9]/.test(e.key)) {
+                        e.preventDefault()
+                      }
+                    }}
                     className="w-full px-4 py-3 rounded-xl bg-white/95 text-gray-900 placeholder-gray-500 border border-white/20 focus:ring-2 focus:ring-yellow-400 focus:border-transparent transition-all duration-300"
                     id="pointsAccountNumber"
                     required
@@ -1866,8 +2085,8 @@ export default function LandingPage() {
                           value={p.isLifetime ? 'lifetime' : p.days}
                         >
                           {p.isLifetime
-                            ? `${p.name} - ${language === 'th' ? 'ตลอดชีพ' : 'Lifetime'} - ${p.points} ${language === 'th' ? 'แต้ม' : 'Pts'}`
-                            : `${p.name || p.days + ' days'} - ${p.days} ${language === 'th' ? 'วัน' : 'Days'} - ${p.points} ${language === 'th' ? 'แต้ม' : 'Pts'}`}
+                            ? `${p.name} - ${language === 'th' ? 'ตลอดชีพ' : 'Lifetime'} - ${p.points} ${language === 'th' ? 'เครดิต' : 'Crd'}`
+                            : `${p.name || p.days + ' days'} - ${p.days} ${language === 'th' ? 'วัน' : 'Days'} - ${p.points} ${language === 'th' ? 'เครดิต' : 'Pts'}`}
                         </option>
                       ))}
                     </select>
@@ -1899,7 +2118,7 @@ export default function LandingPage() {
                           <span>
                             {language === 'th' ? 'ต้องการ' : 'Needs'}{' '}
                             <strong>{selected.points}</strong>{' '}
-                            {language === 'th' ? 'แต้ม' : 'pts'} •{' '}
+                            {language === 'th' ? 'เครดิต' : 'pts'} •{' '}
                             {language === 'th' ? 'คุณมี' : 'You have'}{' '}
                             <strong>{user?.points || 0}</strong>
                           </span>
@@ -2042,7 +2261,7 @@ export default function LandingPage() {
                         </svg>
                         <span className="text-lg">
                           {language === 'th'
-                            ? 'แต้มไม่เพียงพอ'
+                            ? 'เครดิตไม่เพียงพอ'
                             : 'Insufficient Points'}
                         </span>
                       </>
@@ -2063,8 +2282,8 @@ export default function LandingPage() {
                         </svg>
                         <span className="text-lg">
                           {language === 'th'
-                            ? 'ซื้อด้วยแต้มทันที'
-                            : 'Buy with Points Now'}
+                            ? 'ซื้อด้วยเครดิตทันที'
+                            : 'Buy with Credits Now'}
                         </span>
                       </>
                     )}
@@ -2102,12 +2321,12 @@ export default function LandingPage() {
                   {/* Text content */}
                   <div className="relative flex flex-col items-start">
                     <span className="text-lg font-extrabold tracking-wide">
-                      {language === 'th' ? 'เติมแต้ม' : 'Top-up Points'}
+                      {language === 'th' ? 'เติมเครดิต' : 'Top-up Credits'}
                     </span>
                     <span className="text-xs font-normal opacity-90">
                       {language === 'th'
-                        ? 'เติมเงิน รับแต้มทันที'
-                        : 'Add funds, get points'}
+                        ? 'เติมเงิน รับเครดิตทันที'
+                        : 'Add funds, get credits'}
                     </span>
                   </div>
 
@@ -2155,7 +2374,7 @@ export default function LandingPage() {
                     </svg>
                   </div>
                   <h3 className="text-white font-semibold mb-1">{language === 'th' ? 'อัตราแลกเปลี่ยน' : 'Exchange Rate'}</h3>
-                  <p className="text-purple-200 text-sm">1 {language === 'th' ? 'แต้ม' : 'Point'} = 1 {language === 'th' ? 'วัน' : 'Day'}</p>
+                  <p className="text-purple-200 text-sm">1 {language === 'th' ? 'เครดิต' : 'Credit'} = 1 {language === 'th' ? 'วัน' : 'Day'}</p>
                 </div>
               </div> */}
             </div>
@@ -2180,7 +2399,7 @@ export default function LandingPage() {
               <div>
                 <h3 className="text-sm font-medium text-blue-800 mb-1">
                   {language === 'th'
-                    ? 'วิธีใช้งานระบบแต้ม'
+                    ? 'วิธีใช้งานระบบเครดิต'
                     : 'How Points System Works'}
                 </h3>
                 <div className="text-sm text-blue-700">
@@ -2192,13 +2411,13 @@ export default function LandingPage() {
                     </li>
                     <li>
                       {language === 'th'
-                        ? 'อัตราแลกเปลี่ยน: 1 USD = 1 แต้ม = 1 วันใบอนุญาต'
-                        : 'Exchange rate: 1 USD = 1 Point = 1 Day license'}
+                        ? 'อัตราแลกเปลี่ยน: 1 THB = 1 เครดิต'
+                        : 'Exchange rate: 1 THB = 1 Credit'}
                     </li>
                     <li>
                       {language === 'th'
-                        ? 'ซื้อใบอนุญาต: ใช้แต้มซื้อได้ทันที ไม่ต้องรอการชำระเงิน'
-                        : 'Buy license: Use points instantly, no payment waiting'}
+                        ? 'ซื้อใบอนุญาต: ใช้เครดิตซื้อได้ทันที ไม่ต้องรอการชำระเงิน'
+                        : 'Buy license: Use credits instantly, no payment waiting'}
                     </li>
                     <li>
                       {language === 'th'
@@ -2225,7 +2444,7 @@ export default function LandingPage() {
             >
               {/* Animated background shimmer */}
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-1000"></div>
-              
+
               {loadingCodes ? (
                 <svg
                   className="animate-spin w-5 h-5 mr-2 relative"
@@ -2528,24 +2747,36 @@ export default function LandingPage() {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          {code.status === 'activated' && (
-                            <button
-                              onClick={() => handleExtendLicense(code)}
-                              className="px-3 py-1 rounded text-xs transition duration-200 bg-green-500 hover:bg-green-600 text-white"
-                            >
-                              {t('extend')}
-                            </button>
-                          )}
-                          {code.status === 'pending_payment' && (
-                            <span className="text-xs text-gray-400">
-                              {t('pay_to_activate')}
-                            </span>
-                          )}
-                          {code.status === 'expired' && (
-                            <span className="text-xs text-red-400">
-                              {t('expired')}
-                            </span>
-                          )}
+                          <div className="flex flex-col gap-1">
+                            {code.status === 'activated' && (
+                              <>
+                                <button
+                                  onClick={() => handleExtendLicense(code)}
+                                  className="px-3 py-1 rounded text-xs transition duration-200 bg-green-500 hover:bg-green-600 text-white"
+                                >
+                                  {t('extend')}
+                                </button>
+                                <button
+                                  onClick={() => handleChangeAccount(code)}
+                                  className="px-3 py-1 rounded text-xs transition duration-200 bg-blue-500 hover:bg-blue-600 text-white"
+                                >
+                                  {language === 'th'
+                                    ? 'เปลี่ยนบัญชี'
+                                    : 'Change Account'}
+                                </button>
+                              </>
+                            )}
+                            {code.status === 'pending_payment' && (
+                              <span className="text-xs text-gray-400">
+                                {t('pay_to_activate')}
+                              </span>
+                            )}
+                            {code.status === 'expired' && (
+                              <span className="text-xs text-red-400">
+                                {t('expired')}
+                              </span>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     )
@@ -2793,7 +3024,7 @@ export default function LandingPage() {
                   d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                 />
               </svg>
-              <span>{language === 'th' ? 'เติมแต้ม' : 'Top-ups'}</span>
+              <span>{language === 'th' ? 'เติมเครดิต' : 'Top-ups'}</span>
               <span
                 className={`text-xs px-2 py-1 rounded-full ${
                   activeHistoryTab === 'topups'
@@ -2810,306 +3041,368 @@ export default function LandingPage() {
           <div className="bg-white rounded-2xl shadow-lg p-6 min-h-[400px]">
             {/* Purchase History Tab */}
             {activeHistoryTab === 'purchases' && (
-            <div>
-              <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-                <svg
-                  className="w-5 h-5 mr-2 text-blue-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M12 8V4m0 4a4 4 0 100 8m0-8a4 4 0 010 8m6 4H6"
-                  />
-                </svg>
-                {t('purchase_history')}
-                <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                  {purchaseHistory.length}
-                </span>
-              </h3>
-              {purchaseHistory.length === 0 ? (
-                <p className="text-sm text-gray-500">{t('no_history_yet')}</p>
-              ) : (
-                <div className="overflow-x-auto border border-gray-100 rounded-lg">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-3 py-2 text-left font-medium text-gray-700">
-                          {t('license_code')}
-                        </th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-700">
-                          {t('plan_days')}
-                        </th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-700">
-                          {t('price_label')}
-                        </th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-700">
-                          {t('status_label')}
-                        </th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-700">
-                          {t('created_at')}
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {purchaseHistory.map((item) => (
-                        <tr key={item.id} className="hover:bg-gray-50">
-                          <td className="px-3 py-2 font-mono text-xs text-blue-600 font-semibold">
-                            {item.licenseCode}
-                          </td>
-                          <td className="px-3 py-2">{item.planDays}</td>
-                          <td className="px-3 py-2">฿{item.price}</td>
-                          <td className="px-3 py-2">
-                            <span
-                              className={`inline-flex px-2 py-0.5 text-xs rounded-full font-medium ${item.status === 'activated' ? 'bg-green-100 text-green-700' : item.status === 'paid' ? 'bg-blue-100 text-blue-700' : item.status === 'pending_payment' ? 'bg-yellow-100 text-yellow-700' : item.status === 'expired' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}
-                            >
-                              {item.status.replace('_', ' ')}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 text-xs text-gray-500">
-                            {new Date(item.createdAt).toLocaleDateString()}
-                          </td>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                  <svg
+                    className="w-5 h-5 mr-2 text-blue-500"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M12 8V4m0 4a4 4 0 100 8m0-8a4 4 0 010 8m6 4H6"
+                    />
+                  </svg>
+                  {t('purchase_history')}
+                  <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                    {purchaseHistory.length}
+                  </span>
+                </h3>
+                {purchaseHistory.length === 0 ? (
+                  <p className="text-sm text-gray-500">{t('no_history_yet')}</p>
+                ) : (
+                  <div className="overflow-x-auto border border-gray-100 rounded-lg">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-medium text-gray-700">
+                            {t('license_code')}
+                          </th>
+                          <th className="px-3 py-2 text-left font-medium text-gray-700">
+                            {t('plan_days')}
+                          </th>
+                          <th className="px-3 py-2 text-left font-medium text-gray-700">
+                            {t('status_label')}
+                          </th>
+                          <th className="px-3 py-2 text-left font-medium text-gray-700">
+                            {t('created_at')}
+                          </th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {purchaseHistory.map((item) => (
+                          <tr key={item.id} className="hover:bg-gray-50">
+                            <td className="px-3 py-2 font-mono text-xs text-blue-600 font-semibold">
+                              {item.licenseCode}
+                            </td>
+                            <td className="px-3 py-2">{item.planDays}</td>
+                            <td className="px-3 py-2">
+                              <span
+                                className={`inline-flex px-2 py-0.5 text-xs rounded-full font-medium ${item.status === 'activated' ? 'bg-green-100 text-green-700' : item.status === 'paid' ? 'bg-blue-100 text-blue-700' : item.status === 'pending_payment' ? 'bg-yellow-100 text-yellow-700' : item.status === 'expired' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}
+                              >
+                                {item.status.replace('_', ' ')}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-xs text-gray-500">
+                              {formatDateTime(
+                                item.createdAt,
+                                language === 'th' ? 'th-TH' : 'en-US'
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             )}
 
             {/* Extension History Tab */}
             {activeHistoryTab === 'extensions' && (
-            <div>
-              <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-                <svg
-                  className="w-5 h-5 mr-2 text-purple-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                {t('extension_history')}
-                <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
-                  {extensionHistory.length}
-                </span>
-              </h3>
-              {extensionHistory.length === 0 ? (
-                <p className="text-sm text-gray-500">{t('no_history_yet')}</p>
-              ) : (
-                <div className="overflow-x-auto border border-gray-100 rounded-lg">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-3 py-2 text-left font-medium text-gray-700">
-                          {t('license_code')}
-                        </th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-700">
-                          {t('requested_days')}
-                        </th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-700">
-                          {language === 'th'
-                            ? 'รวมแผน (วัน)'
-                            : 'Total Plan (days)'}
-                        </th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-700">
-                          {t('status_label')}
-                        </th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-700">
-                          {t('requested_on')}
-                        </th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-700">
-                          {t('processed_on')}
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {extensionHistory.map((item) => (
-                        <tr key={item.id} className="hover:bg-gray-50">
-                          <td className="px-3 py-2 font-mono text-xs text-purple-600 font-semibold">
-                            {item.licenseCode}
-                          </td>
-                          <td className="px-3 py-2">{item.requestedDays}</td>
-                          <td className="px-3 py-2">
-                            {item.cumulativePlanDays ? (
-                              <span className="inline-flex items-center space-x-1">
-                                <span>{item.cumulativePlanDays}</span>
-                                {item.totalExtendedDays ? (
-                                  <span className="text-xs text-gray-400">
-                                    (+{item.totalExtendedDays}{' '}
-                                    {language === 'th' ? 'ขยาย' : 'extended'})
-                                  </span>
-                                ) : null}
-                              </span>
-                            ) : (
-                              '-'
-                            )}
-                          </td>
-                          <td className="px-3 py-2">
-                            <span
-                              className={`inline-flex px-2 py-0.5 text-xs rounded-full font-medium ${item.status === 'approved' ? 'bg-green-100 text-green-700' : item.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}
-                            >
-                              {item.status}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 text-xs text-gray-500">
-                            {new Date(item.requestedAt).toLocaleDateString()}
-                          </td>
-                          <td className="px-3 py-2 text-xs text-gray-500">
-                            {item.processedAt
-                              ? new Date(item.processedAt).toLocaleDateString()
-                              : '-'}
-                          </td>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                  <svg
+                    className="w-5 h-5 mr-2 text-purple-500"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  {t('extension_history')}
+                  <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+                    {extensionHistory.length}
+                  </span>
+                </h3>
+                {extensionHistory.length === 0 ? (
+                  <p className="text-sm text-gray-500">{t('no_history_yet')}</p>
+                ) : (
+                  <div className="overflow-x-auto border border-gray-100 rounded-lg">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-medium text-gray-700">
+                            {t('license_code')}
+                          </th>
+                          <th className="px-3 py-2 text-left font-medium text-gray-700">
+                            {t('requested_days')}
+                          </th>
+                          <th className="px-3 py-2 text-left font-medium text-gray-700">
+                            {language === 'th'
+                              ? 'รวมแผน (วัน)'
+                              : 'Total Plan (days)'}
+                          </th>
+                          <th className="px-3 py-2 text-left font-medium text-gray-700">
+                            {t('status_label')}
+                          </th>
+                          <th className="px-3 py-2 text-left font-medium text-gray-700">
+                            {t('requested_on')}
+                          </th>
+                          <th className="px-3 py-2 text-left font-medium text-gray-700">
+                            {t('processed_on')}
+                          </th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {extensionHistory.map((item) => (
+                          <>
+                            <tr key={item.id} className="hover:bg-gray-50">
+                              <td className="px-3 py-2 font-mono text-xs text-purple-600 font-semibold">
+                                {item.licenseCode}
+                              </td>
+                              <td className="px-3 py-2">
+                                {item.requestedDays}
+                              </td>
+                              <td className="px-3 py-2">
+                                {item.cumulativePlanDays ? (
+                                  <span className="inline-flex items-center space-x-1">
+                                    <span>{item.cumulativePlanDays}</span>
+                                    {item.totalExtendedDays ? (
+                                      <span className="text-xs text-gray-400">
+                                        (+{item.totalExtendedDays}{' '}
+                                        {language === 'th'
+                                          ? 'ขยาย'
+                                          : 'extended'}
+                                        )
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                ) : (
+                                  '-'
+                                )}
+                              </td>
+                              <td className="px-3 py-2">
+                                <span
+                                  className={`inline-flex px-2 py-0.5 text-xs rounded-full font-medium ${item.status === 'approved' ? 'bg-green-100 text-green-700' : item.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}
+                                >
+                                  {item.status}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-xs text-gray-500">
+                                {formatDateTime(
+                                  item.requestedAt,
+                                  language === 'th' ? 'th-TH' : 'en-US'
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-xs text-gray-500">
+                                {item.processedAt
+                                  ? formatDateTime(
+                                      item.processedAt,
+                                      language === 'th' ? 'th-TH' : 'en-US'
+                                    )
+                                  : '-'}
+                              </td>
+                            </tr>
+                            {item.status === 'rejected' &&
+                              item.rejectionReason && (
+                                <tr
+                                  key={`${item.id}-reason`}
+                                  className="bg-red-50"
+                                >
+                                  <td colSpan="6" className="px-3 py-2">
+                                    <div className="flex items-start space-x-2">
+                                      <svg
+                                        className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0"
+                                        fill="currentColor"
+                                        viewBox="0 0 20 20"
+                                      >
+                                        <path
+                                          fillRule="evenodd"
+                                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                                          clipRule="evenodd"
+                                        />
+                                      </svg>
+                                      <div className="flex-1">
+                                        <span className="text-xs font-semibold text-red-700">
+                                          {language === 'th'
+                                            ? 'เหตุผลการปฏิเสธ: '
+                                            : 'Rejection Reason: '}
+                                        </span>
+                                        <span className="text-xs text-red-600">
+                                          {item.rejectionReason}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                          </>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             )}
 
             {/* Top-up History Tab */}
             {activeHistoryTab === 'topups' && (
-            <div>
-              <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-                <svg
-                  className="w-5 h-5 mr-2 text-green-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                {language === 'th' ? 'ประวัติการเติมแต้ม' : 'Top-up History'}
-                <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-                  {topUpHistory.length}
-                </span>
-              </h3>
-              {topUpHistory.length === 0 ? (
-                <p className="text-sm text-gray-500">{t('no_history_yet')}</p>
-              ) : (
-                <div className="overflow-x-auto border border-gray-100 rounded-lg">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                          {language === 'th' ? 'จำนวนเงิน' : 'Amount'}
-                        </th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                          {language === 'th' ? 'แต้มที่ได้รับ' : 'Points'}
-                        </th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                          {language === 'th'
-                            ? 'วิธีชำระเงิน'
-                            : 'Payment Method'}
-                        </th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                          {t('status_label')}
-                        </th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                          {language === 'th' ? 'วันที่ขอ' : 'Requested On'}
-                        </th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                          {language === 'th' ? 'วันที่อนุมัติ' : 'Processed On'}
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {topUpHistory.map((item) => (
-                        <tr key={item.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm font-semibold text-green-600">
-                            ฿{item.amount.toFixed(2)}
-                          </td>
-                          <td className="px-4 py-3 text-sm">
-                            <span className="inline-flex items-center px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
-                              {item.points} {language === 'th' ? 'แต้ม' : 'pts'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-900 capitalize">
-                            {item.paymentMethod.replace('_', ' ')}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                item.status === 'approved'
-                                  ? 'bg-green-100 text-green-800'
-                                  : item.status === 'rejected'
-                                    ? 'bg-red-100 text-red-800'
-                                    : 'bg-yellow-100 text-yellow-800'
-                              }`}
-                            >
-                              {item.status === 'approved'
-                                ? language === 'th'
-                                  ? 'อนุมัติแล้ว'
-                                  : 'Approved'
-                                : item.status === 'rejected'
-                                  ? language === 'th'
-                                    ? 'ปฏิเสธ'
-                                    : 'Rejected'
-                                  : language === 'th'
-                                    ? 'รอดำเนินการ'
-                                    : 'Pending'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-900">
-                            {new Date(item.createdAt).toLocaleDateString(
-                              language === 'th' ? 'th-TH' : 'en-US'
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-900">
-                            {item.processedAt
-                              ? new Date(item.processedAt).toLocaleDateString(
-                                  language === 'th' ? 'th-TH' : 'en-US'
-                                )
-                              : '-'}
-                          </td>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                  <svg
+                    className="w-5 h-5 mr-2 text-green-500"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  {language === 'th'
+                    ? 'ประวัติการเติมเครดิต'
+                    : 'Top-up History'}
+                  <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                    {topUpHistory.length}
+                  </span>
+                </h3>
+                {topUpHistory.length === 0 ? (
+                  <p className="text-sm text-gray-500">{t('no_history_yet')}</p>
+                ) : (
+                  <div className="overflow-x-auto border border-gray-100 rounded-lg">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                            {language === 'th' ? 'จำนวนเงิน' : 'Amount'}
+                          </th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                            {language === 'th' ? 'เครดิตที่ได้รับ' : 'Credits'}
+                          </th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                            {language === 'th'
+                              ? 'วิธีชำระเงิน'
+                              : 'Payment Method'}
+                          </th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                            {t('status_label')}
+                          </th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                            {language === 'th' ? 'วันที่ขอ' : 'Requested On'}
+                          </th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                            {language === 'th'
+                              ? 'วันที่อนุมัติ'
+                              : 'Processed On'}
+                          </th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {/* Show rejection reason if exists */}
-                  {topUpHistory.some(
-                    (item) => item.status === 'rejected' && item.rejectionReason
-                  ) && (
-                    <div className="border-t border-gray-100 p-3 bg-red-50">
-                      <p className="text-xs font-medium text-red-700 mb-2">
-                        {language === 'th'
-                          ? 'เหตุผลการปฏิเสธ:'
-                          : 'Rejection Reasons:'}
-                      </p>
-                      {topUpHistory
-                        .filter(
-                          (item) =>
-                            item.status === 'rejected' && item.rejectionReason
-                        )
-                        .map((item) => (
-                          <div
-                            key={item.id}
-                            className="text-xs text-red-600 mb-1"
-                          >
-                            • ฿{item.amount} - {item.rejectionReason}
-                          </div>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {topUpHistory.map((item) => (
+                          <>
+                            <tr key={item.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 text-sm font-semibold text-green-600">
+                                ฿{item.amount.toFixed(2)}
+                              </td>
+                              <td className="px-4 py-3 text-sm">
+                                <span className="inline-flex items-center px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
+                                  {item.points}{' '}
+                                  {language === 'th' ? 'เครดิต' : 'pts'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-900 capitalize">
+                                {item.paymentMethod.replace('_', ' ')}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span
+                                  className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                    item.status === 'approved'
+                                      ? 'bg-green-100 text-green-800'
+                                      : item.status === 'rejected'
+                                        ? 'bg-red-100 text-red-800'
+                                        : 'bg-yellow-100 text-yellow-800'
+                                  }`}
+                                >
+                                  {item.status === 'approved'
+                                    ? language === 'th'
+                                      ? 'อนุมัติแล้ว'
+                                      : 'Approved'
+                                    : item.status === 'rejected'
+                                      ? language === 'th'
+                                        ? 'ปฏิเสธ'
+                                        : 'Rejected'
+                                      : language === 'th'
+                                        ? 'รอดำเนินการ'
+                                        : 'Pending'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-900">
+                                {formatDateTime(
+                                  item.createdAt,
+                                  language === 'th' ? 'th-TH' : 'en-US'
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-900">
+                                {item.processedAt
+                                  ? formatDateTime(
+                                      item.processedAt,
+                                      language === 'th' ? 'th-TH' : 'en-US'
+                                    )
+                                  : '-'}
+                              </td>
+                            </tr>
+                            {item.status === 'rejected' &&
+                              item.rejectionReason && (
+                                <tr
+                                  key={`${item.id}-reason`}
+                                  className="bg-red-50"
+                                >
+                                  <td colSpan="6" className="px-4 py-3">
+                                    <div className="flex items-start space-x-2">
+                                      <svg
+                                        className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0"
+                                        fill="currentColor"
+                                        viewBox="0 0 20 20"
+                                      >
+                                        <path
+                                          fillRule="evenodd"
+                                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                                          clipRule="evenodd"
+                                        />
+                                      </svg>
+                                      <div className="flex-1">
+                                        <span className="text-sm font-semibold text-red-700">
+                                          {language === 'th'
+                                            ? 'เหตุผลการปฏิเสธ: '
+                                            : 'Rejection Reason: '}
+                                        </span>
+                                        <span className="text-sm text-red-600">
+                                          {item.rejectionReason}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                          </>
                         ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -3275,35 +3568,49 @@ export default function LandingPage() {
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   required
                 >
-                  <option value="7">
-                    7 {language === 'th' ? 'วัน' : 'Days'} (7{' '}
-                    {language === 'th' ? 'แต้ม' : 'Points'})
-                  </option>
-                  <option value="30">
-                    30 {language === 'th' ? 'วัน' : 'Days'} (30{' '}
-                    {language === 'th' ? 'แต้ม' : 'Points'})
-                  </option>
-                  <option value="60">
-                    60 {language === 'th' ? 'วัน' : 'Days'} (60{' '}
-                    {language === 'th' ? 'แต้ม' : 'Points'})
-                  </option>
-                  <option value="90">
-                    90 {language === 'th' ? 'วัน' : 'Days'} (90{' '}
-                    {language === 'th' ? 'แต้ม' : 'Points'})
-                  </option>
-                  <option value="180">
-                    180 {language === 'th' ? 'วัน' : 'Days'} (180{' '}
-                    {language === 'th' ? 'แต้ม' : 'Points'})
-                  </option>
-                  <option value="365">
-                    365 {language === 'th' ? 'วัน' : 'Days'} (365{' '}
-                    {language === 'th' ? 'แต้ม' : 'Points'})
-                  </option>
+                  {plans
+                    .filter((plan) => !plan.isLifetime && plan.days > 0)
+                    .map((plan) => (
+                      <option key={plan.id} value={plan.days.toString()}>
+                        {plan.name} - {plan.days}{' '}
+                        {language === 'th' ? 'วัน' : 'Days'} ({plan.points}{' '}
+                        {language === 'th' ? 'เครดิต' : 'Credits'})
+                      </option>
+                    ))}
+                  {plans.filter((plan) => !plan.isLifetime && plan.days > 0)
+                    .length === 0 && (
+                    <>
+                      <option value="7">
+                        7 {language === 'th' ? 'วัน' : 'Days'} (7{' '}
+                        {language === 'th' ? 'เครดิต' : 'Credits'})
+                      </option>
+                      <option value="30">
+                        30 {language === 'th' ? 'วัน' : 'Days'} (30{' '}
+                        {language === 'th' ? 'เครดิต' : 'Credits'})
+                      </option>
+                      <option value="60">
+                        60 {language === 'th' ? 'วัน' : 'Days'} (60{' '}
+                        {language === 'th' ? 'เครดิต' : 'Credits'})
+                      </option>
+                      <option value="90">
+                        90 {language === 'th' ? 'วัน' : 'Days'} (90{' '}
+                        {language === 'th' ? 'เครดิต' : 'Credits'})
+                      </option>
+                      <option value="180">
+                        180 {language === 'th' ? 'วัน' : 'Days'} (180{' '}
+                        {language === 'th' ? 'เครดิต' : 'Credits'})
+                      </option>
+                      <option value="365">
+                        365 {language === 'th' ? 'วัน' : 'Days'} (365{' '}
+                        {language === 'th' ? 'เครดิต' : 'Credits'})
+                      </option>
+                    </>
+                  )}
                 </select>
                 <p className="text-xs text-gray-500 mt-1">
                   {language === 'th'
-                    ? '1 แต้ม = 1 วัน'
-                    : '1 Point = 1 Day Extension'}
+                    ? 'ขยายระยะเวลาใบอนุญาตของคุณ'
+                    : 'Extend your license period'}
                 </p>
               </div>
 
@@ -3311,27 +3618,29 @@ export default function LandingPage() {
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium text-blue-800">
-                    {language === 'th' ? 'แต้มที่จำเป็น' : 'Required Points'}:
+                    {language === 'th' ? 'เครดิตที่จำเป็น' : 'Required Credits'}
+                    :
                   </span>
                   <span className="text-lg font-bold text-blue-600">
                     {parseInt(extendPlan)}{' '}
-                    {language === 'th' ? 'แต้ม' : 'Points'}
+                    {language === 'th' ? 'เครดิต' : 'Credits'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-blue-800">
-                    {language === 'th' ? 'แต้มคงเหลือ' : 'Your Points'}:
+                    {language === 'th' ? 'เครดิตคงเหลือ' : 'Your Credits'}:
                   </span>
                   <span
                     className={`text-lg font-bold ${user?.points >= parseInt(extendPlan) ? 'text-green-600' : 'text-red-600'}`}
                   >
-                    {user?.points || 0} {language === 'th' ? 'แต้ม' : 'Points'}
+                    {user?.points || 0}{' '}
+                    {language === 'th' ? 'เครดิต' : 'Credits'}
                   </span>
                 </div>
                 {user?.points < parseInt(extendPlan) && (
                   <div className="mt-2 text-sm text-red-600">
                     {language === 'th'
-                      ? '⚠️ แต้มไม่เพียงพอ! กรุณาเติมเงินเพื่อเพิ่มแต้ม'
+                      ? '⚠️ เครดิตไม่เพียงพอ! กรุณาเติมเงินเพื่อเพิ่มเครดิต'
                       : '⚠️ Insufficient points! Please top up to add more points.'}
                   </div>
                 )}
@@ -3362,7 +3671,7 @@ export default function LandingPage() {
                       <ul className="list-disc list-inside space-y-1">
                         <li>
                           {language === 'th'
-                            ? 'แต้มจะถูกหักทันทีหลังจากกดยืนยัน'
+                            ? 'เครดิตจะถูกหักทันทีหลังจากกดยืนยัน'
                             : 'Points will be deducted immediately upon confirmation'}
                         </li>
                         <li>
@@ -3392,7 +3701,8 @@ export default function LandingPage() {
                   onClick={() => {
                     setShowExtendModal(false)
                     setSelectedCode(null)
-                    setExtendPlan('30')
+                    const firstNonLifetimePlan = plans.find(p => !p.isLifetime)
+                    setExtendPlan(firstNonLifetimePlan ? firstNonLifetimePlan.days.toString() : '30')
                   }}
                   className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-4 rounded-lg transition duration-200"
                 >
@@ -3447,7 +3757,200 @@ export default function LandingPage() {
                       </svg>
                       {language === 'th' ? 'ขยายทันที' : 'Extend Now'} (
                       {parseInt(extendPlan)}{' '}
-                      {language === 'th' ? 'แต้ม' : 'Points'})
+                      {language === 'th' ? 'เครดิต' : 'Credits'})
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Change Account Number Modal */}
+      {showChangeAccountModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-500 to-purple-600 px-6 py-4">
+              <h3 className="text-xl font-bold text-white">
+                {language === 'th'
+                  ? 'เปลี่ยนหมายเลขบัญชี'
+                  : 'Change Account Number'}
+              </h3>
+            </div>
+            <form onSubmit={submitChangeAccount} className="p-6 space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start">
+                  <svg
+                    className="w-5 h-5 text-blue-500 mt-0.5 mr-3"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    ></path>
+                  </svg>
+                  <div className="text-sm text-blue-700">
+                    <p className="font-semibold mb-1">
+                      {language === 'th'
+                        ? 'ข้อมูลการเปลี่ยน:'
+                        : 'Change Details:'}
+                    </p>
+                    <ul className="space-y-1">
+                      <li>
+                        • {language === 'th' ? 'ค่าใช้จ่าย' : 'Cost'}:{' '}
+                        <strong>{changeAccountForm.cost}</strong>{' '}
+                        {language === 'th' ? 'เครดิต' : 'credits'}
+                      </li>
+                      <li>
+                        •{' '}
+                        {language === 'th'
+                          ? 'เครดิตปัจจุบัน'
+                          : 'Current credits'}
+                        : <strong>{user?.points || 0}</strong>{' '}
+                        {language === 'th' ? 'เครดิต' : 'credits'}
+                      </li>
+                      <li>
+                        •{' '}
+                        {language === 'th'
+                          ? 'การเปลี่ยนมีผลทันที'
+                          : 'Change takes effect immediately'}
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {language === 'th' ? 'ใบอนุญาต' : 'License'}
+                </label>
+                <input
+                  type="text"
+                  value={changeAccountForm.licenseCode}
+                  disabled
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 font-mono text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {language === 'th'
+                    ? 'หมายเลขบัญชีปัจจุบัน'
+                    : 'Current Account Number'}
+                </label>
+                <input
+                  type="text"
+                  value={changeAccountForm.currentAccountNumber}
+                  disabled
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {language === 'th'
+                    ? 'หมายเลขบัญชีใหม่'
+                    : 'New Account Number'}{' '}
+                  *
+                </label>
+                <input
+                  type="text"
+                  value={changeAccountForm.newAccountNumber}
+                  onChange={(e) =>
+                    setChangeAccountForm((prev) => ({
+                      ...prev,
+                      newAccountNumber: e.target.value
+                    }))
+                  }
+                  onKeyPress={(e) => {
+                    if (!/[0-9]/.test(e.key)) {
+                      e.preventDefault()
+                    }
+                  }}
+                  placeholder={
+                    language === 'th'
+                      ? 'ใส่หมายเลขบัญชีใหม่'
+                      : 'Enter new account number'
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              {(user?.points || 0) < changeAccountForm.cost && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <p className="text-sm text-red-600 font-medium">
+                    {language === 'th'
+                      ? '⚠️ เครดิตไม่เพียงพอ!'
+                      : '⚠️ Insufficient Credits!'}
+                  </p>
+                  <p className="text-xs text-red-500 mt-1">
+                    {language === 'th'
+                      ? `คุณต้องการอีก ${changeAccountForm.cost - (user?.points || 0)} เครดิต กรุณาเติมเครดิตก่อน`
+                      : `You need ${changeAccountForm.cost - (user?.points || 0)} more credits. Please top up first.`}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex gap-4 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowChangeAccountModal(false)
+                    setChangeAccountForm({
+                      licenseCode: '',
+                      currentAccountNumber: '',
+                      newAccountNumber: '',
+                      cost: 1000
+                    })
+                  }}
+                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-4 rounded-lg transition duration-200"
+                >
+                  {t('cancel')}
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    changingAccount ||
+                    (user?.points || 0) < changeAccountForm.cost ||
+                    !changeAccountForm.newAccountNumber.trim()
+                  }
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                >
+                  {changingAccount ? (
+                    <>
+                      <svg
+                        className="animate-spin w-5 h-5 mr-2"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                      {language === 'th' ? 'กำลังเปลี่ยน...' : 'Changing...'}
+                    </>
+                  ) : (
+                    <>
+                      {language === 'th'
+                        ? 'ยืนยันการเปลี่ยน'
+                        : 'Confirm Change'}
                     </>
                   )}
                 </button>
@@ -3592,7 +4095,9 @@ export default function LandingPage() {
                 <hr className="my-3" />
                 <div className="flex justify-between text-lg">
                   <span className="font-semibold text-gray-800">
-                    {language === 'th' ? 'แต้มที่ต้องใช้:' : 'Points Required:'}
+                    {language === 'th'
+                      ? 'เครดิตที่ต้องใช้:'
+                      : 'Points Required:'}
                   </span>
                   <span className="font-bold text-blue-600">
                     {(() => {
@@ -3604,12 +4109,14 @@ export default function LandingPage() {
                       )
                       return sel ? sel.points : buyPointsForm.plan
                     })()}{' '}
-                    {language === 'th' ? 'แต้ม' : 'Points'}
+                    {language === 'th' ? 'เครดิต' : 'Credits'}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">
-                    {language === 'th' ? 'แต้มคงเหลือ:' : 'Remaining Points:'}
+                    {language === 'th'
+                      ? 'เครดิตคงเหลือ:'
+                      : 'Remaining Credits:'}
                   </span>
                   <span className="font-semibold text-gray-800">
                     {(() => {
@@ -3624,7 +4131,7 @@ export default function LandingPage() {
                         : parseInt(buyPointsForm.plan || '0', 10)
                       return Math.max(0, (user?.points || 0) - cost)
                     })()}{' '}
-                    {language === 'th' ? 'แต้ม' : 'Points'}
+                    {language === 'th' ? 'เครดิต' : 'Credits'}
                   </span>
                 </div>
               </div>
@@ -3656,7 +4163,7 @@ export default function LandingPage() {
                     <ul className="list-disc list-inside space-y-1">
                       <li>
                         {language === 'th'
-                          ? 'แต้มจะถูกหักทันทีหลังจากยืนยัน'
+                          ? 'เครดิตจะถูกหักทันทีหลังจากยืนยัน'
                           : 'Points will be deducted immediately'}
                       </li>
                       <li>
@@ -3787,11 +4294,11 @@ export default function LandingPage() {
                 </svg>
               </div>
               <h3 className="text-2xl font-bold text-gray-900 mb-2">
-                {language === 'th' ? 'เติมแต้ม' : 'Top-up Points'}
+                {language === 'th' ? 'เติมเครดิต' : 'Top-up Points'}
               </h3>
               <p className="text-gray-600">
                 {language === 'th'
-                  ? 'เติมเงินเพื่อรับแต้มสำหรับซื้อใบอนุญาต'
+                  ? 'เติมเงินเพื่อรับเครดิตสำหรับซื้อใบอนุญาต'
                   : 'Add money to receive points for license purchases'}
               </p>
             </div>
@@ -3840,8 +4347,8 @@ export default function LandingPage() {
                   </h3>
                   <div className="text-sm text-emerald-700">
                     <p className="font-semibold mb-2">
-                      1 {language === 'th' ? 'บาท' : 'THB'} = 1 {language === 'th' ? 'แต้ม' : 'Point'} = 1{' '}
-                      {language === 'th' ? 'วันใบอนุญาต' : 'Day License'}
+                      1 {language === 'th' ? 'บาท' : 'THB'} = 1{' '}
+                      {language === 'th' ? 'เครดิต' : 'Credit'}
                     </p>
                     {topUpAmount &&
                       !isNaN(parseFloat(topUpAmount)) &&
@@ -3850,15 +4357,15 @@ export default function LandingPage() {
                           <p className="font-semibold text-emerald-800">
                             ฿{parseFloat(topUpAmount).toFixed(2)} ={' '}
                             {Math.floor(parseFloat(topUpAmount))}{' '}
-                            {language === 'th' ? 'แต้ม' : 'Points'}
+                            {language === 'th' ? 'เครดิต' : 'Credits'}
                           </p>
                           <p className="text-xs text-emerald-600 mt-1">
                             {language === 'th'
-                              ? 'แต้มใหม่หลังเติม:'
-                              : 'Total points after top-up:'}{' '}
+                              ? 'เครดิตใหม่หลังเติม:'
+                              : 'Total credits after top-up:'}{' '}
                             {(user?.points || 0) +
                               Math.floor(parseFloat(topUpAmount))}{' '}
-                            {language === 'th' ? 'แต้ม' : 'Points'}
+                            {language === 'th' ? 'เครดิต' : 'Credits'}
                           </p>
                         </div>
                       )}
@@ -3898,7 +4405,7 @@ export default function LandingPage() {
                       </li>
                       <li>
                         {language === 'th'
-                          ? 'รอการอนุมัติก่อนได้รับแต้ม'
+                          ? 'รอการอนุมัติก่อนได้รับเครดิต'
                           : 'Wait for approval before receiving points'}
                       </li>
                       <li>

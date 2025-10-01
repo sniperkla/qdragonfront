@@ -6,11 +6,11 @@ import { verifyAuth } from '@/lib/auth'
 // Submit top-up request
 export async function POST(req) {
   console.log('🔵 Top-up API called')
-  
+
   try {
     console.log('🔍 Verifying authentication...')
     const user = await verifyAuth(req)
-    
+
     if (!user) {
       console.log('❌ Authentication failed')
       return new Response(
@@ -18,14 +18,22 @@ export async function POST(req) {
         { status: 401 }
       )
     }
-    
-    console.log('✅ User authenticated:', { id: user.id, username: user.username })
+
+    console.log('✅ User authenticated:', {
+      id: user.id,
+      username: user.username
+    })
 
     console.log('📋 Parsing request body...')
     const { amount, paymentMethod, paymentProof, transactionRef } =
       await req.json()
-      
-    console.log('📊 Request data:', { amount, paymentMethod, paymentProof, transactionRef })
+
+    console.log('📊 Request data:', {
+      amount,
+      paymentMethod,
+      paymentProof,
+      transactionRef
+    })
 
     if (!amount || !paymentMethod || amount <= 0) {
       console.log('❌ Invalid request data')
@@ -39,7 +47,7 @@ export async function POST(req) {
     await connectToDatabase()
     console.log('✅ Database connected')
 
-    // Create top-up request (1 USD = 1 point)
+    // Create top-up request (1 THB = 1 point)
     console.log('💰 Creating top-up record...')
     const topUp = new TopUp({
       userId: user.id,
@@ -86,7 +94,10 @@ export async function POST(req) {
           `WebSocket notifications sent for top-up request ${topUp._id}`
         )
       } catch (emitErr) {
-        console.warn('WebSocket notification failed (non-blocking):', emitErr.message)
+        console.warn(
+          'WebSocket notification failed (non-blocking):',
+          emitErr.message
+        )
       }
     })
 
@@ -112,13 +123,16 @@ export async function POST(req) {
       message: error.message,
       code: error.code
     })
-    
-    return new Response(JSON.stringify({ 
-      error: 'Internal server error',
-      details: error.message 
-    }), {
-      status: 500
-    })
+
+    return new Response(
+      JSON.stringify({
+        error: 'Internal server error',
+        details: error.message
+      }),
+      {
+        status: 500
+      }
+    )
   }
 }
 

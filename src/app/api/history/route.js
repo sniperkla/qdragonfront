@@ -41,7 +41,7 @@ export async function GET(req) {
       platform: p.platform,
       planDays: p.plan,
       price: p.price,
-      currency: p.currency || 'USD',
+      currency: p.currency || 'THB',
       status: p.status,
       createdAt: p.createdAt,
       paidAt: p.paidAt,
