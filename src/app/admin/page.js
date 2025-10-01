@@ -105,6 +105,15 @@ export default function AdminPage() {
   const [loadingSettings, setLoadingSettings] = useState(false)
   const [editingSettings, setEditingSettings] = useState({})
 
+  // Add credits modal state
+  const [showAddCreditsModal, setShowAddCreditsModal] = useState(false)
+  const [addCreditsForm, setAddCreditsForm] = useState({
+    username: '',
+    credits: '',
+    reason: ''
+  })
+  const [addingCredits, setAddingCredits] = useState(false)
+
   // Extend modal state
   const [extendModal, setExtendModal] = useState({
     show: false,
@@ -1604,6 +1613,16 @@ export default function AdminPage() {
                 }`}
               >
                 {language === 'th' ? 'ตั้งค่าระบบ' : 'System Settings'}
+              </button>
+              <button
+                onClick={() => setActiveTab('add-credits')}
+                className={`py-4 px-6 text-sm font-medium border-b-2 ${
+                  activeTab === 'add-credits'
+                    ? 'border-yellow-500 text-yellow-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                {language === 'th' ? 'เพิ่มเครดิต' : 'Add Credits'}
               </button>
             </nav>
           </div>
@@ -3797,6 +3816,203 @@ export default function AdminPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Add Credits Tab */}
+      {activeTab === 'add-credits' && (
+        <div className="bg-white rounded-xl shadow-lg p-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">
+            {language === 'th' ? 'เพิ่มเครดิตให้ลูกค้า' : 'Add Credits to Customer'}
+          </h2>
+          
+          <div className="max-w-2xl">
+            <form onSubmit={async (e) => {
+              e.preventDefault()
+              
+              if (!addCreditsForm.username || !addCreditsForm.credits || !addCreditsForm.reason) {
+                setToast({
+                  show: true,
+                  message: language === 'th' ? 'กรุณากรอกข้อมูลให้ครบถ้วน' : 'Please fill in all fields',
+                  type: 'error'
+                })
+                return
+              }
+
+              const credits = parseFloat(addCreditsForm.credits)
+              if (isNaN(credits) || credits === 0) {
+                setToast({
+                  show: true,
+                  message: language === 'th' ? 'จำนวนเครดิตไม่ถูกต้อง' : 'Invalid credit amount',
+                  type: 'error'
+                })
+                return
+              }
+
+              setAddingCredits(true)
+              
+              try {
+                const response = await fetch('/api/admin/add-credits', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    username: addCreditsForm.username,
+                    credits: credits,
+                    reason: addCreditsForm.reason
+                  })
+                })
+
+                const data = await response.json()
+
+                if (!response.ok) {
+                  throw new Error(data.error || 'Failed to add credits')
+                }
+
+                setToast({
+                  show: true,
+                  message: language === 'th' 
+                    ? `เพิ่มเครดิต ${credits > 0 ? credits : credits} ให้ ${data.data.username} สำเร็จ (ยอดใหม่: ${data.data.newBalance})`
+                    : `Successfully ${credits > 0 ? 'added' : 'deducted'} ${Math.abs(credits)} credits ${credits > 0 ? 'to' : 'from'} ${data.data.username} (New balance: ${data.data.newBalance})`,
+                  type: 'success'
+                })
+
+                // Reset form
+                setAddCreditsForm({ username: '', credits: '', reason: '' })
+
+              } catch (error) {
+                console.error('Error adding credits:', error)
+                setToast({
+                  show: true,
+                  message: error.message || (language === 'th' ? 'เกิดข้อผิดพลาด' : 'An error occurred'),
+                  type: 'error'
+                })
+              } finally {
+                setAddingCredits(false)
+              }
+            }}>
+              
+              {/* Username/Email Field */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {language === 'th' ? 'ชื่อผู้ใช้ หรือ อีเมล' : 'Username or Email'}
+                  <span className="text-red-500 ml-1">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={addCreditsForm.username}
+                  onChange={(e) => setAddCreditsForm(prev => ({ ...prev, username: e.target.value }))}
+                  placeholder={language === 'th' ? 'กรอกชื่อผู้ใช้ หรือ อีเมล' : 'Enter username or email'}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  disabled={addingCredits}
+                />
+                <p className="mt-2 text-sm text-gray-500">
+                  {language === 'th' 
+                    ? 'สามารถระบุเป็นชื่อผู้ใช้หรืออีเมลก็ได้' 
+                    : 'You can specify either username or email address'}
+                </p>
+              </div>
+
+              {/* Credits Amount Field */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {language === 'th' ? 'จำนวนเครดิต' : 'Credits Amount'}
+                  <span className="text-red-500 ml-1">*</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={addCreditsForm.credits}
+                  onChange={(e) => setAddCreditsForm(prev => ({ ...prev, credits: e.target.value }))}
+                  placeholder={language === 'th' ? 'กรอกจำนวน (+ เพิ่ม / - ลด)' : 'Enter amount (+ add / - deduct)'}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  disabled={addingCredits}
+                />
+                <p className="mt-2 text-sm text-gray-500">
+                  {language === 'th' 
+                    ? 'ใช้ตัวเลขบวก (+) เพื่อเพิ่มเครดิต หรือตัวเลขลบ (-) เพื่อหักเครดิต' 
+                    : 'Use positive numbers to add credits, negative to deduct credits'}
+                </p>
+              </div>
+
+              {/* Reason Field */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {language === 'th' ? 'เหตุผล' : 'Reason'}
+                  <span className="text-red-500 ml-1">*</span>
+                </label>
+                <textarea
+                  value={addCreditsForm.reason}
+                  onChange={(e) => setAddCreditsForm(prev => ({ ...prev, reason: e.target.value }))}
+                  placeholder={language === 'th' ? 'ระบุเหตุผลในการปรับยอด (เช่น คืนเงิน, โปรโมชั่น, แก้ไขข้อผิดพลาด)' : 'Specify reason for adjustment (e.g., refund, promotion, error correction)'}
+                  rows={4}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent resize-none"
+                  disabled={addingCredits}
+                />
+              </div>
+
+              {/* Submit Button */}
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={addingCredits}
+                  className="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-3 rounded-lg font-medium flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {addingCredits ? (
+                    <>
+                      <svg className="animate-spin w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      {language === 'th' ? 'กำลังดำเนินการ...' : 'Processing...'}
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                      </svg>
+                      {language === 'th' ? 'เพิ่มเครดิต' : 'Add Credits'}
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+
+            {/* Information Box */}
+            <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-start">
+                <svg className="w-5 h-5 text-blue-500 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <div className="text-sm text-blue-700">
+                  <p className="font-semibold mb-2">
+                    {language === 'th' ? 'ข้อมูลสำคัญ:' : 'Important Information:'}
+                  </p>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>
+                      {language === 'th' 
+                        ? 'การเพิ่ม/ลดเครดิตจะมีผลทันที และจะส่งการแจ้งเตือนแบบเรียลไทม์ให้ผู้ใช้' 
+                        : 'Credit adjustments take effect immediately and send real-time notifications to users'}
+                    </li>
+                    <li>
+                      {language === 'th' 
+                        ? 'ระบบจะบันทึกประวัติการทำธุรกรรมทั้งหมดพร้อมเหตุผล' 
+                        : 'All transactions are recorded with reasons for audit trail'}
+                    </li>
+                    <li>
+                      {language === 'th' 
+                        ? 'ไม่สามารถทำให้ยอดเครดิตติดลบได้' 
+                        : 'Cannot set negative credit balance'}
+                    </li>
+                    <li>
+                      {language === 'th' 
+                        ? '1 เครดิต = 1 วันของใบอนุญาต' 
+                        : '1 credit = 1 day of license'}
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
