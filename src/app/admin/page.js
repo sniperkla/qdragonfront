@@ -14,7 +14,7 @@ export default function AdminPage() {
   const [filter, setFilter] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [updating, setUpdating] = useState({})
-  const [activeTab, setActiveTab] = useState('plan-settings')
+  const [activeTab, setActiveTab] = useState('customers')
   const [customers, setCustomers] = useState([])
   const [loadingCustomers, setLoadingCustomers] = useState(false)
   const [customerFilter, setCustomerFilter] = useState('all')
@@ -131,7 +131,7 @@ export default function AdminPage() {
   const [wsInitializing, setWsInitializing] = useState(false)
   const [lastWsEvent, setLastWsEvent] = useState(null)
   // Track current tab in ref for socket handlers without re-binding
-  const activeTabRef = useRef('codes')
+  const activeTabRef = useRef('customers')
   useEffect(() => {
     activeTabRef.current = activeTab
   }, [activeTab])
@@ -1561,16 +1561,6 @@ export default function AdminPage() {
           <div className="border-b border-gray-200">
             <nav className="-mb-px flex">
               <button
-                onClick={() => setActiveTab('plan-settings')}
-                className={`py-4 px-6 text-sm font-medium border-b-2 ${
-                  activeTab === 'plan-settings'
-                    ? 'border-yellow-500 text-yellow-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                {language === 'th' ? 'ตั้งค่าแผน' : 'Plan Settings'} ({planSettings.length})
-              </button>
-              <button
                 onClick={() => setActiveTab('customers')}
                 className={`py-4 px-6 text-sm font-medium border-b-2 ${
                   activeTab === 'customers'
@@ -1605,16 +1595,6 @@ export default function AdminPage() {
                 )
               </button>
               <button
-                onClick={() => setActiveTab('system-settings')}
-                className={`py-4 px-6 text-sm font-medium border-b-2 ${
-                  activeTab === 'system-settings'
-                    ? 'border-yellow-500 text-yellow-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                {language === 'th' ? 'ตั้งค่าระบบ' : 'System Settings'}
-              </button>
-              <button
                 onClick={() => setActiveTab('add-credits')}
                 className={`py-4 px-6 text-sm font-medium border-b-2 ${
                   activeTab === 'add-credits'
@@ -1623,6 +1603,26 @@ export default function AdminPage() {
                 }`}
               >
                 {language === 'th' ? 'เพิ่มเครดิต' : 'Add Credits'}
+              </button>
+              <button
+                onClick={() => setActiveTab('plan-settings')}
+                className={`py-4 px-6 text-sm font-medium border-b-2 ${
+                  activeTab === 'plan-settings'
+                    ? 'border-yellow-500 text-yellow-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                {language === 'th' ? 'ตั้งค่าแผน' : 'Plan Settings'} ({planSettings.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('system-settings')}
+                className={`py-4 px-6 text-sm font-medium border-b-2 ${
+                  activeTab === 'system-settings'
+                    ? 'border-yellow-500 text-yellow-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                {language === 'th' ? 'ตั้งค่าระบบ' : 'System Settings'}
               </button>
             </nav>
           </div>
