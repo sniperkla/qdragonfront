@@ -1709,10 +1709,14 @@ export default function LandingPage() {
                   </div>
                   <button
                     onClick={() => refreshUserData()}
-                    className="text-purple-200 hover:text-white text-sm flex items-center gap-1"
+                    className="group relative bg-gradient-to-r from-purple-500 via-purple-600 to-indigo-600 hover:from-purple-600 hover:via-indigo-600 hover:to-purple-700 text-white px-4 py-2 rounded-xl transition-all duration-300 flex items-center gap-2 shadow-lg hover:shadow-xl hover:shadow-purple-500/50 transform hover:-translate-y-0.5 hover:scale-105 overflow-hidden"
                   >
+                    {/* Animated background shimmer */}
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-1000"></div>
+                    
+                    {/* Icon with rotation animation */}
                     <svg
-                      className="w-4 h-4"
+                      className="w-4 h-4 relative group-hover:rotate-180 transition-transform duration-500"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -1720,11 +1724,15 @@ export default function LandingPage() {
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        strokeWidth="2"
+                        strokeWidth="2.5"
                         d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                       />
                     </svg>
-                    {language === 'th' ? 'รีเฟรช' : 'Refresh'}
+                    
+                    {/* Text */}
+                    <span className="relative font-semibold text-sm">
+                      {language === 'th' ? 'รีเฟรช' : 'Refresh'}
+                    </span>
                   </button>
                 </div>
               </div>
@@ -2213,11 +2221,14 @@ export default function LandingPage() {
             <button
               onClick={fetchMyCodes}
               disabled={loadingCodes}
-              className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg transition duration-200 flex items-center"
+              className="group relative bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-white font-semibold px-6 py-3 rounded-xl transition-all duration-300 flex items-center shadow-lg hover:shadow-xl hover:shadow-yellow-500/50 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
             >
+              {/* Animated background shimmer */}
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-1000"></div>
+              
               {loadingCodes ? (
                 <svg
-                  className="animate-spin w-4 h-4 mr-2"
+                  className="animate-spin w-5 h-5 mr-2 relative"
                   fill="none"
                   viewBox="0 0 24 24"
                 >
@@ -2237,7 +2248,7 @@ export default function LandingPage() {
                 </svg>
               ) : (
                 <svg
-                  className="w-4 h-4 mr-2"
+                  className="w-5 h-5 mr-2 relative group-hover:rotate-180 transition-transform duration-500"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -2245,12 +2256,12 @@ export default function LandingPage() {
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    strokeWidth="2"
+                    strokeWidth="2.5"
                     d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                   ></path>
                 </svg>
               )}
-              {t('refresh')}
+              <span className="relative">{t('refresh')}</span>
             </button>
           </div>
 

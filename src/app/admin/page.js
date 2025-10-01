@@ -498,7 +498,8 @@ export default function AdminPage() {
         const matchesSearch =
           customerSearch === '' ||
           customer.user.toLowerCase().includes(customerSearch.toLowerCase()) ||
-          customer.license.toLowerCase().includes(customerSearch.toLowerCase())
+          customer.license.toLowerCase().includes(customerSearch.toLowerCase()) ||
+          customer.accountNumber.toLowerCase().includes(customerSearch.toLowerCase())
         return matchesFilter && matchesSearch
       })
       .map((c) => c._id)
@@ -1788,8 +1789,8 @@ export default function AdminPage() {
                   type="text"
                   placeholder={
                     language === 'th'
-                      ? 'ค้นหาตามชื่อผู้ใช้หรือใบอนุญาต...'
-                      : 'Search by username or license...'
+                      ? 'ค้นหาตามชื่อผู้ใช้, ใบอนุญาต หรือหมายเลขบัญชี...'
+                      : 'Search by username, license or account number...'
                   }
                   value={customerSearch}
                   onChange={(e) => setCustomerSearch(e.target.value)}
@@ -1934,6 +1935,9 @@ export default function AdminPage() {
                             .toLowerCase()
                             .includes(customerSearch.toLowerCase()) ||
                           customer.license
+                            .toLowerCase()
+                            .includes(customerSearch.toLowerCase()) ||
+                          customer.accountNumber
                             .toLowerCase()
                             .includes(customerSearch.toLowerCase())
                         return matchesFilter && matchesSearch
@@ -2099,6 +2103,9 @@ export default function AdminPage() {
                     .toLowerCase()
                     .includes(customerSearch.toLowerCase()) ||
                   customer.license
+                    .toLowerCase()
+                    .includes(customerSearch.toLowerCase()) ||
+                  customer.accountNumber
                     .toLowerCase()
                     .includes(customerSearch.toLowerCase())
                 return matchesFilter && matchesSearch
