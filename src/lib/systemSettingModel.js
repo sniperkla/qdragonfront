@@ -32,7 +32,7 @@ const SystemSettingSchema = new mongoose.Schema(
 )
 
 // Index for faster queries
-SystemSettingSchema.index({ key: 1 })
+// Note: 'key' already has unique:true which creates an index automatically
 SystemSettingSchema.index({ category: 1 })
 
 // Static method to get setting by key

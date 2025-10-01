@@ -1394,33 +1394,33 @@ export default function LandingPage() {
     <>
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 pb-8">
         {/* Navigation Bar */}
-        <nav className="bg-white shadow-lg">
+        <nav className="bg-white shadow-lg sticky top-0 z-40">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
+            <div className="flex flex-col sm:flex-row justify-between items-center py-3 sm:py-0 sm:h-16 gap-3 sm:gap-0">
               <div className="flex items-center">
-                <h1 className="text-xl font-bold text-gray-900">
+                <h1 className="text-lg sm:text-xl font-bold text-gray-900">
                   {t('dashboard')}
                 </h1>
               </div>
-              <div className="flex items-center space-x-4">
+              <div className="flex items-center flex-wrap justify-center gap-2 sm:space-x-4">
                 {/* Language Toggle */}
                 <div className="flex gap-1">
                   {['en', 'th'].map((l) => (
                     <button
                       key={l}
                       onClick={() => changeLanguage(l)}
-                      className={`px-2 py-1 text-xs rounded-md font-semibold transition-colors ${language === l ? 'bg-yellow-400 text-black' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                      className={`px-3 py-1.5 text-xs sm:text-sm rounded-md font-semibold transition-colors ${language === l ? 'bg-yellow-400 text-black' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
                     >
                       {l.toUpperCase()}
                     </button>
                   ))}
                 </div>
-                <span className="text-gray-700">
+                <span className="text-gray-700 text-sm sm:text-base hidden sm:inline">
                   {t('welcome')}, {user?.name}
                 </span>
                 <button
                   onClick={handleLogout}
-                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition duration-200"
+                  className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg transition duration-200 text-sm sm:text-base"
                 >
                   {t('logout')}
                 </button>
@@ -1430,13 +1430,13 @@ export default function LandingPage() {
         </nav>
 
         {/* Main Content */}
-        <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto py-6 sm:py-12 px-4 sm:px-6 lg:px-8">
           {/* Welcome Section */}
-          <div className="text-center mb-12">
-            <h1 className="text-4xl font-bold text-gray-900 mb-4">
+          <div className="text-center mb-8 sm:mb-12">
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-3 sm:mb-4">
               {t('welcome_dashboard_heading')}
             </h1>
-            <p className="text-xl text-gray-600 mb-8">
+            <p className="text-base sm:text-lg lg:text-xl text-gray-600 mb-4 sm:mb-8">
               {t('dashboard_subtitle')}
             </p>
           </div>
@@ -2486,28 +2486,28 @@ export default function LandingPage() {
 
           {/* Quick Status Overview */}
           {myCodes.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              <div className="bg-green-50 rounded-lg p-4">
-                <div className="text-2xl font-bold text-green-600">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+              <div className="bg-green-50 rounded-lg p-3 sm:p-4">
+                <div className="text-xl sm:text-2xl font-bold text-green-600">
                   {myCodes.filter((code) => code.status === 'activated').length}
                 </div>
-                <div className="text-sm text-green-700">
+                <div className="text-xs sm:text-sm text-green-700">
                   {t('active_licenses')}
                 </div>
               </div>
-              <div className="bg-yellow-50 rounded-lg p-4">
-                <div className="text-2xl font-bold text-yellow-600">
+              <div className="bg-yellow-50 rounded-lg p-3 sm:p-4">
+                <div className="text-xl sm:text-2xl font-bold text-yellow-600">
                   {
                     myCodes.filter((code) => code.status === 'pending_payment')
                       .length
                   }
                 </div>
-                <div className="text-sm text-yellow-700">
+                <div className="text-xs sm:text-sm text-yellow-700">
                   {t('pending_payment')}
                 </div>
               </div>
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="text-2xl font-bold text-gray-600">
+              <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
+                <div className="text-xl sm:text-2xl font-bold text-gray-600">
                   {
                     myCodes.filter(
                       (code) =>
@@ -2515,12 +2515,12 @@ export default function LandingPage() {
                     ).length
                   }
                 </div>
-                <div className="text-sm text-gray-700">
+                <div className="text-xs sm:text-sm text-gray-700">
                   {t('expired_cancelled')}
                 </div>
               </div>
-              <div className="bg-blue-50 rounded-lg p-4">
-                <div className="text-2xl font-bold text-blue-600">
+              <div className="bg-blue-50 rounded-lg p-3 sm:p-4">
+                <div className="text-xl sm:text-2xl font-bold text-blue-600">
                   {(() => {
                     const activeLicenses = myCodes.filter(
                       (code) => code.status === 'activated'
@@ -2535,7 +2535,7 @@ export default function LandingPage() {
                     return expiringSoon
                   })()}
                 </div>
-                <div className="text-sm text-blue-700">
+                <div className="text-xs sm:text-sm text-blue-700">
                   {t('expiring_soon')}
                 </div>
               </div>
@@ -2561,7 +2561,105 @@ export default function LandingPage() {
               <p className="text-sm">{t('purchase_first_license_hint')}</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+              {/* Mobile Card View */}
+              <div className="block lg:hidden space-y-4">
+                {myCodes.map((code) => {
+                  const timeRemaining = code.status === 'activated' ? getTimeRemaining(code) : null
+                  return (
+                    <div key={code._id} className="bg-white rounded-lg shadow-md border border-gray-200 p-4">
+                      {/* License Code */}
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="font-mono text-sm sm:text-base text-blue-600 font-bold break-all flex-1 mr-2">
+                          {code.code}
+                        </div>
+                        <span
+                          className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${
+                            code.status === 'activated'
+                              ? 'bg-green-100 text-green-800'
+                              : code.status === 'paid'
+                                ? 'bg-blue-100 text-blue-800'
+                                : code.status === 'pending_payment'
+                                  ? 'bg-yellow-100 text-yellow-800'
+                                  : 'bg-red-100 text-red-800'
+                          }`}
+                        >
+                          {code.status.replace('_', ' ').toUpperCase()}
+                        </span>
+                      </div>
+
+                      {/* Info Grid */}
+                      <div className="space-y-2 mb-3">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">{t('platform_header')}:</span>
+                          <span className="text-gray-900 font-medium capitalize">{code.platform}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">{t('account_header')}:</span>
+                          <span className="text-gray-900 font-medium">{code.accountNumber}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">{t('plan_header')}:</span>
+                          <span className="text-gray-900 font-medium">
+                            {code.cumulativePlanDays && code.cumulativePlanDays > code.plan ? (
+                              <>{code.plan} {t('days')} (+{code.cumulativePlanDays - code.plan}) = {code.cumulativePlanDays} {t('days')}</>
+                            ) : (
+                              <>{code.plan} {t('days')}</>
+                            )}
+                          </span>
+                        </div>
+                        {code.status === 'activated' && timeRemaining && (
+                          <>
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-600">{t('expires_header')}:</span>
+                              <span className="text-gray-900 text-xs">
+                                {(() => {
+                                  let expiryDate = null
+                                  if (code.customerAccount?.expireDate) {
+                                    expiryDate = parseThaiDate(code.customerAccount.expireDate)
+                                  } else if (code.expireDate) {
+                                    expiryDate = parseThaiDate(code.expireDate)
+                                  } else if (code.expiresAt) {
+                                    expiryDate = new Date(code.expiresAt)
+                                  }
+                                  return expiryDate && !isNaN(expiryDate.getTime()) ? expiryDate.toLocaleDateString() : 'N/A'
+                                })()}
+                              </span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-600">{t('time_left_header')}:</span>
+                              <span className={`font-semibold ${timeRemaining.expired ? 'text-red-600' : timeRemaining.days < 7 ? 'text-orange-600' : 'text-green-600'}`}>
+                                {timeRemaining.expired ? t('expired') : `${timeRemaining.days}d ${timeRemaining.hours}h ${timeRemaining.minutes}m`}
+                              </span>
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-200">
+                        <button
+                          onClick={() => handleExtendLicense(code)}
+                          disabled={code.status !== 'activated'}
+                          className="flex-1 min-w-[120px] bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition"
+                        >
+                          🔄 {t('extend')}
+                        </button>
+                        <button
+                          onClick={() => handleChangeAccount(code)}
+                          disabled={code.status !== 'activated'}
+                          className="flex-1 min-w-[120px] bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition"
+                        >
+                          🔄 {t('change_account')}
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Desktop Table View */}
+              <div className="hidden lg:block overflow-x-auto">
               <table className="w-full table-auto">
                 <thead>
                   <tr className="bg-gray-50">
@@ -2784,6 +2882,7 @@ export default function LandingPage() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
 
           {/* Expiring Soon Alert */}
@@ -2858,15 +2957,15 @@ export default function LandingPage() {
         </div>
 
         {/* History Section - Redesigned */}
-        <div className="bg-gradient-to-br from-slate-50 to-gray-100 rounded-3xl shadow-2xl p-8 mb-8 border border-gray-200">
+        <div className="bg-gradient-to-br from-slate-50 to-gray-100 rounded-2xl sm:rounded-3xl shadow-2xl p-4 sm:p-6 lg:p-8 mb-8 border border-gray-200">
           {/* Header with animated icon */}
-          <div className="flex items-center justify-between mb-8">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 sm:mb-8 gap-4">
             <div className="flex items-center">
               <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl blur opacity-30 animate-pulse"></div>
-                <div className="relative w-14 h-14 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl sm:rounded-2xl blur opacity-30 animate-pulse"></div>
+                <div className="relative w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg">
                   <svg
-                    className="w-7 h-7 text-white"
+                    className="w-6 h-6 sm:w-7 sm:h-7 text-white"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -2880,11 +2979,11 @@ export default function LandingPage() {
                   </svg>
                 </div>
               </div>
-              <div className="ml-4">
-                <h2 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+              <div className="ml-3 sm:ml-4">
+                <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
                   {t('history_title')}
                 </h2>
-                <p className="text-sm text-gray-600 mt-1">
+                <p className="text-xs sm:text-sm text-gray-600 mt-1">
                   {language === 'th'
                     ? 'ติดตามธุรกรรมและกิจกรรมทั้งหมดของคุณ'
                     : 'Track all your transactions and activities'}
@@ -2894,11 +2993,11 @@ export default function LandingPage() {
             <button
               onClick={fetchHistory}
               disabled={historyLoading}
-              className="group relative bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-white font-semibold px-6 py-3 rounded-xl transition-all duration-300 flex items-center shadow-lg hover:shadow-xl hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="group relative bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-white font-semibold px-4 py-2 sm:px-6 sm:py-3 rounded-xl transition-all duration-300 flex items-center shadow-lg hover:shadow-xl hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
             >
               {historyLoading ? (
                 <svg
-                  className="animate-spin w-5 h-5 mr-2"
+                  className="animate-spin w-4 h-4 sm:w-5 sm:h-5 mr-2"
                   fill="none"
                   viewBox="0 0 24 24"
                 >
@@ -2918,7 +3017,7 @@ export default function LandingPage() {
                 </svg>
               ) : (
                 <svg
-                  className="w-5 h-5 mr-2 group-hover:rotate-180 transition-transform duration-500"
+                  className="w-4 h-4 sm:w-5 sm:h-5 mr-2 group-hover:rotate-180 transition-transform duration-500"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -2931,7 +3030,8 @@ export default function LandingPage() {
                   />
                 </svg>
               )}
-              {t('refresh')}
+              <span className="hidden sm:inline">{t('refresh')}</span>
+              <span className="inline sm:hidden">🔄</span>
             </button>
           </div>
 
@@ -2939,14 +3039,14 @@ export default function LandingPage() {
           <div className="flex flex-wrap gap-2 mb-6 bg-white rounded-xl p-2 shadow-inner">
             <button
               onClick={() => setActiveHistoryTab('purchases')}
-              className={`flex-1 min-w-[140px] px-4 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
+              className={`flex-1 min-w-[100px] sm:min-w-[140px] px-3 sm:px-4 py-2 sm:py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-base ${
                 activeHistoryTab === 'purchases'
                   ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg scale-105'
                   : 'bg-transparent text-gray-600 hover:bg-gray-100'
               }`}
             >
               <svg
-                className="w-5 h-5"
+                className="w-4 h-4 sm:w-5 sm:h-5"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -2958,9 +3058,10 @@ export default function LandingPage() {
                   d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"
                 />
               </svg>
-              <span>{t('purchase_history')}</span>
+              <span className="hidden sm:inline">{t('purchase_history')}</span>
+              <span className="inline sm:hidden">{language === 'th' ? 'ซื้อ' : 'Buy'}</span>
               <span
-                className={`text-xs px-2 py-1 rounded-full ${
+                className={`text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full ${
                   activeHistoryTab === 'purchases'
                     ? 'bg-white/20'
                     : 'bg-blue-100 text-blue-700'
@@ -2972,14 +3073,14 @@ export default function LandingPage() {
 
             <button
               onClick={() => setActiveHistoryTab('extensions')}
-              className={`flex-1 min-w-[140px] px-4 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
+              className={`flex-1 min-w-[100px] sm:min-w-[140px] px-3 sm:px-4 py-2 sm:py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-base ${
                 activeHistoryTab === 'extensions'
                   ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg scale-105'
                   : 'bg-transparent text-gray-600 hover:bg-gray-100'
               }`}
             >
               <svg
-                className="w-5 h-5"
+                className="w-4 h-4 sm:w-5 sm:h-5"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -2991,9 +3092,10 @@ export default function LandingPage() {
                   d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                 />
               </svg>
-              <span>{t('extension_history')}</span>
+              <span className="hidden sm:inline">{t('extension_history')}</span>
+              <span className="inline sm:hidden">{language === 'th' ? 'ขยาย' : 'Ext'}</span>
               <span
-                className={`text-xs px-2 py-1 rounded-full ${
+                className={`text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full ${
                   activeHistoryTab === 'extensions'
                     ? 'bg-white/20'
                     : 'bg-purple-100 text-purple-700'
@@ -3005,14 +3107,14 @@ export default function LandingPage() {
 
             <button
               onClick={() => setActiveHistoryTab('topups')}
-              className={`flex-1 min-w-[140px] px-4 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
+              className={`flex-1 min-w-[100px] sm:min-w-[140px] px-3 sm:px-4 py-2 sm:py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-base ${
                 activeHistoryTab === 'topups'
                   ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg scale-105'
                   : 'bg-transparent text-gray-600 hover:bg-gray-100'
               }`}
             >
               <svg
-                className="w-5 h-5"
+                className="w-4 h-4 sm:w-5 sm:h-5"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -3026,7 +3128,7 @@ export default function LandingPage() {
               </svg>
               <span>{language === 'th' ? 'เติมเครดิต' : 'Top-ups'}</span>
               <span
-                className={`text-xs px-2 py-1 rounded-full ${
+                className={`text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full ${
                   activeHistoryTab === 'topups'
                     ? 'bg-white/20'
                     : 'bg-green-100 text-green-700'

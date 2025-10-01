@@ -5,8 +5,8 @@ const PointTransactionSchema = new mongoose.Schema(
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
-      index: true
+      required: true
+      // Note: index removed here since compound index below covers userId queries
     },
     type: {
       type: String,
