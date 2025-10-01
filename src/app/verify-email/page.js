@@ -198,13 +198,15 @@ function VerifyEmailContent() {
         {/* Header */}
         <div className="text-center pt-6 sm:pt-8 pb-4 sm:pb-6 px-6 sm:px-8 relative">
           <div className="absolute top-3 right-3 flex gap-2">
-            {['en','th'].map(l => (
+            {['en', 'th'].map((l) => (
               <button
                 key={l}
                 type="button"
                 onClick={() => changeLanguage(l)}
-                className={`px-2 py-1 text-xs rounded-md font-semibold transition-colors ${language===l ? 'bg-yellow-400 text-black' : 'bg-white/20 text-white hover:bg-white/30'}`}
-              >{l.toUpperCase()}</button>
+                className={`px-2 py-1 text-xs rounded-md font-semibold transition-colors ${language === l ? 'bg-yellow-400 text-black' : 'bg-white/20 text-white hover:bg-white/30'}`}
+              >
+                {l.toUpperCase()}
+              </button>
             ))}
           </div>
           <div className="inline-flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32  rounded-full mb-3 sm:mb-4 shadow-lg overflow-hidden">

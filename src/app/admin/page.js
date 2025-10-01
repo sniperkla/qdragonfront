@@ -14,13 +14,52 @@ export default function AdminPage() {
   const [filter, setFilter] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [updating, setUpdating] = useState({})
-  const [activeTab, setActiveTab] = useState('codes')
+  const [activeTab, setActiveTab] = useState('plan-settings')
   const [customers, setCustomers] = useState([])
   const [loadingCustomers, setLoadingCustomers] = useState(false)
   const [customerFilter, setCustomerFilter] = useState('all')
   const [customerSearch, setCustomerSearch] = useState('')
+
+  // Top-up requests state
+  const [topUpRequests, setTopUpRequests] = useState([])
+  const [loadingTopUps, setLoadingTopUps] = useState(false)
+  const [topUpFilter, setTopUpFilter] = useState('all')
+  const [processingTopUp, setProcessingTopUp] = useState({})
+
+  // Plan settings state
+  const [planSettings, setPlanSettings] = useState([])
+  const [loadingPlans, setLoadingPlans] = useState(false)
+  const [planFilter, setPlanFilter] = useState('all')
+  const [planModal, setPlanModal] = useState({
+    show: false,
+    mode: 'create', // 'create' or 'edit'
+    plan: null
+  })
+  const [planForm, setPlanForm] = useState({
+    name: '',
+    days: '',
+    price: '',
+    points: '',
+    description: '',
+    isActive: true,
+    isLifetime: false,
+    sortOrder: 0
+  })
+  const [topUpRejectModal, setTopUpRejectModal] = useState({
+    show: false,
+    requestId: '',
+    amount: '',
+    reason: ''
+  })
+  const [bulkTopUpRejectModal, setBulkTopUpRejectModal] = useState({
+    show: false,
+    selectedIds: [],
+    reason: ''
+  })
   const [bulkSelecting, setBulkSelecting] = useState(false)
   const [selectedCustomerIds, setSelectedCustomerIds] = useState([])
+  const [selectedTopUpIds, setSelectedTopUpIds] = useState([])
+  const [bulkTopUpMode, setBulkTopUpMode] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState({
     show: false,
     type: '',
@@ -79,7 +118,9 @@ export default function AdminPage() {
   const [lastWsEvent, setLastWsEvent] = useState(null)
   // Track current tab in ref for socket handlers without re-binding
   const activeTabRef = useRef('codes')
-  useEffect(() => { activeTabRef.current = activeTab }, [activeTab])
+  useEffect(() => {
+    activeTabRef.current = activeTab
+  }, [activeTab])
 
   // WebSocket (reintroduced): initialize server then connect
   useEffect(() => {
@@ -112,9 +153,9 @@ export default function AdminPage() {
           setWsInitializing(false)
           socket.emit('join-admin')
           // Initial full sync
-          fetchAllCodes()
+          fetchPlanSettings()
           fetchAllCustomers()
-          fetchExtensionRequests()
+          fetchTopUpRequests()
         })
 
         socket.on('disconnect', () => {
@@ -122,71 +163,40 @@ export default function AdminPage() {
           setWsConnected(false)
         })
 
-        // Code/license related updates
-        socket.on('codes-updated', (payload) => {
-          setLastWsEvent({ type: 'codes', ts: Date.now(), payload })
-          fetchAllCodes()
-        })
+        // Customer account updates
         socket.on('customer-account-updated', () => {
           setLastWsEvent({ type: 'customer-account', ts: Date.now() })
           fetchAllCustomers()
         })
-        socket.on('extension-request-updated', (payload) => {
-          // Diagnostic logging to verify payload shape in production
-          try {
-            console.log('[WS] extension-request-updated payload:', payload)
-          } catch (e) {}
-          setLastWsEvent({ type: 'extension', ts: Date.now(), payload })
-          fetchExtensionRequests()
-          // Broaden auto-switch logic: treat as new if action === 'created', or status pending, or heuristic (has requestedDays but no processedAt)
-          const isLikelyNew = !!(
-            payload && (
-              payload.action === 'created' ||
-              payload.status === 'pending' ||
-              (!payload.action && !payload.processedAt && (payload.requestedDays || payload.extendDays))
-            )
-          )
-          if (isLikelyNew && activeTabRef.current !== 'extension-requests') {
-            showNotification('[EXTENSIONS] New extension request received')
-            setActiveTab('extension-requests')
-            playNotificationSound()
-          }
-        })
-        // Fallback broadcast listener if admin room not joined in time
-        socket.on('extension-request-updated-broadcast', (payload) => {
-          try { console.log('[WS] extension-request-updated-broadcast payload:', payload) } catch (e) {}
-          setLastWsEvent({ type: 'extension-broadcast', ts: Date.now(), payload })
-          fetchExtensionRequests()
-          const isLikelyNew = !!(
-            payload && (
-              payload.action === 'created' ||
-              payload.status === 'pending' ||
-              (!payload.action && !payload.processedAt && (payload.requestedDays || payload.extendDays))
-            )
-          )
-          if (isLikelyNew && activeTabRef.current !== 'extension-requests') {
-            showNotification('[EXTENSIONS] New extension request received')
-            setActiveTab('extension-requests')
-            playNotificationSound()
-          }
-        })
-        socket.on('extension-processed', () => {
-          setLastWsEvent({ type: 'extension-processed', ts: Date.now() })
-          fetchExtensionRequests()
-        })
-        socket.on('new-code-generated', (payload) => {
-          setLastWsEvent({ type: 'new-code', ts: Date.now(), payload })
-          fetchAllCodes()
-          // Auto-switch to Trading Codes tab if user currently viewing another tab
-          if (activeTabRef.current !== 'codes') {
-            showNotification('[CODES] New trading code added')
-            setActiveTab('codes')
-          }
+        socket.on('customer-account-updated-broadcast', (payload) => {
+          // Fallback broadcast handler
+          setLastWsEvent({
+            type: 'customer-account-broadcast',
+            ts: Date.now(),
+            payload
+          })
+          fetchAllCustomers()
         })
         socket.on('admin-notification', (data) => {
           if (data?.message) {
             showNotification(data.message)
           }
+        })
+        // Top-up related events
+        socket.on('topup-request-updated', (payload) => {
+          setLastWsEvent({ type: 'topup', ts: Date.now(), payload })
+          fetchTopUpRequests()
+          // Auto-switch to top-ups tab for new requests
+          const isNewRequest = !!(payload && payload.action === 'created')
+          if (isNewRequest && activeTabRef.current !== 'topup-requests') {
+            showNotification('[TOP-UP] New top-up request received')
+            setActiveTab('topup-requests')
+            playNotificationSound()
+          }
+        })
+        socket.on('topup-processed', () => {
+          setLastWsEvent({ type: 'topup-processed', ts: Date.now() })
+          fetchTopUpRequests()
         })
       } catch (e) {
         setWsInitializing(false)
@@ -226,9 +236,9 @@ export default function AdminPage() {
         })
         if (response.ok) {
           setIsAuthenticated(true)
-          fetchAllCodes()
+          fetchPlanSettings()
           fetchAllCustomers()
-          fetchExtensionRequests()
+          fetchTopUpRequests()
         }
       } catch (error) {
         // Auth check failed - handled by loading state
@@ -243,9 +253,14 @@ export default function AdminPage() {
   // Map message tokens to tabs
   const resolveTabFromMessage = (msg = '') => {
     const lower = msg.toLowerCase()
-    if (lower.includes('[codes]') || lower.includes('trading code') || lower.includes('license purchase') || lower.includes('new trading code')) return 'codes'
-    if (lower.includes('[customers]') || lower.includes('customer account')) return 'customers'
-    if (lower.includes('[extensions]') || lower.includes('extension request')) return 'extension-requests'
+    if (lower.includes('[customers]') || lower.includes('customer account'))
+      return 'customers'
+    if (
+      lower.includes('[top-up]') ||
+      lower.includes('top-up request') ||
+      lower.includes('topup')
+    )
+      return 'topup-requests'
     if (lower.includes('[create]')) return 'create-account'
     return null
   }
@@ -255,7 +270,9 @@ export default function AdminPage() {
     setNewItemNotification({ show: true, message, targetTab })
     // Auto-hide notification after 5 seconds
     setTimeout(() => {
-      setNewItemNotification((prev) => prev.show ? { show: false, message: '', targetTab: null } : prev)
+      setNewItemNotification((prev) =>
+        prev.show ? { show: false, message: '', targetTab: null } : prev
+      )
     }, 5000)
   }
 
@@ -264,7 +281,9 @@ export default function AdminPage() {
     setToast({ show: true, message, type, targetTab })
     // Auto-hide toast after 3 seconds unless hovered
     setTimeout(() => {
-      setToast((prev) => prev.show ? { show: false, message: '', type: 'success' } : prev)
+      setToast((prev) =>
+        prev.show ? { show: false, message: '', type: 'success' } : prev
+      )
     }, 3000)
   }
 
@@ -308,9 +327,9 @@ export default function AdminPage() {
       if (response.ok) {
         setIsAuthenticated(true)
         setAdminKey('')
-        fetchAllCodes()
+        fetchPlanSettings()
         fetchAllCustomers()
-        fetchExtensionRequests()
+        fetchTopUpRequests()
       } else {
         showToast(t('invalid_admin_key'), 'error')
       }
@@ -467,20 +486,49 @@ export default function AdminPage() {
 
   // Bulk selection helpers
   const toggleSelectCustomer = (id) => {
-    setSelectedCustomerIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
+    setSelectedCustomerIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    )
   }
   const selectAllVisibleCustomers = () => {
-    const visible = customers.filter((customer) => {
-      const matchesFilter = customerFilter === 'all' || customer.status === customerFilter
-      const matchesSearch = customerSearch === '' || customer.user.toLowerCase().includes(customerSearch.toLowerCase()) || customer.license.toLowerCase().includes(customerSearch.toLowerCase())
-      return matchesFilter && matchesSearch
-    }).map((c) => c._id)
+    const visible = customers
+      .filter((customer) => {
+        const matchesFilter =
+          customerFilter === 'all' || customer.status === customerFilter
+        const matchesSearch =
+          customerSearch === '' ||
+          customer.user.toLowerCase().includes(customerSearch.toLowerCase()) ||
+          customer.license.toLowerCase().includes(customerSearch.toLowerCase())
+        return matchesFilter && matchesSearch
+      })
+      .map((c) => c._id)
     setSelectedCustomerIds(visible)
   }
   const clearSelection = () => setSelectedCustomerIds([])
 
-  const interpolate = (template, vars={}) => {
-    return template.replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? vars[k] : `{${k}}`))
+  // Top-up bulk selection helpers
+  const toggleSelectTopUp = (id) => {
+    setSelectedTopUpIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    )
+  }
+  
+  const selectAllVisibleTopUps = () => {
+    const visible = (Array.isArray(topUpRequests) ? topUpRequests : [])
+      .filter((request) => {
+        const matchesFilter = topUpFilter === 'all' || request.status === topUpFilter
+        return matchesFilter && request.status === 'pending' // Only allow selection of pending requests
+      })
+      .map((r) => r._id)
+    setSelectedTopUpIds(visible)
+  }
+  
+  const clearTopUpSelection = () => setSelectedTopUpIds([])
+
+  const interpolate = (template, vars = {}) => {
+    return template.replace(/\{(\w+)\}/g, (_, k) =>
+      vars[k] !== undefined ? vars[k] : `{${k}}`
+    )
   }
 
   const performBulkAction = async (action) => {
@@ -491,11 +539,15 @@ export default function AdminPage() {
     }
     // Confirmation for delete
     if (action === 'delete') {
-      const confirmMsg = interpolate(t('bulk_delete_confirm'), { count: selectedCustomerIds.length })
+      const confirmMsg = interpolate(t('bulk_delete_confirm'), {
+        count: selectedCustomerIds.length
+      })
       if (!window.confirm(confirmMsg)) return
     }
     if (action === 'suspend') {
-      const confirmMsg = interpolate(t('bulk_suspend_confirm'), { count: selectedCustomerIds.length })
+      const confirmMsg = interpolate(t('bulk_suspend_confirm'), {
+        count: selectedCustomerIds.length
+      })
       if (!window.confirm(confirmMsg)) return
     }
     try {
@@ -508,15 +560,37 @@ export default function AdminPage() {
       const data = await response.json()
       if (response.ok) {
         if (action === 'suspend') {
-          showToast(interpolate(t('bulk_suspend_processed'), { success: data.processedCount, skipped: data.skippedCount }), 'success')
+          showToast(
+            interpolate(t('bulk_suspend_processed'), {
+              success: data.processedCount,
+              skipped: data.skippedCount
+            }),
+            'success'
+          )
         } else {
-          showToast(interpolate(t('bulk_delete_processed'), { success: data.processedCount, skipped: data.skippedCount }), 'success')
+          showToast(
+            interpolate(t('bulk_delete_processed'), {
+              success: data.processedCount,
+              skipped: data.skippedCount
+            }),
+            'success'
+          )
         }
         // Update local state optimistically
         if (action === 'suspend') {
-          setCustomers((prev) => prev.map((c) => selectedCustomerIds.includes(c._id) ? (c.status === 'valid' ? { ...c, status: 'suspended' } : c) : c))
+          setCustomers((prev) =>
+            prev.map((c) =>
+              selectedCustomerIds.includes(c._id)
+                ? c.status === 'valid'
+                  ? { ...c, status: 'suspended' }
+                  : c
+                : c
+            )
+          )
         } else if (action === 'delete') {
-          setCustomers((prev) => prev.filter((c) => !selectedCustomerIds.includes(c._id)))
+          setCustomers((prev) =>
+            prev.filter((c) => !selectedCustomerIds.includes(c._id))
+          )
         }
         setSelectedCustomerIds([])
         // Full refresh for consistency
@@ -595,6 +669,366 @@ export default function AdminPage() {
       // Error handled by UI state
     } finally {
       setLoadingExtensions(false)
+    }
+  }
+
+  // Top-up request functions
+  const fetchTopUpRequests = async () => {
+    setLoadingTopUps(true)
+    try {
+      const response = await fetch('/api/admin/topup', {
+        credentials: 'include'
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setTopUpRequests(data.requests || [])
+      } else {
+        console.error('Failed to fetch top-up requests:', response.status)
+        setTopUpRequests([])
+      }
+    } catch (error) {
+      console.error('Error fetching top-up requests:', error)
+      setTopUpRequests([])
+    } finally {
+      setLoadingTopUps(false)
+    }
+  }
+
+  // Plan settings functions
+  const fetchPlanSettings = async () => {
+    setLoadingPlans(true)
+    try {
+      const response = await fetch('/api/admin/plan-settings', {
+        credentials: 'include'
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setPlanSettings(data.plans || [])
+      } else {
+        console.error('Failed to fetch plan settings:', response.status)
+        setPlanSettings([])
+      }
+    } catch (error) {
+      console.error('Error fetching plan settings:', error)
+      setPlanSettings([])
+    } finally {
+      setLoadingPlans(false)
+    }
+  }
+
+  const showPlanModal = (mode, plan = null) => {
+    if (mode === 'edit' && plan) {
+      setPlanForm({
+        name: plan.name,
+        days: plan.isLifetime ? '' : plan.days.toString(),
+        price: plan.price.toString(),
+        points: plan.points.toString(),
+        description: plan.description || '',
+        isActive: plan.isActive,
+        isLifetime: plan.isLifetime,
+        sortOrder: plan.sortOrder.toString()
+      })
+    } else {
+      setPlanForm({
+        name: '',
+        days: '',
+        price: '',
+        points: '',
+        description: '',
+        isActive: true,
+        isLifetime: false,
+        sortOrder: '0'
+      })
+    }
+    setPlanModal({ show: true, mode, plan })
+  }
+
+  const closePlanModal = () => {
+    setPlanModal({ show: false, mode: 'create', plan: null })
+    setPlanForm({
+      name: '',
+      days: '',
+      price: '',
+      points: '',
+      description: '',
+      isActive: true,
+      isLifetime: false,
+      sortOrder: '0'
+    })
+  }
+
+  const handlePlanSubmit = async (e) => {
+    e.preventDefault()
+
+    const isEdit = planModal.mode === 'edit'
+    const url = '/api/admin/plan-settings'
+    const method = isEdit ? 'PUT' : 'POST'
+
+    const body = {
+      ...planForm,
+      days: planForm.isLifetime ? 999999 : parseInt(planForm.days),
+      price: parseFloat(planForm.price),
+      points: parseInt(planForm.points),
+      sortOrder: parseInt(planForm.sortOrder)
+    }
+
+    if (isEdit) {
+      body.planId = planModal.plan.id
+    }
+
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(body)
+      })
+
+      const data = await response.json()
+      if (response.ok) {
+        showToast(
+          isEdit 
+            ? `Plan "${planForm.name}" updated successfully!`
+            : `Plan "${planForm.name}" created successfully!`,
+          'success'
+        )
+        setPlanModal({ show: false, mode: 'create', plan: null })
+        fetchPlanSettings()
+      } else {
+        showToast(data.error || 'Failed to save plan', 'error')
+      }
+    } catch (error) {
+      showToast('Failed to save plan', 'error')
+    }
+  }
+
+  const deletePlan = async (planId, planName) => {
+    if (!window.confirm(`Are you sure you want to delete the plan "${planName}"? This action cannot be undone.`)) {
+      return
+    }
+
+    try {
+      const response = await fetch('/api/admin/plan-settings', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ planId })
+      })
+
+      const data = await response.json()
+      if (response.ok) {
+        showToast(`Plan "${planName}" deleted successfully!`, 'success')
+        fetchPlanSettings()
+      } else {
+        showToast(data.error || 'Failed to delete plan', 'error')
+      }
+    } catch (error) {
+      showToast('Failed to delete plan', 'error')
+    }
+  }
+
+  const approveTopUp = async (requestId) => {
+    setProcessingTopUp((prev) => ({ ...prev, [requestId]: true }))
+    try {
+      const response = await fetch('/api/admin/topup', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          requestId,
+          action: 'approve'
+        })
+      })
+
+      const data = await response.json()
+      if (response.ok) {
+        showToast(
+          `Top-up approved! ฿${data.amount} credited as ${data.points} points`,
+          'success'
+        )
+        fetchTopUpRequests()
+      } else {
+        showToast(data.error || 'Failed to approve top-up', 'error')
+      }
+    } catch (error) {
+      showToast('Failed to approve top-up', 'error')
+    } finally {
+      setProcessingTopUp((prev) => ({ ...prev, [requestId]: false }))
+    }
+  }
+
+  const showTopUpRejectModal = (requestId, amount) => {
+    setTopUpRejectModal({
+      show: true,
+      requestId,
+      amount,
+      reason: ''
+    })
+  }
+
+  const performBulkTopUpAction = (action) => {
+    if (!['approve', 'reject'].includes(action)) return
+    if (selectedTopUpIds.length === 0) {
+      showToast('No requests selected', 'error')
+      return
+    }
+
+    if (action === 'approve') {
+      const confirmMsg = `Are you sure you want to approve ${selectedTopUpIds.length} top-up request(s)? This will credit points to users immediately.`
+      if (!window.confirm(confirmMsg)) return
+      
+      bulkApproveTopUps()
+    } else {
+      // Show bulk reject modal
+      setBulkTopUpRejectModal({
+        show: true,
+        selectedIds: selectedTopUpIds,
+        reason: ''
+      })
+    }
+  }
+
+  const bulkApproveTopUps = async () => {
+    try {
+      setProcessingTopUp((prev) => {
+        const newState = { ...prev }
+        selectedTopUpIds.forEach(id => {
+          newState[id] = true
+        })
+        return newState
+      })
+
+      const response = await fetch('/api/admin/topup/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          action: 'approve',
+          requestIds: selectedTopUpIds
+        })
+      })
+
+      const data = await response.json()
+      if (response.ok) {
+        showToast(
+          `Bulk approval completed! ${data.processedCount} requests approved${data.errorCount > 0 ? `, ${data.errorCount} errors` : ''}`,
+          'success'
+        )
+        setSelectedTopUpIds([])
+        fetchTopUpRequests()
+      } else {
+        showToast(data.error || 'Failed to process bulk approval', 'error')
+      }
+    } catch (error) {
+      showToast('Failed to process bulk approval', 'error')
+    } finally {
+      setProcessingTopUp((prev) => {
+        const newState = { ...prev }
+        selectedTopUpIds.forEach(id => {
+          delete newState[id]
+        })
+        return newState
+      })
+    }
+  }
+
+  const bulkRejectTopUps = async () => {
+    if (!bulkTopUpRejectModal.reason.trim()) {
+      showToast('Please provide a rejection reason', 'error')
+      return
+    }
+
+    try {
+      setProcessingTopUp((prev) => {
+        const newState = { ...prev }
+        bulkTopUpRejectModal.selectedIds.forEach(id => {
+          newState[id] = true
+        })
+        return newState
+      })
+
+      const response = await fetch('/api/admin/topup/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          action: 'reject',
+          requestIds: bulkTopUpRejectModal.selectedIds,
+          rejectionReason: bulkTopUpRejectModal.reason
+        })
+      })
+
+      const data = await response.json()
+      if (response.ok) {
+        showToast(
+          `Bulk rejection completed! ${data.processedCount} requests rejected${data.errorCount > 0 ? `, ${data.errorCount} errors` : ''}`,
+          'success'
+        )
+        setBulkTopUpRejectModal({
+          show: false,
+          selectedIds: [],
+          reason: ''
+        })
+        setSelectedTopUpIds([])
+        fetchTopUpRequests()
+      } else {
+        showToast(data.error || 'Failed to process bulk rejection', 'error')
+      }
+    } catch (error) {
+      showToast('Failed to process bulk rejection', 'error')
+    } finally {
+      setProcessingTopUp((prev) => {
+        const newState = { ...prev }
+        bulkTopUpRejectModal.selectedIds.forEach(id => {
+          delete newState[id]
+        })
+        return newState
+      })
+    }
+  }
+
+  const rejectTopUp = async () => {
+    if (!topUpRejectModal.reason.trim()) {
+      showToast('Please provide a rejection reason', 'error')
+      return
+    }
+
+    setProcessingTopUp((prev) => ({
+      ...prev,
+      [topUpRejectModal.requestId]: true
+    }))
+    try {
+      const response = await fetch('/api/admin/topup', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          requestId: topUpRejectModal.requestId,
+          action: 'reject',
+          rejectionReason: topUpRejectModal.reason
+        })
+      })
+
+      const data = await response.json()
+      if (response.ok) {
+        showToast(`Top-up rejected for ฿${data.amount}`, 'success')
+        setTopUpRejectModal({
+          show: false,
+          requestId: '',
+          amount: '',
+          reason: ''
+        })
+        fetchTopUpRequests()
+      } else {
+        showToast(data.error || 'Failed to reject top-up', 'error')
+      }
+    } catch (error) {
+      showToast('Failed to reject top-up', 'error')
+    } finally {
+      setProcessingTopUp((prev) => ({
+        ...prev,
+        [topUpRejectModal.requestId]: false
+      }))
     }
   }
 
@@ -821,9 +1255,9 @@ export default function AdminPage() {
     try {
       console.log('🔄 Manual refreshing all tables...')
       await Promise.all([
-        fetchAllCodes(),
+        fetchPlanSettings(),
         fetchAllCustomers(),
-        fetchExtensionRequests()
+        fetchTopUpRequests()
       ])
       showToast('Tables refreshed successfully!', 'success')
       showNotification('📊 Tables refreshed successfully!')
@@ -960,9 +1394,15 @@ export default function AdminPage() {
               </p>
               <div className="flex items-center justify-between mt-2">
                 <div className="flex items-center">
-                  <div className={`w-2 h-2 rounded-full mr-2 ${wsInitializing ? 'bg-yellow-400 animate-pulse' : wsConnected ? 'bg-green-500 animate-pulse' : 'bg-red-400'}`}></div>
+                  <div
+                    className={`w-2 h-2 rounded-full mr-2 ${wsInitializing ? 'bg-yellow-400 animate-pulse' : wsConnected ? 'bg-green-500 animate-pulse' : 'bg-red-400'}`}
+                  ></div>
                   <span className="text-sm text-gray-600">
-                    {wsInitializing ? 'Connecting...' : wsConnected ? 'Live (WebSocket)' : 'Offline'}
+                    {wsInitializing
+                      ? 'Connecting...'
+                      : wsConnected
+                        ? 'Live (WebSocket)'
+                        : 'Offline'}
                   </span>
                   {!wsConnected && !wsInitializing && (
                     <button
@@ -1018,20 +1458,20 @@ export default function AdminPage() {
         </div>
       </div>
 
-  <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Tabs */}
         <div className="bg-white rounded-xl shadow-lg mb-8">
           <div className="border-b border-gray-200">
             <nav className="-mb-px flex">
               <button
-                onClick={() => setActiveTab('codes')}
+                onClick={() => setActiveTab('plan-settings')}
                 className={`py-4 px-6 text-sm font-medium border-b-2 ${
-                  activeTab === 'codes'
+                  activeTab === 'plan-settings'
                     ? 'border-yellow-500 text-yellow-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                {t('codes')} ({codes.length})
+                {language === 'th' ? 'ตั้งค่าแผน' : 'Plan Settings'} ({planSettings.length})
               </button>
               <button
                 onClick={() => setActiveTab('customers')}
@@ -1054,289 +1494,220 @@ export default function AdminPage() {
                 {t('manual_account')}
               </button>
               <button
-                onClick={() => setActiveTab('extension-requests')}
+                onClick={() => setActiveTab('topup-requests')}
                 className={`py-4 px-6 text-sm font-medium border-b-2 ${
-                  activeTab === 'extension-requests'
+                  activeTab === 'topup-requests'
                     ? 'border-yellow-500 text-yellow-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                {t('extensions')} (
-                {extensionRequests.filter((r) => r.status === 'pending').length}
+                {language === 'th' ? 'คำขอเติมเงิน' : 'Top-ups'} (
+                {Array.isArray(topUpRequests)
+                  ? topUpRequests.filter((r) => r.status === 'pending').length
+                  : 0}
                 )
               </button>
             </nav>
           </div>
         </div>
 
-        {activeTab === 'codes' && (
+
+
+        {activeTab === 'plan-settings' && (
           <>
-            {/* Controls */}
+            {/* Plan Settings Controls */}
             <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
               <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
                 <div className="flex gap-4 items-center">
                   <button
-                    onClick={fetchAllCodes}
-                    disabled={loadingCodes}
+                    onClick={fetchPlanSettings}
+                    disabled={loadingPlans}
                     className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg flex items-center"
                   >
-                    {loadingCodes ? (
-                      <svg
-                        className="animate-spin w-4 h-4 mr-2"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                      >
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        ></circle>
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        ></path>
+                    {loadingPlans ? (
+                      <svg className="animate-spin w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
                     ) : (
-                      <svg
-                        className="w-4 h-4 mr-2"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                        ></path>
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                       </svg>
                     )}
                     {t('refresh')}
                   </button>
 
                   <select
-                    value={filter}
-                    onChange={(e) => setFilter(e.target.value)}
+                    value={planFilter}
+                    onChange={(e) => setPlanFilter(e.target.value)}
                     className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500"
                   >
-                    <option value="all">
-                      {t('all')} {t('status')}
-                    </option>
-                    <option value="pending_payment">
-                      {t('pending')}{' '}
-                      {language === 'th' ? 'การชำระเงิน' : 'Payment'}
-                    </option>
-                    <option value="paid">
-                      {language === 'th' ? 'ชำระแล้ว' : 'Paid'}
-                    </option>
-                    <option value="activated">{t('activated')}</option>
-                    <option value="expired">{t('expired')}</option>
-                    <option value="cancelled">{t('cancelled')}</option>
+                    <option value="all">{language === 'th' ? 'แผนทั้งหมด' : 'All Plans'}</option>
+                    <option value="active">{language === 'th' ? 'ใช้งานอยู่' : 'Active'}</option>
+                    <option value="inactive">{language === 'th' ? 'ไม่ใช้งาน' : 'Inactive'}</option>
                   </select>
-                </div>
 
-                <input
-                  type="text"
-                  placeholder={
-                    language === 'th'
-                      ? 'ค้นหาตามรหัส, ชื่อผู้ใช้, หรือบัญชี...'
-                      : 'Search by code, username, or account...'
-                  }
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 min-w-64"
-                />
+                  <button
+                    onClick={() => showPlanModal('create')}
+                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center"
+                  >
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                    </svg>
+                    {language === 'th' ? 'เพิ่มแผน' : 'Add Plan'}
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
-              {['all', 'pending_payment', 'paid', 'activated', 'expired'].map(
-                (status) => {
-                  const count =
-                    status === 'all'
-                      ? codes.length
-                      : codes.filter((c) => c.status === status).length
-                  return (
-                    <div
-                      key={status}
-                      className="bg-white rounded-xl shadow-lg p-6"
-                    >
-                      <div className="text-2xl font-bold text-gray-900">
-                        {count}
-                      </div>
-                      <div className="text-sm text-gray-600 capitalize">
-                        {status === 'all'
-                          ? t('total_codes')
-                          : status === 'pending_payment'
-                            ? t('pending_payment')
-                            : status === 'paid'
-                              ? t('paid')
-                              : status === 'activated'
-                                ? t('activated')
-                                : status === 'expired'
-                                  ? t('expired')
-                                  : status}
-                      </div>
+            {/* Plan Settings Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+              {['all', 'active', 'inactive', 'lifetime'].map((status) => {
+                const plans = planSettings.filter((plan) => {
+                  if (status === 'all') return true
+                  if (status === 'active') return plan.isActive
+                  if (status === 'inactive') return !plan.isActive
+                  if (status === 'lifetime') return plan.isLifetime
+                  return false
+                })
+                const count = plans.length
+                const totalValue = plans.reduce((sum, plan) => sum + plan.price, 0)
+                
+                return (
+                  <div key={status} className="bg-white rounded-xl shadow-lg p-6">
+                    <div className="text-2xl font-bold text-gray-900">{count}</div>
+                    <div className="text-sm text-gray-600 capitalize">
+                      {status === 'all'
+                        ? language === 'th' ? 'แผนทั้งหมด' : 'Total Plans'
+                        : status === 'active'
+                          ? language === 'th' ? 'ใช้งานอยู่' : 'Active Plans'
+                          : status === 'inactive'
+                            ? language === 'th' ? 'ไม่ใช้งาน' : 'Inactive Plans'
+                            : language === 'th' ? 'แผนตลอดชีพ' : 'Lifetime Plans'}
                     </div>
-                  )
-                }
-              )}
+                    <div className="text-xs text-gray-500 mt-1">
+                      ${totalValue.toFixed(2)} {language === 'th' ? 'รวม' : 'total value'}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
 
-            {/* Codes Table */}
+            {/* Plan Settings Table */}
             <div className="bg-white rounded-xl shadow-lg overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        {t('code')}
+                        {language === 'th' ? 'ชื่อแผน' : 'Plan Name'}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        {t('user')}
-                      </th>
-                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        {t('account_number')}
-                      </th>
-                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        {t('platform')}
-                      </th>
-                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        {t('plan')}
+                        {language === 'th' ? 'วัน' : 'Days'}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
                         {language === 'th' ? 'ราคา' : 'Price'}
                       </th>
-                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900 whitespace-nowrap min-w-[110px]">
-                        {t('status')}
+                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
+                        {language === 'th' ? 'แต้ม' : 'Points'}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        {t('created_at')}
+                        {language === 'th' ? 'ราคา/วัน' : 'Price/Day'}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        {t('actions')}
+                        {language === 'th' ? 'สถานะ' : 'Status'}
+                      </th>
+                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
+                        {language === 'th' ? 'คำอธิบาย' : 'Description'}
+                      </th>
+                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
+                        {language === 'th' ? 'การดำเนินการ' : 'Actions'}
                       </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {filteredCodes.map((code) => (
-                      <tr key={code._id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 font-mono text-sm text-blue-600 font-bold">
-                          {code.code}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-900">
-                          {code.username}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-900">
-                          {code.accountNumber}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-900 capitalize">
-                          {code.platform}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-900">
-                          {code.plan} days
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-900">
-                          ${code.price}
-                        </td>
-                        <td className="px-6 py-4">
-                          <span
-                            className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(code.status)}`}
-                          >
-                            {code.status === 'pending_payment'
-                              ? t('pending_payment')
-                              : code.status === 'paid'
-                                ? t('paid')
-                                : code.status === 'activated'
-                                  ? t('activated')
-                                  : code.status === 'expired'
-                                    ? t('expired')
-                                    : code.status === 'cancelled'
-                                      ? t('cancelled')
-                                      : code.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-500">
-                          {formatThaiDateTime(code.createdAt)}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex gap-2">
-                            {code.status === 'pending_payment' && (
-                              <button
-                                onClick={() =>
-                                  updateCodeStatus(code._id, 'paid')
-                                }
-                                disabled={updating[code._id]}
-                                className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
-                              >
-                                {updating[code._id] ? '...' : t('confirm_payment')}
-                              </button>
+                    {planSettings
+                      .filter((plan) => {
+                        if (planFilter === 'all') return true
+                        if (planFilter === 'active') return plan.isActive
+                        if (planFilter === 'inactive') return !plan.isActive
+                        return true
+                      })
+                      .map((plan) => (
+                        <tr key={plan.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                            {plan.name}
+                            {plan.isLifetime && (
+                              <span className="ml-2 inline-flex px-2 py-1 text-xs font-bold rounded-full bg-purple-100 text-purple-800">
+                                LIFETIME
+                              </span>
                             )}
-                            {code.status === 'paid' && (
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900">
+                            {plan.isLifetime ? '∞' : plan.days.toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4 text-sm font-bold text-green-600">
+                            ฿{plan.price.toFixed(2)}
+                          </td>
+                          <td className="px-6 py-4 text-sm font-bold text-blue-600">
+                            {plan.points}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            {plan.pricePerDay ? `฿${plan.pricePerDay}` : 'N/A'}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span
+                              className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                plan.isActive
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-red-100 text-red-800'
+                              }`}
+                            >
+                              {plan.isActive
+                                ? language === 'th' ? 'ใช้งาน' : 'ACTIVE'
+                                : language === 'th' ? 'ไม่ใช้งาน' : 'INACTIVE'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
+                            {plan.description || '-'}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex gap-2">
                               <button
-                                onClick={() =>
-                                  updateCodeStatus(code._id, 'activated')
-                                }
-                                disabled={updating[code._id]}
-                                className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
+                                onClick={() => showPlanModal('edit', plan)}
+                                className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs"
                               >
-                                {updating[code._id] ? '...' : t('activate_action')}
+                                {language === 'th' ? 'แก้ไข' : 'Edit'}
                               </button>
-                            )}
-                            {code.status !== 'cancelled' &&
-                              code.status !== 'expired' && (
-                                <button
-                                  onClick={() =>
-                                    updateCodeStatus(code._id, 'cancelled')
-                                  }
-                                  disabled={updating[code._id]}
-                                  className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
-                                >
-                                  {updating[code._id] ? '...' : t('cancel_action')}
-                                </button>
-                              )}
-                            {code.status === 'cancelled' && (
                               <button
-                                onClick={() =>
-                                  handleDeleteClick('code', code._id, code.code)
-                                }
-                                disabled={updating[code._id]}
-                                className="bg-gray-800 hover:bg-gray-900 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
+                                onClick={() => deletePlan(plan.id, plan.name)}
+                                className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs"
                               >
-                                {updating[code._id] ? '...' : t('delete')}
+                                {language === 'th' ? 'ลบ' : 'Delete'}
                               </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>
 
-              {filteredCodes.length === 0 && (
+              {planSettings.filter((plan) => {
+                if (planFilter === 'all') return true
+                if (planFilter === 'active') return plan.isActive
+                if (planFilter === 'inactive') return !plan.isActive
+                return true
+              }).length === 0 && (
                 <div className="text-center py-12 text-gray-500">
-                  <svg
-                    className="w-16 h-16 mx-auto mb-4 text-gray-300"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                    ></path>
+                  <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
                   </svg>
-                  <p className="text-lg font-medium">No codes found</p>
+                  <p className="text-lg font-medium">
+                    {language === 'th' ? 'ไม่พบแผน' : 'No plans found'}
+                  </p>
                   <p className="text-sm">
-                    No trading codes match your current filter
+                    {language === 'th' ? 'ไม่มีแผนที่ตรงกับตัวกรองที่เลือก' : 'No plans match your current filter'}
                   </p>
                 </div>
               )}
@@ -1428,22 +1799,48 @@ export default function AdminPage() {
               {bulkSelecting && (
                 <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
                   <div className="text-sm text-blue-700 font-medium flex items-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7h18M3 12h18M3 17h18" /></svg>
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M3 7h18M3 12h18M3 17h18"
+                      />
+                    </svg>
                     {selectedCustomerIds.length} {t('selected') || 'selected'}
-                    <button onClick={selectAllVisibleCustomers} className="ml-2 text-xs underline">{t('select_visible')}</button>
-                    <button onClick={clearSelection} className="ml-1 text-xs underline">{t('clear_selection')}</button>
+                    <button
+                      onClick={selectAllVisibleCustomers}
+                      className="ml-2 text-xs underline"
+                    >
+                      {t('select_visible')}
+                    </button>
+                    <button
+                      onClick={clearSelection}
+                      className="ml-1 text-xs underline"
+                    >
+                      {t('clear_selection')}
+                    </button>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button
                       onClick={() => performBulkAction('suspend')}
                       disabled={selectedCustomerIds.length === 0}
                       className="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded text-xs disabled:opacity-50"
-                    >{t('suspend_selected')}</button>
+                    >
+                      {t('suspend_selected')}
+                    </button>
                     <button
                       onClick={() => performBulkAction('delete')}
                       disabled={selectedCustomerIds.length === 0}
                       className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded text-xs disabled:opacity-50"
-                    >{t('delete_selected')}</button>
+                    >
+                      {t('delete_selected')}
+                    </button>
                   </div>
                 </div>
               )}
@@ -1466,7 +1863,9 @@ export default function AdminPage() {
                     </div>
                     <div className="text-sm text-gray-600 capitalize">
                       {status === 'all'
-                        ? (language === 'th' ? 'ลูกค้าทั้งหมด' : 'Total Customers')
+                        ? language === 'th'
+                          ? 'ลูกค้าทั้งหมด'
+                          : 'Total Customers'
                         : status === 'valid'
                           ? t('valid')
                           : status === 'expired'
@@ -1487,7 +1886,9 @@ export default function AdminPage() {
                   <thead className="bg-gray-50">
                     <tr>
                       {bulkSelecting && (
-                        <th className="px-3 py-4 text-left text-sm font-medium text-gray-900">Sel</th>
+                        <th className="px-3 py-4 text-left text-sm font-medium text-gray-900">
+                          Sel
+                        </th>
                       )}
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
                         {t('user')}
@@ -1544,8 +1945,12 @@ export default function AdminPage() {
                               <input
                                 type="checkbox"
                                 className="h-4 w-4 text-blue-600 border-gray-300 rounded"
-                                checked={selectedCustomerIds.includes(customer._id)}
-                                onChange={() => toggleSelectCustomer(customer._id)}
+                                checked={selectedCustomerIds.includes(
+                                  customer._id
+                                )}
+                                onChange={() =>
+                                  toggleSelectCustomer(customer._id)
+                                }
                               />
                             </td>
                           )}
@@ -1578,7 +1983,11 @@ export default function AdminPage() {
                                     ? 'bg-gradient-to-r from-red-600 to-red-500 text-white shadow-lg ring-2 ring-red-300/40 animate-pulse'
                                     : 'bg-yellow-400/90 text-gray-900 shadow-sm'
                               }`}
-                              title={customer.status === 'expired' ? 'This license has fully expired' : ''}
+                              title={
+                                customer.status === 'expired'
+                                  ? 'This license has fully expired'
+                                  : ''
+                              }
                             >
                               {customer.status === 'expired' && (
                                 <span className="relative flex h-2 w-2">
@@ -1586,7 +1995,13 @@ export default function AdminPage() {
                                   <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
                                 </span>
                               )}
-                              {customer.status === 'valid' ? t('valid') : customer.status === 'expired' ? t('expired') : customer.status === 'suspended' ? t('suspended') : customer.status}
+                              {customer.status === 'valid'
+                                ? t('valid')
+                                : customer.status === 'expired'
+                                  ? t('expired')
+                                  : customer.status === 'suspended'
+                                    ? t('suspended')
+                                    : customer.status}
                             </span>
                           </td>
                           <td className="px-6 py-4">
@@ -1610,15 +2025,18 @@ export default function AdminPage() {
                           <td className="px-6 py-4">
                             <div className="flex gap-2">
                               {(customer.status === 'valid' ||
-                                customer.status === 'expired') && customer.plan !== 999999 && (
-                                <button
-                                  onClick={() => showExtendModal(customer)}
-                                  disabled={updating[customer._id]}
-                                  className="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
-                                >
-                                  {updating[customer._id] ? '...' : t('extend')}
-                                </button>
-                              )}
+                                customer.status === 'expired') &&
+                                customer.plan !== 999999 && (
+                                  <button
+                                    onClick={() => showExtendModal(customer)}
+                                    disabled={updating[customer._id]}
+                                    className="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
+                                  >
+                                    {updating[customer._id]
+                                      ? '...'
+                                      : t('extend')}
+                                  </button>
+                                )}
                               {customer.status === 'valid' && (
                                 <button
                                   onClick={() =>
@@ -1630,7 +2048,9 @@ export default function AdminPage() {
                                   disabled={updating[customer._id]}
                                   className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
                                 >
-                                  {updating[customer._id] ? '...' : t('suspend_action')}
+                                  {updating[customer._id]
+                                    ? '...'
+                                    : t('suspend_action')}
                                 </button>
                               )}
                               {customer.status === 'suspended' && (
@@ -1641,10 +2061,13 @@ export default function AdminPage() {
                                   disabled={updating[customer._id]}
                                   className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
                                 >
-                                  {updating[customer._id] ? '...' : t('reactivate_action')}
+                                  {updating[customer._id]
+                                    ? '...'
+                                    : t('reactivate_action')}
                                 </button>
                               )}
-                              {(customer.status === 'suspended' || customer.status === 'expired') && (
+                              {(customer.status === 'suspended' ||
+                                customer.status === 'expired') && (
                                 <button
                                   onClick={() =>
                                     handleDeleteClick(
@@ -1695,7 +2118,9 @@ export default function AdminPage() {
                     ></path>
                   </svg>
                   <p className="text-lg font-medium">No customers found</p>
-                  <p className="text-sm">No customer accounts match your current filter</p>
+                  <p className="text-sm">
+                    No customer accounts match your current filter
+                  </p>
                 </div>
               )}
             </div>
@@ -1746,10 +2171,20 @@ export default function AdminPage() {
                   <input
                     type="text"
                     id="accountNumber"
-                    value={manualAccountForm.isDemo ? '' : manualAccountForm.accountNumber}
-                    onChange={(e) => handleFormChange('accountNumber', e.target.value)}
+                    value={
+                      manualAccountForm.isDemo
+                        ? ''
+                        : manualAccountForm.accountNumber
+                    }
+                    onChange={(e) =>
+                      handleFormChange('accountNumber', e.target.value)
+                    }
                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 ${manualAccountForm.isDemo ? 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed' : 'border-gray-300'}`}
-                    placeholder={manualAccountForm.isDemo ? 'DEMO' : t('enter_account_number')}
+                    placeholder={
+                      manualAccountForm.isDemo
+                        ? 'DEMO'
+                        : t('enter_account_number')
+                    }
                     disabled={manualAccountForm.isDemo}
                     required={!manualAccountForm.isDemo}
                   />
@@ -1823,39 +2258,45 @@ export default function AdminPage() {
                     disabled={manualAccountForm.isDemo}
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    {manualAccountForm.isDemo ? t('demo_mode_extra_days_disabled') : t('add_extra_days')}
+                    {manualAccountForm.isDemo
+                      ? t('demo_mode_extra_days_disabled')
+                      : t('add_extra_days')}
                   </p>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                      {t('demo_license_title')}
+                    {t('demo_license_title')}
                   </label>
                   <div className="flex items-center gap-2 mb-2">
                     <input
                       type="checkbox"
                       id="isDemo"
                       checked={manualAccountForm.isDemo}
-                      onChange={(e) => handleFormChange('isDemo', e.target.checked)}
+                      onChange={(e) =>
+                        handleFormChange('isDemo', e.target.checked)
+                      }
                       className="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300 rounded"
                     />
-                      <label htmlFor="isDemo" className="text-sm text-gray-700">
-                        {t('mark_as_demo')}
+                    <label htmlFor="isDemo" className="text-sm text-gray-700">
+                      {t('mark_as_demo')}
                     </label>
                   </div>
                   <input
                     type="number"
                     id="demoDays"
                     value={manualAccountForm.demoDays}
-                    onChange={(e) => handleFormChange('demoDays', e.target.value)}
+                    onChange={(e) =>
+                      handleFormChange('demoDays', e.target.value)
+                    }
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-100"
-                      placeholder={t('demo_days_placeholder')}
+                    placeholder={t('demo_days_placeholder')}
                     min="1"
                     max="60"
                     disabled={!manualAccountForm.isDemo}
                   />
-                    <p className="text-xs text-gray-500 mt-1">
-                      {t('demo_days_help')}
+                  <p className="text-xs text-gray-500 mt-1">
+                    {t('demo_days_help')}
                   </p>
                 </div>
               </div>
@@ -1964,18 +2405,18 @@ export default function AdminPage() {
           </div>
         )}
 
-        {activeTab === 'extension-requests' && (
+        {activeTab === 'topup-requests' && (
           <>
-            {/* Extension Request Controls */}
+            {/* Top-up Request Controls */}
             <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
               <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
                 <div className="flex gap-4 items-center">
                   <button
-                    onClick={fetchExtensionRequests}
-                    disabled={loadingExtensions}
+                    onClick={fetchTopUpRequests}
+                    disabled={loadingTopUps}
                     className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg flex items-center"
                   >
-                    {loadingExtensions ? (
+                    {loadingTopUps ? (
                       <svg
                         className="animate-spin w-4 h-4 mr-2"
                         fill="none"
@@ -2014,8 +2455,8 @@ export default function AdminPage() {
                   </button>
 
                   <select
-                    value={extensionFilter}
-                    onChange={(e) => setExtensionFilter(e.target.value)}
+                    value={topUpFilter}
+                    onChange={(e) => setTopUpFilter(e.target.value)}
                     className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500"
                   >
                     <option value="all">
@@ -2029,18 +2470,91 @@ export default function AdminPage() {
                       {language === 'th' ? 'ปฏิเสธแล้ว' : 'Rejected'}
                     </option>
                   </select>
+                  
+                  <button
+                    onClick={() => setBulkTopUpMode((b) => !b)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium border ${bulkTopUpMode ? 'bg-blue-600 text-white border-blue-700' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'}`}
+                  >
+                    {bulkTopUpMode 
+                      ? (language === 'th' ? 'โหมดจัดการหลายรายการ' : 'Bulk Mode ON')
+                      : (language === 'th' ? 'จัดการหลายรายการ' : 'Bulk Actions')
+                    }
+                  </button>
                 </div>
               </div>
+              
+              {bulkTopUpMode && (
+                <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
+                  <div className="text-sm text-blue-700 font-medium flex items-center gap-2">
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    {selectedTopUpIds.length} {language === 'th' ? 'รายการที่เลือก' : 'selected'}
+                    <button
+                      onClick={selectAllVisibleTopUps}
+                      className="ml-2 text-xs underline"
+                    >
+                      {language === 'th' ? 'เลือกที่แสดง (รอดำเนินการ)' : 'Select Visible (Pending)'}
+                    </button>
+                    <button
+                      onClick={clearTopUpSelection}
+                      className="ml-1 text-xs underline"
+                    >
+                      {language === 'th' ? 'ยกเลิกการเลือก' : 'Clear Selection'}
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => performBulkTopUpAction('approve')}
+                      disabled={selectedTopUpIds.length === 0}
+                      className="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded text-xs disabled:opacity-50 flex items-center"
+                    >
+                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                      </svg>
+                      {language === 'th' ? 'อนุมัติที่เลือก' : 'Approve Selected'}
+                    </button>
+                    <button
+                      onClick={() => performBulkTopUpAction('reject')}
+                      disabled={selectedTopUpIds.length === 0}
+                      className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded text-xs disabled:opacity-50 flex items-center"
+                    >
+                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                      </svg>
+                      {language === 'th' ? 'ปฏิเสธที่เลือก' : 'Reject Selected'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Extension Request Stats */}
+            {/* Top-up Request Stats */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
               {['all', 'pending', 'approved', 'rejected'].map((status) => {
+                const requests = Array.isArray(topUpRequests)
+                  ? topUpRequests
+                  : []
                 const count =
                   status === 'all'
-                    ? extensionRequests.length
-                    : extensionRequests.filter((r) => r.status === status)
-                        .length
+                    ? requests.length
+                    : requests.filter((r) => r.status === status).length
+                const totalAmount =
+                  status === 'all'
+                    ? requests.reduce((sum, r) => sum + (r.amount || 0), 0)
+                    : requests
+                        .filter((r) => r.status === status)
+                        .reduce((sum, r) => sum + (r.amount || 0), 0)
                 return (
                   <div
                     key={status}
@@ -2054,42 +2568,70 @@ export default function AdminPage() {
                         ? language === 'th'
                           ? 'คำขอทั้งหมด'
                           : 'Total Requests'
-                        : language === 'th' && status === 'pending'
-                          ? 'รอดำเนินการ'
-                          : language === 'th' && status === 'approved'
-                            ? 'อนุมัติแล้ว'
-                            : language === 'th' && status === 'rejected'
+                        : status === 'pending'
+                          ? language === 'th'
+                            ? 'รอดำเนินการ'
+                            : 'Pending'
+                          : status === 'approved'
+                            ? language === 'th'
+                              ? 'อนุมัติแล้ว'
+                              : 'Approved'
+                            : language === 'th'
                               ? 'ปฏิเสธแล้ว'
-                              : status}
+                              : 'Rejected'}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      ฿{totalAmount.toFixed(2)}{' '}
+                      {language === 'th' ? 'รวม' : 'total'}
                     </div>
                   </div>
                 )
               })}
             </div>
 
-            {/* Extension Requests Table */}
+            {/* Top-up Requests Table */}
             <div className="bg-white rounded-xl shadow-lg overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50">
                     <tr>
+                      {bulkTopUpMode && (
+                        <th className="px-3 py-4 text-left text-sm font-medium text-gray-900">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                selectAllVisibleTopUps()
+                              } else {
+                                clearTopUpSelection()
+                              }
+                            }}
+                            checked={selectedTopUpIds.length > 0 && selectedTopUpIds.length === (Array.isArray(topUpRequests) ? topUpRequests : [])
+                              .filter((request) => {
+                                const matchesFilter = topUpFilter === 'all' || request.status === topUpFilter
+                                return matchesFilter && request.status === 'pending'
+                              }).length}
+                          />
+                        </th>
+                      )}
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
                         {t('user')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        {t('license')}
+                        {language === 'th' ? 'จำนวนเงิน' : 'Amount'}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        {t('current_expiry')}
-                      </th>
-                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        {t('requested_extension')}
+                        {language === 'th' ? 'แต้ม' : 'Points'}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
                         {t('status')}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
-                        {t('requested')}
+                        {language === 'th' ? 'วันที่ขอ' : 'Requested'}
+                      </th>
+                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
+                        {language === 'th' ? 'ดำเนินการ' : 'Processed'}
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">
                         {t('actions')}
@@ -2097,26 +2639,33 @@ export default function AdminPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {extensionRequests
+                    {(Array.isArray(topUpRequests) ? topUpRequests : [])
                       .filter(
                         (request) =>
-                          extensionFilter === 'all' ||
-                          request.status === extensionFilter
+                          topUpFilter === 'all' ||
+                          request.status === topUpFilter
                       )
                       .map((request) => (
                         <tr key={request._id} className="hover:bg-gray-50">
+                          {bulkTopUpMode && (
+                            <td className="px-3 py-4 text-sm">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                                checked={selectedTopUpIds.includes(request._id)}
+                                onChange={() => toggleSelectTopUp(request._id)}
+                                disabled={request.status !== 'pending'}
+                              />
+                            </td>
+                          )}
                           <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                            {request.username}
+                            {request.userId?.username || 'Unknown User'}
                           </td>
-                          <td className="px-6 py-4 font-mono text-sm text-blue-600 font-bold">
-                            {request.licenseCode}
+                          <td className="px-6 py-4 text-sm text-green-600 font-bold">
+                            ฿{request.amount.toFixed(2)}
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-900">
-                            {request.currentExpiry}
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-900">
-                            {request.requestedDays} days (
-                            {request.requestedPlan} plan)
+                          <td className="px-6 py-4 text-sm text-blue-600 font-bold">
+                            {request.points} pts
                           </td>
                           <td className="px-6 py-4">
                             <span
@@ -2132,36 +2681,48 @@ export default function AdminPage() {
                             </span>
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-500">
-                            {formatThaiDateTime(request.requestedAt)}
+                            {formatThaiDateTime(request.createdAt)}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-500">
+                            {request.processedAt
+                              ? formatThaiDateTime(request.processedAt)
+                              : '-'}
+                            {request.processedBy && (
+                              <div className="text-xs text-gray-400">
+                                by {request.processedBy}
+                              </div>
+                            )}
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex gap-2">
                               {request.status === 'pending' && (
                                 <>
                                   <button
-                                    onClick={() =>
-                                      approveExtension(request._id)
-                                    }
-                                    disabled={processingExtension[request._id]}
+                                    onClick={() => approveTopUp(request._id)}
+                                    disabled={processingTopUp[request._id]}
                                     className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
                                   >
-                                    {processingExtension[request._id]
+                                    {processingTopUp[request._id]
                                       ? '...'
-                                      : t('approve')}
+                                      : language === 'th'
+                                        ? 'อนุมัติ'
+                                        : 'Approve'}
                                   </button>
                                   <button
                                     onClick={() =>
-                                      showRejectModal(
+                                      showTopUpRejectModal(
                                         request._id,
-                                        request.licenseCode
+                                        request.amount
                                       )
                                     }
-                                    disabled={processingExtension[request._id]}
+                                    disabled={processingTopUp[request._id]}
                                     className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
                                   >
-                                    {processingExtension[request._id]
+                                    {processingTopUp[request._id]
                                       ? '...'
-                                      : t('reject')}
+                                      : language === 'th'
+                                        ? 'ปฏิเสธ'
+                                        : 'Reject'}
                                   </button>
                                 </>
                               )}
@@ -2176,11 +2737,6 @@ export default function AdminPage() {
                                     ...
                                   </span>
                                 )}
-                              {request.status === 'approved' && (
-                                <span className="text-xs text-green-600">
-                                  Processed by {request.processedBy}
-                                </span>
-                              )}
                             </div>
                           </td>
                         </tr>
@@ -2189,10 +2745,9 @@ export default function AdminPage() {
                 </table>
               </div>
 
-              {extensionRequests.filter(
+              {(Array.isArray(topUpRequests) ? topUpRequests : []).filter(
                 (request) =>
-                  extensionFilter === 'all' ||
-                  request.status === extensionFilter
+                  topUpFilter === 'all' || request.status === topUpFilter
               ).length === 0 && (
                 <div className="text-center py-12 text-gray-500">
                   <svg
@@ -2205,25 +2760,31 @@ export default function AdminPage() {
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth="2"
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                     ></path>
                   </svg>
                   <p className="text-lg font-medium">
-                    No extension requests found
+                    {language === 'th'
+                      ? 'ไม่พบคำขอเติมเงิน'
+                      : 'No top-up requests found'}
                   </p>
                   <p className="text-sm">
-                    No extension requests match your current filter
+                    {language === 'th'
+                      ? 'ไม่มีคำขอเติมเงินที่ตรงกับตัวกรองที่เลือก'
+                      : 'No top-up requests match your current filter'}
                   </p>
                 </div>
               )}
             </div>
           </>
         )}
+
+
       </div>
 
-      {/* Rejection Reason Modal */}
-      {rejectionModal.show && (
-  <div className="fixed inset-0 bg-gradient-to-br from-black/40 via-gray-800/30 to-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+      {/* Top-up Rejection Modal */}
+      {topUpRejectModal.show && (
+        <div className="fixed inset-0 bg-gradient-to-br from-black/40 via-gray-800/30 to-black/40 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full mx-4">
             <div className="text-center mb-6">
               <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
@@ -2242,12 +2803,14 @@ export default function AdminPage() {
                 </svg>
               </div>
               <h3 className="text-lg font-bold text-gray-900 mb-2">
-                Reject Extension Request
+                {language === 'th'
+                  ? 'ปฏิเสธคำขอเติมเงิน'
+                  : 'Reject Top-up Request'}
               </h3>
               <p className="text-gray-600 mb-4">
-                License:{' '}
-                <span className="font-mono font-bold text-red-600">
-                  {rejectionModal.licenseCode}
+                {language === 'th' ? 'จำนวนเงิน' : 'Amount'}:{' '}
+                <span className="font-bold text-red-600">
+                  ฿{topUpRejectModal.amount}
                 </span>
               </p>
             </div>
@@ -2255,22 +2818,28 @@ export default function AdminPage() {
             <div className="space-y-4">
               <div>
                 <label
-                  htmlFor="rejectionReason"
+                  htmlFor="topUpRejectionReason"
                   className="block text-sm font-medium text-gray-700 mb-2"
                 >
-                  Rejection Reason *
+                  {language === 'th'
+                    ? 'เหตุผลที่ปฏิเสธ *'
+                    : 'Rejection Reason *'}
                 </label>
                 <textarea
-                  id="rejectionReason"
-                  value={rejectionModal.reason}
+                  id="topUpRejectionReason"
+                  value={topUpRejectModal.reason}
                   onChange={(e) =>
-                    setRejectionModal((prev) => ({
+                    setTopUpRejectModal((prev) => ({
                       ...prev,
                       reason: e.target.value
                     }))
                   }
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                  placeholder="Please provide a reason for rejection..."
+                  placeholder={
+                    language === 'th'
+                      ? 'โปรดระบุเหตุผลในการปฏิเสธ...'
+                      : 'Please provide a reason for rejection...'
+                  }
                   rows="3"
                   required
                 />
@@ -2280,26 +2849,26 @@ export default function AdminPage() {
                 <button
                   type="button"
                   onClick={() =>
-                    setRejectionModal({
+                    setTopUpRejectModal({
                       show: false,
                       requestId: '',
-                      licenseCode: '',
+                      amount: '',
                       reason: ''
                     })
                   }
                   className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-4 rounded-lg transition duration-200"
                 >
-                  Cancel
+                  {language === 'th' ? 'ยกเลิก' : 'Cancel'}
                 </button>
                 <button
-                  onClick={rejectExtension}
+                  onClick={rejectTopUp}
                   disabled={
-                    processingExtension[rejectionModal.requestId] ||
-                    !rejectionModal.reason.trim()
+                    processingTopUp[topUpRejectModal.requestId] ||
+                    !topUpRejectModal.reason.trim()
                   }
                   className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                 >
-                  {processingExtension[rejectionModal.requestId] ? (
+                  {processingTopUp[topUpRejectModal.requestId] ? (
                     <>
                       <svg
                         className="animate-spin w-5 h-5 mr-2"
@@ -2320,8 +2889,10 @@ export default function AdminPage() {
                           d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                         ></path>
                       </svg>
-                      Rejecting...
+                      {language === 'th' ? 'กำลังปฏิเสธ...' : 'Rejecting...'}
                     </>
+                  ) : language === 'th' ? (
+                    'ปฏิเสธคำขอ'
                   ) : (
                     'Reject Request'
                   )}
@@ -2332,9 +2903,11 @@ export default function AdminPage() {
         </div>
       )}
 
+
+
       {/* Admin Extend Modal */}
       {extendModal.show && (
-  <div className="fixed inset-0 bg-gradient-to-br from-black/40 via-gray-800/30 to-black/40 backdrop-blur-sm flex justify-center z-50 overflow-y-auto">
+        <div className="fixed inset-0 bg-gradient-to-br from-black/40 via-gray-800/30 to-black/40 backdrop-blur-sm flex justify-center z-50 overflow-y-auto">
           <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full mx-4 my-10 max-h-[90vh] overflow-y-auto">
             <div className="text-center mb-6">
               <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-purple-100 mb-4">
@@ -2555,7 +3128,7 @@ export default function AdminPage() {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmation.show && (
-  <div className="fixed inset-0 bg-gradient-to-br from-black/40 via-gray-800/30 to-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-gradient-to-br from-black/40 via-gray-800/30 to-black/40 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full mx-4">
             <div className="text-center mb-6">
               <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
@@ -2642,7 +3215,11 @@ export default function AdminPage() {
             onClick={() => {
               if (newItemNotification.targetTab) {
                 setActiveTab(newItemNotification.targetTab)
-                setNewItemNotification({ show: false, message: '', targetTab: null })
+                setNewItemNotification({
+                  show: false,
+                  message: '',
+                  targetTab: null
+                })
               }
             }}
           >
@@ -2663,13 +3240,19 @@ export default function AdminPage() {
               <div>
                 <p className="font-semibold">{newItemNotification.message}</p>
                 <p className="text-sm opacity-90">
-                  {newItemNotification.targetTab ? 'Click to open related tab' : 'Check the tables below for details'}
+                  {newItemNotification.targetTab
+                    ? 'Click to open related tab'
+                    : 'Check the tables below for details'}
                 </p>
               </div>
               <button
                 onClick={(e) => {
                   e.stopPropagation()
-                  setNewItemNotification({ show: false, message: '', targetTab: null })
+                  setNewItemNotification({
+                    show: false,
+                    message: '',
+                    targetTab: null
+                  })
                 }}
                 className="ml-4 text-white hover:text-gray-200"
               >
@@ -2688,6 +3271,291 @@ export default function AdminPage() {
                 </svg>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Top-up Reject Modal */}
+      {bulkTopUpRejectModal.show && (
+        <div className="fixed inset-0 bg-gradient-to-br from-black/40 via-gray-800/30 to-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full mx-4">
+            <div className="text-center mb-6">
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+                <svg
+                  className="h-6 w-6 text-red-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">
+                {language === 'th' ? 'ปฏิเสธคำขอเติมเงินหลายรายการ' : 'Bulk Reject Top-up Requests'}
+              </h3>
+              <p className="text-gray-600 mb-4">
+                {language === 'th' ? 'จำนวนคำขอที่เลือก' : 'Selected requests'}:{' '}
+                <span className="font-bold text-red-600">
+                  {bulkTopUpRejectModal.selectedIds.length}
+                </span>
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label
+                  htmlFor="bulkTopUpRejectionReason"
+                  className="block text-sm font-medium text-gray-700 mb-2"
+                >
+                  {language === 'th'
+                    ? 'เหตุผลที่ปฏิเสธ (ใช้สำหรับทุกคำขอ) *'
+                    : 'Rejection Reason (applies to all requests) *'}
+                </label>
+                <textarea
+                  id="bulkTopUpRejectionReason"
+                  value={bulkTopUpRejectModal.reason}
+                  onChange={(e) =>
+                    setBulkTopUpRejectModal((prev) => ({
+                      ...prev,
+                      reason: e.target.value
+                    }))
+                  }
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  placeholder={
+                    language === 'th'
+                      ? 'โปรดระบุเหตุผลในการปฏิเสธ...'
+                      : 'Please provide a reason for rejection...'
+                  }
+                  rows="3"
+                  required
+                />
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setBulkTopUpRejectModal({
+                      show: false,
+                      selectedIds: [],
+                      reason: ''
+                    })
+                  }
+                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-4 rounded-lg transition duration-200"
+                >
+                  {language === 'th' ? 'ยกเลิก' : 'Cancel'}
+                </button>
+                <button
+                  onClick={bulkRejectTopUps}
+                  disabled={
+                    bulkTopUpRejectModal.selectedIds.some(id => processingTopUp[id]) ||
+                    !bulkTopUpRejectModal.reason.trim()
+                  }
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                >
+                  {bulkTopUpRejectModal.selectedIds.some(id => processingTopUp[id]) ? (
+                    <>
+                      <svg
+                        className="animate-spin w-5 h-5 mr-2"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                      {language === 'th' ? 'กำลังปฏิเสธ...' : 'Rejecting...'}
+                    </>
+                  ) : language === 'th' ? (
+                    'ปฏิเสธคำขอทั้งหมด'
+                  ) : (
+                    'Reject All Requests'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Plan Settings Modal */}
+      {planModal.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-2xl font-bold mb-6">
+              {planModal.mode === 'create'
+                ? language === 'th' ? 'สร้างแผนใหม่' : 'Create New Plan'
+                : language === 'th' ? 'แก้ไขแผน' : 'Edit Plan'}
+            </h2>
+
+            <form onSubmit={handlePlanSubmit} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {language === 'th' ? 'ชื่อแผน' : 'Plan Name'} <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={planForm.name}
+                    onChange={(e) => setPlanForm(prev => ({ ...prev, name: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500"
+                    placeholder={language === 'th' ? 'เช่น Premium Plan' : 'e.g. Premium Plan'}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {language === 'th' ? 'จำนวนวัน' : 'Number of Days'} <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    required={!planForm.isLifetime}
+                    disabled={planForm.isLifetime}
+                    value={planForm.days}
+                    onChange={(e) => setPlanForm(prev => ({ ...prev, days: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 disabled:bg-gray-100"
+                    placeholder="30"
+                    min="1"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {language === 'th' ? 'ราคา (บาท)' : 'Price (THB)'} <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={planForm.price}
+                    onChange={(e) => setPlanForm(prev => ({ ...prev, price: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500"
+                    placeholder="300.00"
+                    min="0"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {language === 'th' ? 'แต้มที่ได้รับ' : 'Points Received'} <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    value={planForm.points}
+                    onChange={(e) => setPlanForm(prev => ({ ...prev, points: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500"
+                    placeholder="10"
+                    min="1"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {language === 'th' ? 'ลำดับการแสดง' : 'Sort Order'}
+                  </label>
+                  <input
+                    type="number"
+                    value={planForm.sortOrder}
+                    onChange={(e) => setPlanForm(prev => ({ ...prev, sortOrder: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500"
+                    placeholder="0"
+                  />
+                </div>
+
+                <div className="flex items-center space-x-4">
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={planForm.isActive}
+                      onChange={(e) => setPlanForm(prev => ({ ...prev, isActive: e.target.checked }))}
+                      className="rounded text-yellow-600 focus:ring-yellow-500"
+                    />
+                    <span className="ml-2 text-sm font-medium text-gray-700">
+                      {language === 'th' ? 'ใช้งาน' : 'Active'}
+                    </span>
+                  </label>
+
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={planForm.isLifetime}
+                      onChange={(e) => {
+                        setPlanForm(prev => ({
+                          ...prev,
+                          isLifetime: e.target.checked,
+                          days: e.target.checked ? 0 : prev.days
+                        }))
+                      }}
+                      className="rounded text-purple-600 focus:ring-purple-500"
+                    />
+                    <span className="ml-2 text-sm font-medium text-gray-700">
+                      {language === 'th' ? 'ตลอดชีพ' : 'Lifetime'}
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {language === 'th' ? 'คำอธิบาย' : 'Description'}
+                </label>
+                <textarea
+                  value={planForm.description}
+                  onChange={(e) => setPlanForm(prev => ({ ...prev, description: e.target.value }))}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500"
+                  placeholder={language === 'th' ? 'คำอธิบายแผน (ไม่บังคับ)' : 'Plan description (optional)'}
+                  rows="3"
+                />
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <button
+                  type="submit"
+                  disabled={loadingPlans}
+                  className="flex-1 bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-3 rounded-lg font-medium disabled:opacity-50"
+                >
+                  {loadingPlans ? (
+                    <div className="flex items-center justify-center">
+                      <svg className="animate-spin w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      {language === 'th' ? 'กำลังบันทึก...' : 'Saving...'}
+                    </div>
+                  ) : (
+                    <>
+                      {planModal.mode === 'create'
+                        ? language === 'th' ? 'สร้างแผน' : 'Create Plan'
+                        : language === 'th' ? 'บันทึกการเปลี่ยนแปลง' : 'Save Changes'}
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={closePlanModal}
+                  className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                >
+                  {t('cancel')}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -2,6 +2,7 @@ import { verifyAuth } from '@/lib/auth'
 import { connectToDatabase } from '@/lib/mongodb'
 import CodeRequest from '@/lib/codeRequestModel'
 import CustomerAccount from '@/lib/customerAccountModel'
+import ExtensionRequest from '@/lib/extensionRequestModel'
 import User from '@/lib/userModel'
 
 // Get user's licenses (unified view of codes and customer accounts)
@@ -38,6 +39,29 @@ export async function GET(req) {
     // Create unified license data
     const licenses = []
 
+    // Preload all approved extension aggregates keyed by licenseCode
+    let extensionSums = {}
+    try {
+      const extAgg = await ExtensionRequest.aggregate([
+        { $match: { userId: user._id, status: 'approved' } },
+        {
+          $group: {
+            _id: '$licenseCode',
+            totalExtended: { $sum: '$requestedDays' },
+            lastCumulative: { $max: '$cumulativePlanDays' }
+          }
+        }
+      ])
+      extAgg.forEach((r) => {
+        extensionSums[r._id] = {
+          totalExtended: r.totalExtended || 0,
+          lastCumulative: r.lastCumulative || null
+        }
+      })
+    } catch (aggErr) {
+      console.error('Failed to aggregate extensions (non-fatal):', aggErr)
+    }
+
     // Process code requests - these become licenses
     for (const codeRequest of codeRequests) {
       // Find matching customer account if exists
@@ -45,12 +69,21 @@ export async function GET(req) {
         (acc) => acc.license === codeRequest.code
       )
 
+      // Determine cumulative plan days (base plan + approved extensions)
+      let cumulativePlanDays = codeRequest.plan
+      const extData = extensionSums[codeRequest.code]
+      if (extData) {
+        cumulativePlanDays =
+          extData.lastCumulative || codeRequest.plan + extData.totalExtended
+      }
+
       const license = {
         _id: codeRequest._id,
         code: codeRequest.code,
         platform: codeRequest.platform,
         accountNumber: codeRequest.accountNumber,
         plan: codeRequest.plan,
+        cumulativePlanDays,
         price: codeRequest.price,
         status: codeRequest.status,
         createdAt: codeRequest.createdAt,
@@ -79,12 +112,22 @@ export async function GET(req) {
       )
 
       if (!hasMatchingCodeRequest) {
+        // Determine cumulative plan for orphan customer account as well
+        let cumulativePlanDays = account.plan
+        const extData = extensionSums[account.license]
+        if (extData) {
+          cumulativePlanDays =
+            extData.lastCumulative ||
+            (account.plan || 0) + extData.totalExtended
+        }
+
         const license = {
           _id: account._id,
           code: account.license,
           platform: account.platform,
           accountNumber: account.accountNumber,
           plan: account.plan || 'Unknown',
+          cumulativePlanDays,
           price: null, // No price info from customer account
           status: 'activated', // Customer accounts are typically activated
           createdAt: account.activatedAt || account.createdAt,

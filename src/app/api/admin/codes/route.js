@@ -3,7 +3,12 @@ import CodeRequest from '@/lib/codeRequestModel'
 import CustomerAccount from '@/lib/customerAccountModel'
 import User from '@/lib/userModel'
 // WebSocket emit helpers
-import { emitCodesUpdate, emitCustomerAccountUpdate, emitAdminNotification, emitNotificationToAdminAndClient } from '@/lib/websocket'
+import {
+  emitCodesUpdate,
+  emitCustomerAccountUpdate,
+  emitAdminNotification,
+  emitNotificationToAdminAndClient
+} from '@/lib/websocket'
 import { sendLicenseActivatedEmail } from '@/lib/emailService'
 
 // Get all code requests (admin only)
@@ -145,14 +150,20 @@ export async function PUT(req) {
         // Send activation email (once)
         if (!codeRequest.activationEmailSent) {
           try {
-            const userDoc = await User.findById(codeRequest.userId?._id || codeRequest.userId).select('email username preferredLanguage')
+            const userDoc = await User.findById(
+              codeRequest.userId?._id || codeRequest.userId
+            ).select('email username preferredLanguage')
             if (userDoc?.email) {
-              const sendResult = await sendLicenseActivatedEmail(userDoc.email, userDoc.username || codeRequest.username, {
-                licenseCode: codeRequest.code,
-                planDays: codeRequest.plan,
-                expireDateThai: customerAccount.expireDate,
-                language: userDoc.preferredLanguage || 'en'
-              })
+              const sendResult = await sendLicenseActivatedEmail(
+                userDoc.email,
+                userDoc.username || codeRequest.username,
+                {
+                  licenseCode: codeRequest.code,
+                  planDays: codeRequest.plan,
+                  expireDateThai: customerAccount.expireDate,
+                  language: userDoc.preferredLanguage || 'en'
+                }
+              )
               if (sendResult.success) {
                 await CodeRequest.findByIdAndUpdate(codeRequest._id, {
                   activationEmailSent: true,
@@ -161,7 +172,10 @@ export async function PUT(req) {
               }
             }
           } catch (actEmailErr) {
-            console.warn('Failed to send activation email:', actEmailErr.message)
+            console.warn(
+              'Failed to send activation email:',
+              actEmailErr.message
+            )
           }
         }
       } catch (customerError) {
@@ -188,11 +202,18 @@ export async function PUT(req) {
     try {
       const userId = codeRequest.userId?._id?.toString()
       // Notify admin list to refresh
-      await emitAdminNotification(`Code ${codeRequest.code} updated to ${status}`,'info')
+      await emitAdminNotification(
+        `Code ${codeRequest.code} updated to ${status}`,
+        'info'
+      )
       // Notify specific user of status change
       if (userId) {
         await emitCodesUpdate(userId, { codeId: codeRequest._id, status })
-        await emitNotificationToAdminAndClient(userId, `Your license ${codeRequest.code} status: ${status}`,'success')
+        await emitNotificationToAdminAndClient(
+          userId,
+          `Your license ${codeRequest.code} status: ${status}`,
+          'success'
+        )
       }
       if (status === 'activated' && userId) {
         await emitCustomerAccountUpdate(userId, { license: codeRequest.code })
@@ -276,24 +297,40 @@ export async function DELETE(req) {
         userId = deletedCode.userId.toString()
       } else if (deletedCode?.username) {
         try {
-          const userDoc = await User.findOne({ username: deletedCode.username }, '_id')
+          const userDoc = await User.findOne(
+            { username: deletedCode.username },
+            '_id'
+          )
           if (userDoc) userId = userDoc._id.toString()
         } catch (uErr) {
-          console.warn('Lookup user by username failed (delete emission):', uErr.message)
+          console.warn(
+            'Lookup user by username failed (delete emission):',
+            uErr.message
+          )
         }
       }
 
       if (userId) {
-        await emitCodesUpdate(userId, { action: 'deleted', codeId: deletedCode._id, code: deletedCode.code })
+        await emitCodesUpdate(userId, {
+          action: 'deleted',
+          codeId: deletedCode._id,
+          code: deletedCode.code
+        })
         await emitNotificationToAdminAndClient(
           userId,
           `Your license ${deletedCode.code} was deleted by admin`,
           'warning'
         )
-        await emitCustomerAccountUpdate(userId, { action: 'code-deleted', license: deletedCode.code })
+        await emitCustomerAccountUpdate(userId, {
+          action: 'code-deleted',
+          license: deletedCode.code
+        })
       }
     } catch (emitErr) {
-      console.warn('WebSocket emission on delete failed (non-fatal):', emitErr.message)
+      console.warn(
+        'WebSocket emission on delete failed (non-fatal):',
+        emitErr.message
+      )
     }
 
     return new Response(

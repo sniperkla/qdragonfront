@@ -4,7 +4,11 @@ import CodeRequest from '@/lib/codeRequestModel'
 import CustomerAccount from '@/lib/customerAccountModel'
 import User from '@/lib/userModel'
 import mongoose from 'mongoose'
-// WebSocket imports removed
+import {
+  emitCodesUpdate,
+  emitCustomerAccountUpdate,
+  emitPointsUpdate
+} from '@/lib/websocket'
 
 // Extension Request Schema
 const ExtensionRequestSchema = new mongoose.Schema({
@@ -275,58 +279,90 @@ export async function POST(request) {
       )
     }
 
-    // Check if user already has a pending extension request for this code
-    const existingRequest = await ExtensionRequest.findOne({
-      userId: authData.id,
-      codeId: codeId,
-      status: 'pending'
-    })
-
-    if (existingRequest) {
+    // Check if user has enough points (1 point = 1 day)
+    const requiredPoints = parseInt(actualExtendDays)
+    if (user.points < requiredPoints) {
       return new Response(
         JSON.stringify({
-          error:
-            'You already have a pending extension request for this code. Please wait for admin approval.'
+          error: `Insufficient points. You need ${requiredPoints} points but have only ${user.points} points.`
         }),
         { status: 400 }
       )
     }
 
-    // Create extension request for admin approval
-    const extensionRequest = new ExtensionRequest({
+    // Deduct points from user
+    user.points -= requiredPoints
+    await user.save()
+
+    console.log('Points deducted:', {
       userId: authData.id,
-      codeId: codeId,
-      username: user.username,
-      licenseCode: codeRequest.code,
-      currentExpiry: workingCustomerAccount.expireDate,
-      requestedPlan: extendPlan,
-      requestedDays: parseInt(actualExtendDays),
-      status: 'pending'
+      pointsDeducted: requiredPoints,
+      remainingPoints: user.points
     })
 
-    await extensionRequest.save()
+    // Calculate new expiry date by adding the requested days
+    const newExpiryDate = new Date(currentExpiryDate)
+    newExpiryDate.setDate(newExpiryDate.getDate() + parseInt(actualExtendDays))
 
-    console.log('Extension request created:', {
-      requestId: extensionRequest._id,
+    // Format new expiry date to Thai format
+    const newExpiryFormatted = formatThaiDateTime(newExpiryDate)
+
+    // Update customer account with new expiry
+    workingCustomerAccount.expireDate = newExpiryFormatted
+    await workingCustomerAccount.save()
+
+    // Update code request expiry as well
+    codeRequest.expiresAt = newExpiryDate
+    await codeRequest.save()
+
+    console.log('Extension applied successfully:', {
       userId: authData.id,
       codeId,
-      requestedDays: parseInt(actualExtendDays),
-      currentExpiry: workingCustomerAccount.expireDate
+      licenseCode: codeRequest.code,
+      oldExpiry: formatThaiDateTime(currentExpiryDate),
+      newExpiry: newExpiryFormatted,
+      extendedDays: parseInt(actualExtendDays),
+      pointsUsed: requiredPoints,
+      remainingPoints: user.points
     })
 
-    // WebSocket notifications removed - admin will see updates on manual refresh
+    // Emit real-time updates
+    try {
+      // Update points
+      emitPointsUpdate(authData.id, user.points)
+
+      // Update codes
+      emitCodesUpdate(authData.id, {
+        type: 'extended',
+        codeId: codeRequest._id,
+        licenseCode: codeRequest.code,
+        newExpiry: newExpiryFormatted,
+        extendedDays: parseInt(actualExtendDays)
+      })
+
+      // Update customer account
+      emitCustomerAccountUpdate(authData.id, {
+        type: 'extended',
+        license: codeRequest.code,
+        newExpiry: newExpiryFormatted,
+        extendedDays: parseInt(actualExtendDays)
+      })
+    } catch (wsError) {
+      console.error('WebSocket emission error:', wsError)
+      // Don't fail the extension if websocket fails
+    }
 
     return new Response(
       JSON.stringify({
         success: true,
-        message:
-          'Extension request submitted successfully. Please wait for admin approval.',
-        requestId: extensionRequest._id,
+        message: `License extended successfully! ${parseInt(actualExtendDays)} days added.`,
         licenseCode: codeRequest.code,
-        currentExpiry: workingCustomerAccount.expireDate,
-        requestedDays: parseInt(actualExtendDays),
-        requestedPlan: extendPlan,
-        status: 'pending'
+        oldExpiry: formatThaiDateTime(currentExpiryDate),
+        newExpiry: newExpiryFormatted,
+        extendedDays: parseInt(actualExtendDays),
+        pointsUsed: requiredPoints,
+        remainingPoints: user.points,
+        status: 'completed'
       }),
       { status: 200 }
     )

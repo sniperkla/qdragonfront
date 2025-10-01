@@ -4,45 +4,12 @@ import CodeRequest from '@/lib/codeRequestModel'
 import CustomerAccount from '@/lib/customerAccountModel'
 import User from '@/lib/userModel'
 import mongoose from 'mongoose'
-import { emitExtensionRequestUpdate, emitAdminNotification } from '@/lib/websocket'
-
-// Extension Request Schema
-const ExtensionRequestSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  codeId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'CodeRequest',
-    required: false // Made optional to handle customer-account-only licenses
-  },
-  customerAccountId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'CustomerAccount',
-    required: false // For customer-account-only licenses
-  },
-  licenseSource: {
-    type: String,
-    enum: ['codeRequest', 'customerAccount', 'both'],
-    required: true // Indicates the source of the license
-  },
-  username: { type: String, required: true },
-  licenseCode: { type: String, required: true },
-  currentExpiry: { type: String, required: true },
-  requestedPlan: { type: String, required: true }, // '7', '30', '90', etc.
-  requestedDays: { type: Number, required: true },
-  status: {
-    type: String,
-    enum: ['pending', 'approved', 'rejected'],
-    default: 'pending'
-  },
-  requestedAt: { type: Date, default: Date.now },
-  processedAt: { type: Date },
-  processedBy: { type: String }, // admin username
-  rejectionReason: { type: String }
-})
-
-const ExtensionRequest =
-  mongoose.models.ExtensionRequest ||
-  mongoose.model('ExtensionRequest', ExtensionRequestSchema)
+import {
+  emitCodesUpdate,
+  emitCustomerAccountUpdate,
+  emitPointsUpdate
+} from '@/lib/websocket'
+import ExtensionRequest from '@/lib/extensionRequestModel'
 
 // Format date to Thai Buddhist Era format with time
 const formatThaiDateTime = (date) => {
@@ -75,8 +42,20 @@ export async function POST(request) {
       )
     }
 
-    const { codeId, extendDays, extendPlan, source, licenseCode: providedLicenseCode } = await request.json()
-    console.log('Request data:', { codeId, extendDays, extendPlan, source, providedLicenseCode })
+    const {
+      codeId,
+      extendDays,
+      extendPlan,
+      source,
+      licenseCode: providedLicenseCode
+    } = await request.json()
+    console.log('Request data:', {
+      codeId,
+      extendDays,
+      extendPlan,
+      source,
+      providedLicenseCode
+    })
 
     // Calculate extend days from plan if provided, otherwise use extendDays
     let actualExtendDays = extendDays
@@ -175,7 +154,7 @@ export async function POST(request) {
     } else if (source === 'customerAccount') {
       // This is a CustomerAccount-only license
       customerAccount = await CustomerAccount.findById(codeId)
-      
+
       if (!customerAccount) {
         return new Response(
           JSON.stringify({ error: 'License not found or access denied' }),
@@ -194,7 +173,7 @@ export async function POST(request) {
           { status: 404 }
         )
       }
-      
+
       licenseCode = customerAccount.license
     } else {
       // Fallback: try both approaches (for backward compatibility)
@@ -206,7 +185,9 @@ export async function POST(request) {
       if (licenseRequest) {
         if (licenseRequest.status !== 'activated') {
           return new Response(
-            JSON.stringify({ error: 'Only activated licenses can be extended' }),
+            JSON.stringify({
+              error: 'Only activated licenses can be extended'
+            }),
             { status: 400 }
           )
         }
@@ -287,7 +268,9 @@ export async function POST(request) {
       // Create missing customer account for activated license
       console.log('Creating missing customer account for activated license')
       try {
-        const originalExpiryDate = new Date(licenseRequest.expiresAt || Date.now())
+        const originalExpiryDate = new Date(
+          licenseRequest.expiresAt || Date.now()
+        )
         const formattedExpireDate = formatThaiDateTime(originalExpiryDate)
 
         workingCustomerAccount = new CustomerAccount({
@@ -364,96 +347,161 @@ export async function POST(request) {
       )
     }
 
-    // Check if user already has a pending extension request for this license
-    const existingRequest = await ExtensionRequest.findOne({
-      userId: authData.id,
-      licenseCode: licenseCode,
-      status: 'pending'
-    })
-
-    if (existingRequest) {
+    // Check if user has enough points (1 point = 1 day)
+    const requiredPoints = parseInt(actualExtendDays)
+    if (user.points < requiredPoints) {
       return new Response(
         JSON.stringify({
-          error:
-            'You already have a pending extension request for this license. Please wait for admin approval.'
+          error: `Insufficient points. You need ${requiredPoints} points but have only ${user.points} points.`
         }),
         { status: 400 }
       )
     }
 
-    // Create extension request for admin approval
-    const extensionRequestData = {
+    // Deduct points from user
+    user.points -= requiredPoints
+    await user.save()
+
+    console.log('Points deducted:', {
       userId: authData.id,
-      username: user.username,
-      licenseCode: licenseCode,
-      currentExpiry: workingCustomerAccount.expireDate,
-      requestedPlan: extendPlan,
-      requestedDays: parseInt(actualExtendDays),
-      status: 'pending'
-    }
-
-    // Set appropriate IDs and source based on license type
-    if (source === 'codeRequest' && licenseRequest) {
-      extensionRequestData.codeId = licenseRequest._id
-      extensionRequestData.customerAccountId = workingCustomerAccount ? workingCustomerAccount._id : null
-      extensionRequestData.licenseSource = workingCustomerAccount ? 'both' : 'codeRequest'
-    } else if (source === 'customerAccount' && customerAccount) {
-      extensionRequestData.customerAccountId = customerAccount._id
-      extensionRequestData.licenseSource = 'customerAccount'
-    } else {
-      // Fallback logic
-      if (licenseRequest) {
-        extensionRequestData.codeId = licenseRequest._id
-        extensionRequestData.licenseSource = workingCustomerAccount ? 'both' : 'codeRequest'
-      }
-      if (workingCustomerAccount) {
-        extensionRequestData.customerAccountId = workingCustomerAccount._id
-        if (!licenseRequest) {
-          extensionRequestData.licenseSource = 'customerAccount'
-        }
-      }
-    }
-
-    const extensionRequest = new ExtensionRequest(extensionRequestData)
-
-    await extensionRequest.save()
-
-    console.log('Extension request created:', {
-      requestId: extensionRequest._id,
-      userId: authData.id,
-      codeId,
-      requestedDays: parseInt(actualExtendDays),
-      currentExpiry: workingCustomerAccount.expireDate
+      pointsDeducted: requiredPoints,
+      remainingPoints: user.points
     })
 
-    // Emit WebSocket notifications so admin dashboard updates in real-time
+    // Calculate new expiry date by adding the requested days
+    const newExpiryDate = new Date(currentExpiryDate)
+    newExpiryDate.setDate(newExpiryDate.getDate() + parseInt(actualExtendDays))
+
+    // Format new expiry date to Thai format
+    const newExpiryFormatted = formatThaiDateTime(newExpiryDate)
+
+    // Determine base plan days (original plan stored on customer account or code request)
+    const basePlanDays =
+      parseInt(workingCustomerAccount.plan || licenseRequest?.plan || 0) || 0
+
+    // Calculate total extensions so far (sum of prior approved extensions for this license)
+    let priorExtensionsTotal = 0
     try {
-      await emitExtensionRequestUpdate({
-        action: 'created',
-        requestId: extensionRequest._id.toString(),
-        licenseCode,
-        requestedDays: parseInt(actualExtendDays),
-        requestedPlan: extendPlan,
+      priorExtensionsTotal = await ExtensionRequest.aggregate([
+        { $match: { licenseCode: licenseCode, status: 'approved' } },
+        { $group: { _id: null, total: { $sum: '$requestedDays' } } }
+      ]).then((r) => r[0]?.total || 0)
+    } catch (aggErr) {
+      console.error('Failed to aggregate prior extensions (non-fatal):', aggErr)
+    }
+
+    const newTotalExtendedDays =
+      priorExtensionsTotal + parseInt(actualExtendDays)
+    const cumulativePlanDays = basePlanDays + newTotalExtendedDays
+
+    // Update customer account with new expiry
+    workingCustomerAccount.expireDate = newExpiryFormatted
+    await workingCustomerAccount.save()
+
+    // Update code request expiry as well (if exists)
+    if (licenseRequest) {
+      licenseRequest.expiresAt = newExpiryDate
+      await licenseRequest.save()
+    }
+
+    console.log('Extension applied successfully:', {
+      userId: authData.id,
+      codeId,
+      licenseCode: licenseCode,
+      oldExpiry: formatThaiDateTime(currentExpiryDate),
+      newExpiry: newExpiryFormatted,
+      extendedDays: parseInt(actualExtendDays),
+      pointsUsed: requiredPoints,
+      remainingPoints: user.points,
+      source: source
+    })
+
+    // Create extension history record (so /api/history reflects this immediate extension)
+    let extensionHistoryRecord = null
+    try {
+      extensionHistoryRecord = await ExtensionRequest.create({
         userId: authData.id,
+        codeId: licenseRequest ? licenseRequest._id : undefined,
+        customerAccountId: workingCustomerAccount
+          ? workingCustomerAccount._id
+          : undefined,
+        licenseSource:
+          licenseRequest && workingCustomerAccount
+            ? 'both'
+            : licenseRequest
+              ? 'codeRequest'
+              : 'customerAccount',
         username: user.username,
-        status: 'pending'
+        licenseCode: licenseCode,
+        currentExpiry: formatThaiDateTime(currentExpiryDate), // store the previous expiry
+        requestedPlan: extendPlan || String(actualExtendDays),
+        requestedDays: parseInt(actualExtendDays),
+        cumulativePlanDays: cumulativePlanDays,
+        totalExtendedDays: newTotalExtendedDays,
+        status: 'approved', // immediate approval since extension is auto-applied
+        requestedAt: new Date(),
+        processedAt: new Date(),
+        processedBy: 'system'
       })
-      await emitAdminNotification(`Extension request submitted for ${licenseCode} (+${actualExtendDays} days)`, 'info')
-    } catch (wsErr) {
-      console.warn('WebSocket emission failed (extend-license create):', wsErr.message)
+      console.log(
+        'Extension history record created:',
+        extensionHistoryRecord._id
+      )
+    } catch (historyErr) {
+      console.error(
+        'Failed to create extension history record (non-fatal):',
+        historyErr
+      )
+    }
+
+    // Emit real-time updates
+    try {
+      // Update points
+      emitPointsUpdate(authData.id, user.points)
+
+      // Update codes (if this is a code request based license)
+      if (licenseRequest) {
+        emitCodesUpdate(authData.id, {
+          type: 'extended',
+          codeId: licenseRequest._id,
+          licenseCode: licenseCode,
+          newExpiry: newExpiryFormatted,
+          extendedDays: parseInt(actualExtendDays)
+        })
+      }
+
+      // Update customer account
+      emitCustomerAccountUpdate(authData.id, {
+        type: 'extended',
+        license: licenseCode,
+        newExpiry: newExpiryFormatted,
+        extendedDays: parseInt(actualExtendDays)
+      })
+    } catch (wsError) {
+      console.error('WebSocket emission error:', wsError)
+      // Don't fail the extension if websocket fails
     }
 
     return new Response(
       JSON.stringify({
         success: true,
-        message:
-          'Extension request submitted successfully. Please wait for admin approval.',
-        requestId: extensionRequest._id,
+        message: `License extended successfully! ${parseInt(actualExtendDays)} days added.`,
         licenseCode: licenseCode,
-        currentExpiry: workingCustomerAccount.expireDate,
-        requestedDays: parseInt(actualExtendDays),
-        requestedPlan: extendPlan,
-        status: 'pending'
+        oldExpiry: formatThaiDateTime(currentExpiryDate),
+        newExpiry: newExpiryFormatted,
+        extendedDays: parseInt(actualExtendDays),
+        pointsUsed: requiredPoints,
+        remainingPoints: user.points,
+        status: 'completed',
+        extensionHistoryId: extensionHistoryRecord
+          ? extensionHistoryRecord._id
+          : null,
+        cumulativePlanDays: extensionHistoryRecord
+          ? extensionHistoryRecord.cumulativePlanDays
+          : null,
+        totalExtendedDays: extensionHistoryRecord
+          ? extensionHistoryRecord.totalExtendedDays
+          : null
       }),
       { status: 200 }
     )

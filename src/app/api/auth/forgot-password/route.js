@@ -5,7 +5,7 @@ import crypto from 'crypto'
 
 export async function POST(req) {
   try {
-  const { email, language } = await req.json()
+    const { email, language } = await req.json()
 
     // Input validation
     if (!email) {

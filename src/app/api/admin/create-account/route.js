@@ -60,16 +60,27 @@ export async function POST(request) {
     }
 
     const body = await request.json()
-    const { username, platform, accountNumber, plan, extendDays, isDemo, demoDays } = body
+    const {
+      username,
+      platform,
+      accountNumber,
+      plan,
+      extendDays,
+      isDemo,
+      demoDays
+    } = body
 
     // Basic field validation (accountNumber optional if demo)
     if (!username || !platform || !plan || (!accountNumber && !isDemo)) {
-      return NextResponse.json({ error: 'All fields are required' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'All fields are required' },
+        { status: 400 }
+      )
     }
 
     // Initialize demo logic
-  // Keep original username even for demo accounts; only force accountNumber
-  let finalUsername = username
+    // Keep original username even for demo accounts; only force accountNumber
+    let finalUsername = username
     let finalAccountNumber = accountNumber
     let demoMode = false
     let demoDuration = null
@@ -77,17 +88,26 @@ export async function POST(request) {
       demoMode = true
       finalAccountNumber = 'DEMO'
       if (!demoDays || isNaN(demoDays) || parseInt(demoDays) <= 0) {
-        return NextResponse.json({ error: 'demoDays must be a positive number' }, { status: 400 })
+        return NextResponse.json(
+          { error: 'demoDays must be a positive number' },
+          { status: 400 }
+        )
       }
       if (parseInt(demoDays) > 60) {
-        return NextResponse.json({ error: 'demoDays cannot exceed 60' }, { status: 400 })
+        return NextResponse.json(
+          { error: 'demoDays cannot exceed 60' },
+          { status: 400 }
+        )
       }
       demoDuration = parseInt(demoDays)
     }
 
     // Validate extendDays if provided (ignored for demo, but we let it pass if empty)
     if (extendDays && (isNaN(extendDays) || parseInt(extendDays) < 0)) {
-      return NextResponse.json({ error: 'Extend days must be a valid positive number' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'Extend days must be a valid positive number' },
+        { status: 400 }
+      )
     }
 
     // Connect to MongoDB
@@ -97,9 +117,14 @@ export async function POST(request) {
 
     // Uniqueness check (skip for demo)
     if (!demoMode) {
-      const existingAccount = await CustomerAccount.findOne({ accountNumber: finalAccountNumber })
+      const existingAccount = await CustomerAccount.findOne({
+        accountNumber: finalAccountNumber
+      })
       if (existingAccount) {
-        return NextResponse.json({ error: 'Account number already exists' }, { status: 400 })
+        return NextResponse.json(
+          { error: 'Account number already exists' },
+          { status: 400 }
+        )
       }
     }
 
@@ -109,7 +134,9 @@ export async function POST(request) {
     while (licenseExists) {
       const raw = generateLicenseKey()
       licenseKey = demoMode ? `DEMO-${raw}` : raw
-      const existingLicense = await CustomerAccount.findOne({ license: licenseKey })
+      const existingLicense = await CustomerAccount.findOne({
+        license: licenseKey
+      })
       licenseExists = !!existingLicense
     }
 
@@ -132,16 +159,16 @@ export async function POST(request) {
     // Calculate total plan days for database storage
     const totalPlanDays = demoMode
       ? demoDuration
-      : (plan === 'lifetime'
-          ? 999999
-          : parseInt(plan) + parseInt(extendDays || 0))
+      : plan === 'lifetime'
+        ? 999999
+        : parseInt(plan) + parseInt(extendDays || 0)
 
     // Create customer account
     const customerAccount = new CustomerAccount({
       user: username,
       license: licenseKey,
-  platform,
-  accountNumber: finalAccountNumber,
+      platform,
+      accountNumber: finalAccountNumber,
       plan: demoMode ? demoDuration : totalPlanDays,
       expireDate: expireDateThai, // Store Thai formatted date
       status: 'valid', // Manual accounts are immediately valid

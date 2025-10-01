@@ -62,7 +62,7 @@ export async function POST(request) {
     let tableUpdateResult = false
     if (socketIO) {
       console.log('📡 Testing admin table update events...')
-      
+
       // Test codes table update
       socketIO.to('admin').emit('codes-updated', {
         code: 'TEST-CODE-123',

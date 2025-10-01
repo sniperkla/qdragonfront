@@ -62,6 +62,12 @@ export default function LoginPage() {
   const router = useRouter()
   const dispatch = useDispatch()
 
+  const normalizePoints = (value) => {
+    const numeric = Number(value ?? 0)
+    if (Number.isNaN(numeric) || numeric < 0) return 0
+    return numeric
+  }
+
   // Check if user is already authenticated
   useEffect(() => {
     const controller = new AbortController()
@@ -73,22 +79,29 @@ export default function LoginPage() {
         debugLogger.log('Checking existing authentication')
         const response = await fetch('/api/auth/me', {
           credentials: 'include',
+          cache: 'no-store',
           signal: controller.signal
         })
         if (response.ok) {
           const data = await response.json()
-          debugLogger.log('User already authenticated, redirecting to landing', { username: data.user.username })
+          debugLogger.log(
+            'User already authenticated, redirecting to landing',
+            { username: data.user.username }
+          )
           dispatch(
             loginSuccess({
               id: data.user.id,
               name: data.user.username,
-              email: data.user.username
+              email: data.user.username,
+              points: normalizePoints(data.user.points)
             })
           )
           router.push('/landing')
           return
         } else {
-          debugLogger.log('No existing authentication found, showing login form')
+          debugLogger.log(
+            'No existing authentication found, showing login form'
+          )
         }
       } catch (error) {
         if (error.name === 'AbortError') {
@@ -121,20 +134,25 @@ export default function LoginPage() {
         debugLogger.log('Retrying authentication check')
         const response = await fetch('/api/auth/me', {
           credentials: 'include',
+          cache: 'no-store',
           signal: controller.signal
         })
         if (response.ok) {
           const data = await response.json()
-            debugLogger.log('User already authenticated (retry), redirecting to landing', { username: data.user.username })
-            dispatch(
-              loginSuccess({
-                id: data.user.id,
-                name: data.user.username,
-                email: data.user.username
-              })
-            )
-            router.push('/landing')
-            return
+          debugLogger.log(
+            'User already authenticated (retry), redirecting to landing',
+            { username: data.user.username }
+          )
+          dispatch(
+            loginSuccess({
+              id: data.user.id,
+              name: data.user.username,
+              email: data.user.username,
+              points: normalizePoints(data.user.points)
+            })
+          )
+          router.push('/landing')
+          return
         } else {
           debugLogger.log('Retry auth: still unauthenticated')
         }
@@ -185,13 +203,24 @@ export default function LoginPage() {
       })
 
       if (res.ok) {
-        // Update Redux state with user data
-        const userData = {
-          id: Date.now(),
-          name: username,
-          email: username // Using username as email for now
+        const userData = data?.user
+        if (!userData) {
+          debugLogger.error('Login succeeded but user payload missing', {
+            data
+          })
+          setError('Login response invalid. Please try again.')
+          return
         }
-        dispatch(loginSuccess(userData))
+
+        dispatch(
+          loginSuccess({
+            id: userData.id,
+            name: userData.username,
+            email: userData.email || userData.username,
+            points: normalizePoints(userData.points),
+            preferredLanguage: userData.preferredLanguage
+          })
+        )
         debugLogger.log('Login successful, redirecting to landing')
         router.push('/landing') // Redirect to landing page after successful login
       } else if (res.status === 403 && data.requiresVerification) {
@@ -255,18 +284,22 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/10 via-transparent to-amber-500/10"></div>
       </div>
 
-  {/* Login Card (blur and dim if checking auth) */}
-  <div className={`relative z-10 max-w-md w-full bg-white/5 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/30 ring-1 ring-white/20 transition-all ${checkingAuth ? 'opacity-40 pointer-events-none scale-[0.98]' : 'opacity-100'} `}>
+      {/* Login Card (blur and dim if checking auth) */}
+      <div
+        className={`relative z-10 max-w-md w-full bg-white/5 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/30 ring-1 ring-white/20 transition-all ${checkingAuth ? 'opacity-40 pointer-events-none scale-[0.98]' : 'opacity-100'} `}
+      >
         {/* Header */}
         <div className="text-center pt-6 sm:pt-8 pb-4 sm:pb-6 px-6 sm:px-8">
           <div className="absolute top-3 right-3 flex gap-2">
-            {['en','th'].map(l => (
+            {['en', 'th'].map((l) => (
               <button
                 key={l}
                 type="button"
                 onClick={() => changeLanguage(l)}
-                className={`px-2 py-1 text-xs rounded-md font-semibold transition-colors ${language===l ? 'bg-yellow-400 text-black' : 'bg-white/20 text-white hover:bg-white/30'}`}
-              >{l.toUpperCase()}</button>
+                className={`px-2 py-1 text-xs rounded-md font-semibold transition-colors ${language === l ? 'bg-yellow-400 text-black' : 'bg-white/20 text-white hover:bg-white/30'}`}
+              >
+                {l.toUpperCase()}
+              </button>
             ))}
           </div>
           <div className="inline-flex items-center justify-center w-24 h-24 sm:w-32 sm:h-32  rounded-full mb-3 sm:mb-4 shadow-lg overflow-hidden">
@@ -283,8 +316,12 @@ export default function LoginPage() {
             {/* Fallback Dragon Icon */}
             <span className="text-3xl sm:text-4xl hidden">🐉</span>
           </div>
-          <p className="text-white/90 text-sm sm:text-base">{t('platform_tagline')}</p>
-          <p className="text-xs sm:text-sm text-yellow-300 font-medium">{t('sub_tagline')}</p>
+          <p className="text-white/90 text-sm sm:text-base">
+            {t('platform_tagline')}
+          </p>
+          <p className="text-xs sm:text-sm text-yellow-300 font-medium">
+            {t('sub_tagline')}
+          </p>
         </div>
 
         {/* Login Form */}
@@ -500,26 +537,48 @@ export default function LoginPage() {
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" />
           <div className="relative z-50 w-full max-w-sm mx-auto bg-white rounded-xl shadow-2xl p-8 text-center border border-gray-200 animate-scale-in">
             <div className="mx-auto mb-5 w-14 h-14 rounded-full bg-gradient-to-tr from-yellow-400 to-amber-500 flex items-center justify-center shadow-lg">
-              <svg className="w-8 h-8 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <svg
+                className="w-8 h-8 text-white animate-pulse"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
               </svg>
             </div>
             <h2 className="text-xl font-semibold text-gray-800 mb-2 tracking-tight">
               {authSlow ? t('auth_check_slow_title') : t('auth_check_title')}
             </h2>
             <p className="text-gray-600 text-sm mb-5 leading-relaxed">
-              {authSlow ? t('auth_check_slow_message') : t('auth_check_description')}
+              {authSlow
+                ? t('auth_check_slow_message')
+                : t('auth_check_description')}
             </p>
             <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
               <span className="inline-flex h-2 w-2 bg-amber-500 rounded-full animate-ping" />
-              <span className="font-medium tracking-wide">{t('checking_auth')}</span>
+              <span className="font-medium tracking-wide">
+                {t('checking_auth')}
+              </span>
             </div>
             {authSlow && (
               <div className="mt-6 flex items-center justify-center gap-3">
-                <button type="button" onClick={retryAuthCheck} className="px-4 py-2 rounded-md text-sm font-medium bg-amber-500 hover:bg-amber-600 text-white shadow-md transition-colors">
+                <button
+                  type="button"
+                  onClick={retryAuthCheck}
+                  className="px-4 py-2 rounded-md text-sm font-medium bg-amber-500 hover:bg-amber-600 text-white shadow-md transition-colors"
+                >
                   {t('auth_check_retry')}
                 </button>
-                <button type="button" onClick={skipAuthCheck} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 text-gray-800 shadow-sm transition-colors">
+                <button
+                  type="button"
+                  onClick={skipAuthCheck}
+                  className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 text-gray-800 shadow-sm transition-colors"
+                >
                   {t('auth_check_skip')}
                 </button>
               </div>

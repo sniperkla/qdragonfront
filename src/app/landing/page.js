@@ -22,15 +22,23 @@ export default function LandingPage() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(true)
 
+  const normalizePoints = (value) => {
+    const numeric = Number(value ?? 0)
+    if (Number.isNaN(numeric) || numeric < 0) return 0
+    return numeric
+  }
+
   // Code generation form state
   const [showCodeGenerator, setShowCodeGenerator] = useState(false)
   const [codeForm, setCodeForm] = useState({
     accountNumber: '',
     platform: 'exness',
-    plan: '30'
+    plan: '' // will be set after plans load
   })
   const [generatingCode, setGeneratingCode] = useState(false)
   const [generatedCode, setGeneratedCode] = useState('')
+  // Recently generated (via points) license metadata for modern points panel
+  const [recentPointsLicense, setRecentPointsLicense] = useState(null)
   const [myCodes, setMyCodes] = useState([])
   const [loadingCodes, setLoadingCodes] = useState(false)
 
@@ -39,12 +47,26 @@ export default function LandingPage() {
   const [selectedCode, setSelectedCode] = useState(null)
   const [extendPlan, setExtendPlan] = useState('30')
 
+  // Buy points modal state
+  const [showBuyPointsModal, setShowBuyPointsModal] = useState(false)
+  const [buyPointsForm, setBuyPointsForm] = useState({
+    accountNumber: '',
+    platform: 'exness',
+    plan: '30'
+  })
+
+  // Top-up points modal state
+  const [showTopUpModal, setShowTopUpModal] = useState(false)
+  const [topUpAmount, setTopUpAmount] = useState('')
+
   // Notification state
   const [notifications, setNotifications] = useState([])
   // History state
   const [historyLoading, setHistoryLoading] = useState(false)
   const [purchaseHistory, setPurchaseHistory] = useState([])
   const [extensionHistory, setExtensionHistory] = useState([])
+  const [topUpHistory, setTopUpHistory] = useState([])
+  const [activeHistoryTab, setActiveHistoryTab] = useState('purchases')
 
   // Modal state for replacing alerts
   const [alertModalVisible, setAlertModalVisible] = useState(false)
@@ -55,9 +77,22 @@ export default function LandingPage() {
     onConfirm: null
   })
 
-  const showModalAlert = (message, type = 'info', title = null, onConfirm = null) => {
+  const showModalAlert = (
+    message,
+    type = 'info',
+    title = null,
+    onConfirm = null
+  ) => {
     setModalContent({
-      title: title || (type === 'error' ? t('error') : type === 'success' ? t('success') : type === 'warning' ? t('warning') : t('information')),
+      title:
+        title ||
+        (type === 'error'
+          ? t('error')
+          : type === 'success'
+            ? t('success')
+            : type === 'warning'
+              ? t('warning')
+              : t('information')),
       message,
       type,
       onConfirm
@@ -73,16 +108,26 @@ export default function LandingPage() {
   }
 
   const showNotification = (message, type = 'info') => {
-    const id = Date.now()
-    const notification = { id, message, type }
+    const id = Date.now() + Math.random()
+    const notification = { id, message, type, closing: false }
     setNotifications((prev) => [...prev, notification])
 
-    // Auto-remove after 5 seconds
+    // Auto-remove after 5 seconds with collapse animation
     setTimeout(() => {
-      setNotifications((prev) => prev.filter((n) => n.id !== id))
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, closing: true } : n))
+      )
+      // Remove after animation duration (300ms)
+      setTimeout(() => {
+        setNotifications((prev) => prev.filter((n) => n.id !== id))
+      }, 320)
     }, 5000)
   }
   const [extendingCode, setExtendingCode] = useState(false)
+  // Dynamic plans state
+  const [plans, setPlans] = useState([])
+  const [loadingPlans, setLoadingPlans] = useState(false)
+  const [plansError, setPlansError] = useState(null)
 
   // Real-time countdown state
   const [currentTime, setCurrentTime] = useState(new Date())
@@ -91,45 +136,85 @@ export default function LandingPage() {
   const [socket, setSocket] = useState(null)
   const [wsConnected, setWsConnected] = useState(false)
   const [lastWsEvent, setLastWsEvent] = useState(null)
-  const [joinStatus, setJoinStatus] = useState({ joined: false, attempts: 0, rooms: [] })
+  const [joinStatus, setJoinStatus] = useState({
+    joined: false,
+    attempts: 0,
+    rooms: []
+  })
   const joinIntervalRef = useRef(null)
 
+  // Function to refresh user data from server
+  const refreshUserData = async () => {
+    try {
+      const response = await fetch('/api/auth/me', {
+        credentials: 'include',
+        cache: 'no-store'
+      })
+      if (response.ok) {
+        const data = await response.json()
+        dispatch(
+          loginSuccess({
+            id: data.user.id,
+            name: data.user.username,
+            email: data.user.email || data.user.username,
+            points: normalizePoints(data.user.points)
+          })
+        )
+        console.log('User data refreshed:', data.user)
+      }
+    } catch (error) {
+      console.error('Failed to refresh user data:', error)
+    }
+  }
+
   useEffect(() => {
-    // Check if user is authenticated via cookie on page load
+    let isActive = true
+
     const checkAuth = async () => {
+      setIsLoading(true)
       try {
+        console.log('Checking authentication...')
         const response = await fetch('/api/auth/me', {
-          credentials: 'include'
+          credentials: 'include',
+          cache: 'no-store'
         })
+
+        if (!isActive) return
 
         if (response.ok) {
           const data = await response.json()
-          // Update Redux state with user data from cookie
+          console.log('Auth check successful:', data)
           dispatch(
             loginSuccess({
               id: data.user.id,
               name: data.user.username,
-              email: data.user.username
+              email: data.user.email || data.user.username,
+              points: normalizePoints(data.user.points)
             })
           )
+          setIsLoading(false)
         } else {
-          // No valid cookie, redirect to login
+          console.log('Auth check failed with status:', response.status)
+          if (response.status === 500) {
+            console.log('Server error, not redirecting')
+            setIsLoading(false)
+            return
+          }
           router.push('/')
         }
       } catch (error) {
-        // Silent error handling
-        router.push('/')
-      } finally {
+        if (!isActive) return
+        console.error('Auth check error:', error)
         setIsLoading(false)
       }
     }
 
-    if (!isAuthenticated) {
-      checkAuth()
-    } else {
-      setIsLoading(false)
+    checkAuth()
+
+    return () => {
+      isActive = false
     }
-  }, [isAuthenticated, dispatch, router])
+  }, [dispatch, router])
 
   // Fetch user's licenses (unified view)
   const fetchMyCodes = async () => {
@@ -144,8 +229,15 @@ export default function LandingPage() {
       const licensesData = await licensesResponse.json()
 
       if (licensesResponse.ok && licensesData.licenses) {
-        console.log('✅ Fetched unified licenses:', licensesData.licenses.length, 'licenses')
-        console.log('📊 License statuses:', licensesData.licenses.map(l => ({ code: l.code, status: l.status })))
+        console.log(
+          '✅ Fetched unified licenses:',
+          licensesData.licenses.length,
+          'licenses'
+        )
+        console.log(
+          '📊 License statuses:',
+          licensesData.licenses.map((l) => ({ code: l.code, status: l.status }))
+        )
         setMyCodes(licensesData.licenses)
       } else {
         console.error('❌ Failed to fetch licenses:', licensesData.error)
@@ -160,6 +252,151 @@ export default function LandingPage() {
     }
   }
 
+  // Fetch dynamic plans from API
+  const fetchPlans = async () => {
+    if (loadingPlans) return
+    setLoadingPlans(true)
+    setPlansError(null)
+    try {
+      console.log('[Plans] Fetching /api/plans ...')
+      const res = await fetch('/api/plans?ts=' + Date.now(), {
+        cache: 'no-store'
+      })
+      let data = {}
+      try {
+        data = await res.json()
+      } catch (parseErr) {
+        console.warn('[Plans] Failed to parse JSON', parseErr)
+      }
+      if (res.ok && Array.isArray(data.plans)) {
+        console.log('[Plans] Loaded', data.plans.length, 'plans')
+        setPlans(data.plans)
+        if (data.plans.length === 0) {
+          // Provide fallback defaults so user can still proceed
+          const fallback = [
+            {
+              id: 'fallback-30',
+              name: 'Monthly',
+              days: 30,
+              points: 30,
+              price: 30,
+              isLifetime: false
+            },
+            {
+              id: 'fallback-90',
+              name: 'Quarter',
+              days: 90,
+              points: 90,
+              price: 90,
+              isLifetime: false
+            }
+          ]
+          console.log('[Plans] Using fallback defaults')
+          setPlans(fallback)
+          // Set default plan in next render to avoid state update during render
+          setTimeout(() => {
+            setCodeForm((prev) => {
+              if (!prev.plan) return { ...prev, plan: '30' }
+              return prev
+            })
+          }, 0)
+        } else {
+          // Set default plan in next render
+          setTimeout(() => {
+            setCodeForm((prev) => {
+              if (!prev.plan) {
+                const defaultPlan = data.plans[0]
+                return {
+                  ...prev,
+                  plan: defaultPlan.isLifetime
+                    ? 'lifetime'
+                    : String(defaultPlan.days)
+                }
+              }
+              // Check if current plan still exists
+              const exists = data.plans.some((p) =>
+                prev.plan === 'lifetime'
+                  ? p.isLifetime
+                  : !p.isLifetime && String(p.days) === prev.plan
+              )
+              if (!exists) {
+                const fallback = data.plans[0]
+                return {
+                  ...prev,
+                  plan: fallback.isLifetime ? 'lifetime' : String(fallback.days)
+                }
+              }
+              return prev
+            })
+          }, 0)
+        }
+      } else {
+        console.warn('[Plans] Non-OK response', res.status, data)
+        setPlansError(data.error || 'Failed to load plans')
+        // Fallback still provided so select stays usable
+        const fallback = [
+          {
+            id: 'fallback-30',
+            name: 'Monthly',
+            days: 30,
+            points: 30,
+            price: 30,
+            isLifetime: false
+          },
+          {
+            id: 'fallback-90',
+            name: 'Quarter',
+            days: 90,
+            points: 90,
+            price: 90,
+            isLifetime: false
+          }
+        ]
+        setPlans(fallback)
+        setTimeout(() => {
+          setCodeForm((prev) => {
+            if (!prev.plan) return { ...prev, plan: '30' }
+            return prev
+          })
+        }, 0)
+      }
+    } catch (err) {
+      console.error('[Plans] Fetch error:', err)
+      setPlansError(err.message)
+      const fallback = [
+        {
+          id: 'fallback-30',
+          name: 'Monthly',
+          days: 30,
+          points: 30,
+          price: 30,
+          isLifetime: false
+        },
+        {
+          id: 'fallback-90',
+          name: 'Quarter',
+          days: 90,
+          points: 90,
+          price: 90,
+          isLifetime: false
+        }
+      ]
+      setPlans(fallback)
+      setTimeout(() => {
+        setCodeForm((prev) => {
+          if (!prev.plan) return { ...prev, plan: '30' }
+          return prev
+        })
+      }, 0)
+    } finally {
+      setLoadingPlans(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchPlans()
+  }, []) // Only fetch once on mount
+
   const fetchHistory = async () => {
     if (historyLoading) return
     setHistoryLoading(true)
@@ -169,6 +406,7 @@ export default function LandingPage() {
       if (res.ok) {
         setPurchaseHistory(data.purchases || [])
         setExtensionHistory(data.extensions || [])
+        setTopUpHistory(data.topups || [])
       } else {
         console.warn('Failed to load history:', data.error)
       }
@@ -195,151 +433,198 @@ export default function LandingPage() {
 
     // Ensure server initialized using same pattern as admin
     fetch('/api/init/socketio', { cache: 'no-store' }).catch(() => {})
-
     ;(async () => {
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000')
+      const baseUrl =
+        process.env.NEXT_PUBLIC_APP_URL ||
+        (typeof window !== 'undefined'
+          ? window.location.origin
+          : 'http://localhost:3000')
       console.log('🛰️ [Landing] Preparing socket connection to', baseUrl)
       const io = await getSocketIO()
       const s = io(baseUrl, {
-      path: '/api/socketio',
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionAttempts: 15,
-      reconnectionDelay: 1000,
-      withCredentials: true,
-      timeout: 15000,
-      forceNew: true,
-      autoConnect: true
+        path: '/api/socketio',
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: 15,
+        reconnectionDelay: 1000,
+        withCredentials: true,
+        timeout: 15000,
+        forceNew: true,
+        autoConnect: true
       })
 
       setSocket(s)
 
-    if (joinIntervalRef.current) {
-      clearInterval(joinIntervalRef.current)
-      joinIntervalRef.current = null
-    }
-    const joinRef = { stopped: false }
+      if (joinIntervalRef.current) {
+        clearInterval(joinIntervalRef.current)
+        joinIntervalRef.current = null
+      }
+      const joinRef = { stopped: false }
 
-    const attemptJoin = () => {
-      if (!user) return
-      const idsToTry = []
-      if (user.id) idsToTry.push(user.id)
-      if (user._id && user._id !== user.id) idsToTry.push(user._id)
-      if (idsToTry.length === 0) return
-      idsToTry.forEach((val) => {
-        console.log('🔗 Attempting join-user for:', val)
-        s.emit('join-user', val)
-      })
-      setJoinStatus((prev) => ({ ...prev, attempts: prev.attempts + 1 }))
-    }
+      const attemptJoin = () => {
+        if (!user) return
+        const idsToTry = []
+        if (user.id) idsToTry.push(user.id)
+        if (user._id && user._id !== user.id) idsToTry.push(user._id)
+        if (idsToTry.length === 0) return
+        idsToTry.forEach((val) => {
+          console.log('🔗 Attempting join-user for:', val)
+          s.emit('join-user', val)
+        })
+        setJoinStatus((prev) => ({ ...prev, attempts: prev.attempts + 1 }))
+      }
 
-    s.on('connect', () => {
-      setWsConnected(true)
-      setLastWsEvent('connect')
-      // Start immediate attempt + repeating attempts until a room join succeeds
-      attemptJoin()
-      joinIntervalRef.current = setInterval(() => {
-        setJoinStatus((st) => st.joined ? st : st) // force state read
-        if (!joinStatus.joined) {
-          attemptJoin()
-        } else if (joinIntervalRef.current) {
-          clearInterval(joinIntervalRef.current)
-          joinIntervalRef.current = null
-        }
-      }, 2000)
-    })
-
-    s.on('disconnect', (reason) => {
-      console.warn('🔌 Disconnected (landing):', reason)
-      setWsConnected(false)
-      setLastWsEvent('disconnect')
-    })
-
-    s.on('connect_error', (err) => {
-      console.warn('⚠️ WebSocket connect_error (landing):', err.message)
-      setLastWsEvent('connect_error')
-    })
-    s.on('error', (err) => {
-      console.warn('⚠️ WebSocket generic error (landing):', err?.message || err)
-    })
-    s.on('reconnect_failed', () => {
-      console.warn('❌ WebSocket reconnect_failed (landing)')
-    })
-    s.on('reconnect_attempt', (n) => {
-      console.log('♻️ Reconnect attempt', n)
-    })
-
-    s.on('room-joined', (data) => {
-      console.log('📥 room-joined event:', data)
-      if (!data?.success) {
-        // Retry join once more after delay
-        setTimeout(() => {
-          if (user?.id) s.emit('join-user', user.id)
-          if (user?._id && user._id !== user?.id) s.emit('join-user', user._id)
-        }, 500)
-      } else if (data?.room) {
-        setJoinStatus((prev) => {
-          const newRooms = prev.rooms.includes(data.room)
-            ? prev.rooms
-            : [...prev.rooms, data.room]
-          const userIdRooms = newRooms.filter(r => r.startsWith('user-'))
-          const joined = userIdRooms.length > 0
-          if (joined && data.room.startsWith('user-')) {
-            console.log('✅ User room joined successfully:', data.room)
+      s.on('connect', () => {
+        setWsConnected(true)
+        setLastWsEvent('connect')
+        // Start immediate attempt + repeating attempts until a room join succeeds
+        attemptJoin()
+        joinIntervalRef.current = setInterval(() => {
+          setJoinStatus((st) => (st.joined ? st : st)) // force state read
+          if (!joinStatus.joined) {
+            attemptJoin()
+          } else if (joinIntervalRef.current) {
+            clearInterval(joinIntervalRef.current)
+            joinIntervalRef.current = null
           }
+        }, 2000)
+      })
+
+      s.on('disconnect', (reason) => {
+        console.warn('🔌 Disconnected (landing):', reason)
+        setWsConnected(false)
+        setLastWsEvent('disconnect')
+      })
+
+      s.on('connect_error', (err) => {
+        console.warn('⚠️ WebSocket connect_error (landing):', err.message)
+        setLastWsEvent('connect_error')
+      })
+      s.on('error', (err) => {
+        console.warn(
+          '⚠️ WebSocket generic error (landing):',
+          err?.message || err
+        )
+      })
+      s.on('reconnect_failed', () => {
+        console.warn('❌ WebSocket reconnect_failed (landing)')
+      })
+      s.on('reconnect_attempt', (n) => {
+        console.log('♻️ Reconnect attempt', n)
+      })
+
+      s.on('room-joined', (data) => {
+        console.log('📥 room-joined event:', data)
+        if (!data?.success) {
+          // Retry join once more after delay
+          setTimeout(() => {
+            if (user?.id) s.emit('join-user', user.id)
+            if (user?._id && user._id !== user?.id)
+              s.emit('join-user', user._id)
+          }, 500)
+        } else if (data?.room) {
+          setJoinStatus((prev) => {
+            const newRooms = prev.rooms.includes(data.room)
+              ? prev.rooms
+              : [...prev.rooms, data.room]
+            const userIdRooms = newRooms.filter((r) => r.startsWith('user-'))
+            const joined = userIdRooms.length > 0
+            if (joined && data.room.startsWith('user-')) {
+              console.log('✅ User room joined successfully:', data.room)
+            }
             if (joined && joinIntervalRef.current) {
               clearInterval(joinIntervalRef.current)
               joinIntervalRef.current = null
             }
-          return { ...prev, rooms: newRooms, joined }
-        })
-      }
-    })
+            return { ...prev, rooms: newRooms, joined }
+          })
+        }
+      })
 
-    // Codes updated (e.g., status change paid/activated)
-    s.on('codes-updated', (payload) => {
-      setLastWsEvent('codes-updated')
-      fetchMyCodes()
-      fetchHistory() // refresh history real-time
-      showNotification(t('license_list_updated'), 'success')
-    })
+      // Codes updated (e.g., status change paid/activated)
+      s.on('codes-updated', (payload) => {
+        setLastWsEvent('codes-updated')
+        fetchMyCodes()
+        fetchHistory() // refresh history real-time
+        showNotification(t('license_list_updated'), 'success')
+      })
 
-    // Fallback broadcast (in case user room missed join)
-    s.on('codes-updated-broadcast', (payload) => {
-      // Only refresh if this broadcast pertains to current user (userId matches) or if unsure
-      if (!payload?.userId || payload.userId === user?.id || payload.userId === user?._id) {
-        setLastWsEvent('codes-updated-broadcast')
+      // Fallback broadcast (in case user room missed join)
+      s.on('codes-updated-broadcast', (payload) => {
+        // Only refresh if this broadcast pertains to current user (userId matches) or if unsure
+        if (
+          !payload?.userId ||
+          payload.userId === user?.id ||
+          payload.userId === user?._id
+        ) {
+          setLastWsEvent('codes-updated-broadcast')
+          fetchMyCodes()
+          fetchHistory()
+          showNotification(t('license_updated_broadcast'), 'success')
+        }
+      })
+
+      s.on('customer-account-updated', () => {
+        setLastWsEvent('customer-account-updated')
         fetchMyCodes()
         fetchHistory()
-        showNotification(t('license_updated_broadcast'), 'success')
-      }
-    })
+      })
 
-    s.on('customer-account-updated', () => {
-      setLastWsEvent('customer-account-updated')
-      fetchMyCodes()
-      fetchHistory()
-    })
-
-    s.on('client-notification', (data) => {
-      setLastWsEvent('client-notification')
-      if (data?.message) {
-        showNotification(data.message, data.type || 'info')
-        // Heuristic: refresh history on any client notification mentioning license or extension
-        const msg = data.message.toLowerCase()
-        if (msg.includes('license') || msg.includes('extension')) {
-          fetchHistory()
+      s.on('client-notification', (data) => {
+        setLastWsEvent('client-notification')
+        if (data?.message) {
+          showNotification(data.message, data.type || 'info')
+          // Heuristic: refresh history on any client notification mentioning license or extension
+          const msg = data.message.toLowerCase()
+          if (msg.includes('license') || msg.includes('extension')) {
+            fetchHistory()
+          }
         }
-      }
-    })
+      })
 
-    s.on('broadcast-notification', (data) => {
-      setLastWsEvent('broadcast-notification')
-      if (data?.message) {
-        showNotification(data.message, data.type || 'info')
-      }
-    })
+      s.on('broadcast-notification', (data) => {
+        setLastWsEvent('broadcast-notification')
+        if (data?.message) {
+          showNotification(data.message, data.type || 'info')
+        }
+      })
 
+      // Points system events
+      s.on('points-updated', (data) => {
+        setLastWsEvent('points-updated')
+        if (data?.newPoints !== undefined) {
+          console.log('Points updated via WebSocket:', data)
+          // Update user points in Redux state
+          dispatch(
+            loginSuccess({
+              ...user,
+              points: normalizePoints(data.newPoints)
+            })
+          )
+          showNotification(
+            `${language === 'th' ? 'แต้มของคุณได้รับการอัปเดต' : 'Your points have been updated'}: ${data.newPoints} ${language === 'th' ? 'แต้ม' : 'points'}`,
+            'success'
+          )
+
+          // Also refresh user data to ensure consistency
+          refreshUserData()
+        }
+      })
+
+      s.on('topup-status-updated', (data) => {
+        setLastWsEvent('topup-status-updated')
+        if (data?.status === 'approved' && data?.points) {
+          showNotification(
+            `${language === 'th' ? 'คำขอเติมเงินได้รับการอนุมัติ!' : 'Top-up request approved!'} +${data.points} ${language === 'th' ? 'แต้ม' : 'points'}`,
+            'success'
+          )
+        } else if (data?.status === 'rejected') {
+          showNotification(
+            `${language === 'th' ? 'คำขอเติมเงินถูกปฏิเสธ' : 'Top-up request rejected'}${data?.reason ? `: ${data.reason}` : ''}`,
+            'error'
+          )
+        }
+      })
     })()
 
     return () => {
@@ -572,20 +857,41 @@ export default function LandingPage() {
 
       const data = await response.json()
       if (response.ok) {
-        showModalAlert(
-          `Extension request submitted successfully!\n\nLicense: ${data.licenseCode}\nCurrent expiry: ${data.currentExpiry}\nRequested extension: ${data.requestedDays} days\nStatus: Pending admin approval\n\nPlease wait for admin verification before the extension takes effect.`,
-          'success',
-          'Extension Request Submitted',
-          () => {
-            setShowExtendModal(false)
-            setSelectedCode(null)
-            setExtendPlan('30')
-            fetchMyCodes() // Refresh the codes list
-          }
-        )
+        // Check if extension was completed immediately or is pending
+        if (data.status === 'completed') {
+          showModalAlert(
+            `${language === 'th' ? 'ขยายใบอนุญาตสำเร็จ!' : 'License Extended Successfully!'}\n\n${language === 'th' ? 'ใบอนุญาต' : 'License'}: ${data.licenseCode}\n${language === 'th' ? 'วันหมดอายุเดิม' : 'Old expiry'}: ${data.oldExpiry}\n${language === 'th' ? 'วันหมดอายุใหม่' : 'New expiry'}: ${data.newExpiry}\n${language === 'th' ? 'จำนวนวันที่ขยาย' : 'Extended days'}: ${data.extendedDays} ${language === 'th' ? 'วัน' : 'days'}\n${language === 'th' ? 'แต้มที่ใช้' : 'Points used'}: ${data.pointsUsed} ${language === 'th' ? 'แต้ม' : 'points'}\n${language === 'th' ? 'แต้มคงเหลือ' : 'Remaining points'}: ${data.remainingPoints} ${language === 'th' ? 'แต้ม' : 'points'}`,
+            'success',
+            language === 'th' ? 'ขยายใบอนุญาตสำเร็จ' : 'Extension Successful',
+            () => {
+              setShowExtendModal(false)
+              setSelectedCode(null)
+              setExtendPlan('30')
+              fetchMyCodes() // Refresh the codes list
+              refreshUserData() // Refresh user data to get updated points
+              fetchHistory() // Refresh extension history immediately
+            }
+          )
+        } else {
+          // Fallback for old pending system (if any old codes still use it)
+          showModalAlert(
+            `Extension request submitted successfully!\n\nLicense: ${data.licenseCode}\nCurrent expiry: ${data.currentExpiry}\nRequested extension: ${data.requestedDays} days\nStatus: Pending admin approval\n\nPlease wait for admin verification before the extension takes effect.`,
+            'success',
+            'Extension Request Submitted',
+            () => {
+              setShowExtendModal(false)
+              setSelectedCode(null)
+              setExtendPlan('30')
+              fetchMyCodes() // Refresh the codes list
+            }
+          )
+        }
         return
       } else {
-        showModalAlert(data.error || 'Failed to submit extension request', 'error')
+        showModalAlert(
+          data.error || 'Failed to submit extension request',
+          'error'
+        )
       }
     } catch (error) {
       console.error('Error extending code:', error)
@@ -666,6 +972,199 @@ export default function LandingPage() {
     }
   }
 
+  // Points System Functions
+  const handleTopUpRequest = async (amount) => {
+    try {
+      console.log('Submitting top-up request for amount:', amount)
+
+      // First test with simple endpoint
+      console.log('Testing API connectivity...')
+      const testResponse = await fetch('/api/test-topup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ test: true, amount })
+      })
+
+      console.log('Test response status:', testResponse.status)
+      if (!testResponse.ok) {
+        throw new Error(`Test API failed: ${testResponse.status}`)
+      }
+
+      const testData = await testResponse.json()
+      console.log('Test API response:', testData)
+
+      const response = await fetch('/api/topup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          amount,
+          paymentMethod: 'admin_review', // Will be reviewed by admin before approval
+          paymentProof: '',
+          transactionRef: ''
+        })
+      })
+
+      console.log('Response status:', response.status)
+      console.log('Response ok:', response.ok)
+
+      if (!response.ok) {
+        console.error('Response not ok:', response.status, response.statusText)
+
+        // Try to get error details
+        let errorData
+        try {
+          errorData = await response.json()
+          console.error('Error data:', errorData)
+        } catch (parseError) {
+          console.error('Could not parse error response:', parseError)
+          errorData = {
+            error: `Server error: ${response.status} ${response.statusText}`
+          }
+        }
+
+        showModalAlert(
+          errorData.error ||
+            (language === 'th'
+              ? 'ไม่สามารถส่งคำขอได้'
+              : 'Failed to submit request'),
+          'error'
+        )
+        return
+      }
+
+      const data = await response.json()
+      console.log('Success response:', data)
+
+      showModalAlert(
+        `${language === 'th' ? 'ส่งคำขอเติมเงินสำเร็จ!' : 'Top-up request submitted successfully!'}\n\n${language === 'th' ? 'จำนวนเงิน' : 'Amount'}: $${amount}\n${language === 'th' ? 'แต้มที่จะได้รับ' : 'Points to receive'}: ${amount}\n\n${language === 'th' ? 'รอแอดมินอนุมัติเพื่อรับแต้ม' : 'Please wait for admin approval to receive points'}`,
+        'success',
+        language === 'th' ? 'คำขอเติมเงิน' : 'Top-up Request'
+      )
+      // Clear the input
+      const topupInput = document.getElementById('topupAmount')
+      if (topupInput) {
+        topupInput.value = ''
+      }
+    } catch (error) {
+      console.error('Network error submitting top-up request:', error)
+      console.error('Error details:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack
+      })
+
+      showModalAlert(
+        `${
+          language === 'th'
+            ? 'เกิดข้อผิดพลาดในการเชื่อมต่อ'
+            : 'Network error. Please try again.'
+        }\n\nError: ${error.message}`,
+        'error'
+      )
+    }
+  }
+
+  const handlePointsPurchase = async (selectedPlanValue, accountNumber) => {
+    // Resolve selected plan object
+    const selectedPlan = plans.find((p) =>
+      selectedPlanValue === 'lifetime'
+        ? p.isLifetime
+        : !p.isLifetime && String(p.days) === String(selectedPlanValue)
+    )
+    if (!selectedPlan) {
+      showModalAlert(
+        language === 'th' ? 'ไม่พบแผนที่เลือก' : 'Selected plan not found',
+        'error'
+      )
+      return
+    }
+
+    const requiredPoints = selectedPlan.points
+    const userPoints = user?.points || 0
+
+    if (userPoints < requiredPoints) {
+      showModalAlert(
+        `${language === 'th' ? 'แต้มไม่เพียงพอ' : 'Insufficient points'}\n\n${language === 'th' ? 'แต้มที่ต้องการ' : 'Points needed'}: ${requiredPoints}\n${language === 'th' ? 'แต้มที่มี' : 'Points available'}: ${userPoints}\n\n${language === 'th' ? 'กรุณาเติมเงินเพื่อรับแต้มเพิ่ม' : 'Please top-up to get more points'}`,
+        'warning',
+        language === 'th' ? 'แต้มไม่เพียงพอ' : 'Insufficient Points'
+      )
+      return
+    }
+
+    setGeneratingCode(true)
+    try {
+      const response = await fetch('/api/purchase-points', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          accountNumber,
+          platform: codeForm.platform,
+          plan: selectedPlan.isLifetime
+            ? 'lifetime'
+            : String(selectedPlan.days),
+          pointsUsed: requiredPoints
+        })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        dispatch(
+          loginSuccess({
+            ...user,
+            points: normalizePoints(data.license.remainingPoints)
+          })
+        )
+        setGeneratedCode(data.license.code)
+        fetchMyCodes()
+
+        const planLabel = selectedPlan.isLifetime
+          ? language === 'th'
+            ? 'ตลอดชีพ'
+            : 'Lifetime'
+          : `${selectedPlan.days} ${language === 'th' ? 'วัน' : 'days'}`
+
+        showModalAlert(
+          `${language === 'th' ? '🎉 ซื้อและเปิดใช้งานใบอนุญาตสำเร็จ!' : '🎉 License purchased and activated successfully!'}\n\n${language === 'th' ? 'รหัสใบอนุญาต' : 'License Code'}: ${data.license.code}\n${language === 'th' ? 'แพลน' : 'Plan'}: ${planLabel}\n${language === 'th' ? 'แต้มที่ใช้' : 'Points used'}: ${requiredPoints}\n${language === 'th' ? 'แต้มคงเหลือ' : 'Remaining points'}: ${data.license.remainingPoints}\n${language === 'th' ? 'สถานะ' : 'Status'}: ${language === 'th' ? '✅ เปิดใช้งานแล้ว' : '✅ Activated'}\n\n${language === 'th' ? '🚀 บัญชีของคุณพร้อมใช้งานทันที!' : '🚀 Your account is ready to use immediately!'}`,
+          'success',
+          language === 'th' ? 'ซื้อใบอนุญาต' : 'License Activated'
+        )
+        setRecentPointsLicense({
+          code: data.license.code,
+          plan: data.license.plan,
+          remainingPoints: data.license.remainingPoints,
+          expiresAtThai: data.license.expireDateThai
+        })
+        const acctEl = document.getElementById('pointsAccountNumber')
+        if (acctEl) acctEl.value = ''
+      } else {
+        showModalAlert(
+          data.error ||
+            (language === 'th'
+              ? 'ไม่สามารถซื้อใบอนุญาตได้'
+              : 'Failed to purchase license'),
+          'error'
+        )
+      }
+    } catch (error) {
+      console.error('Error purchasing with points:', error)
+      showModalAlert(
+        language === 'th'
+          ? 'เกิดข้อผิดพลาดในการเชื่อมต่อ'
+          : 'Network error. Please try again.',
+        'error'
+      )
+    } finally {
+      setGeneratingCode(false)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
@@ -683,121 +1182,611 @@ export default function LandingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 pb-8">
-      {/* Navigation Bar */}
-      <nav className="bg-white shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <h1 className="text-xl font-bold text-gray-900">{t('dashboard')}</h1>
-            </div>
-            <div className="flex items-center space-x-4">
-              {/* Language Toggle */}
-              <div className="flex gap-1">
-                {['en','th'].map(l => (
-                  <button key={l} onClick={() => changeLanguage(l)} className={`px-2 py-1 text-xs rounded-md font-semibold transition-colors ${language===l ? 'bg-yellow-400 text-black' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>{l.toUpperCase()}</button>
-                ))}
+    <>
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 pb-8">
+        {/* Navigation Bar */}
+        <nav className="bg-white shadow-lg">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center h-16">
+              <div className="flex items-center">
+                <h1 className="text-xl font-bold text-gray-900">
+                  {t('dashboard')}
+                </h1>
               </div>
-              <span className="text-gray-700">{t('welcome')}, {user?.name}</span>
-              <button
-                onClick={handleLogout}
-                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition duration-200"
-              >
-                {t('logout')}
-              </button>
+              <div className="flex items-center space-x-4">
+                {/* Language Toggle */}
+                <div className="flex gap-1">
+                  {['en', 'th'].map((l) => (
+                    <button
+                      key={l}
+                      onClick={() => changeLanguage(l)}
+                      className={`px-2 py-1 text-xs rounded-md font-semibold transition-colors ${language === l ? 'bg-yellow-400 text-black' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                    >
+                      {l.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+                <span className="text-gray-700">
+                  {t('welcome')}, {user?.name}
+                </span>
+                <button
+                  onClick={handleLogout}
+                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition duration-200"
+                >
+                  {t('logout')}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      </nav>
+        </nav>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
-        {/* Welcome Section */}
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">{t('welcome_dashboard_heading')}</h1>
-          <p className="text-xl text-gray-600 mb-8">{t('dashboard_subtitle')}</p>
-        </div>
-
-        {/* License Purchase Section */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-indigo-600 via-purple-600 to-blue-700 rounded-2xl shadow-2xl mb-8 text-white">
-          {/* Background Pattern */}
-          <div className="absolute inset-0 opacity-10">
-            <div className="absolute inset-0" style={{
-              backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-            }} />
+        {/* Main Content */}
+        <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
+          {/* Welcome Section */}
+          <div className="text-center mb-12">
+            <h1 className="text-4xl font-bold text-gray-900 mb-4">
+              {t('welcome_dashboard_heading')}
+            </h1>
+            <p className="text-xl text-gray-600 mb-8">
+              {t('dashboard_subtitle')}
+            </p>
           </div>
-          
-          <div className="relative p-8 lg:p-12">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-8">
-              <div className="mb-6 lg:mb-0">
-                <div className="flex items-center mb-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-xl flex items-center justify-center mr-4 shadow-lg">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+
+          {/* Purchase Trading License component hidden (commented) per request; retained for future use */}
+          {false && (
+            <div className="relative overflow-hidden bg-gradient-to-br from-indigo-600 via-purple-600 to-blue-700 rounded-2xl shadow-2xl mb-8 text-white">
+              {/* Background Pattern */}
+              <div className="absolute inset-0 opacity-10">
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
+                  }}
+                />
+              </div>
+
+              <div className="relative p-8 lg:p-12">
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-8">
+                  <div className="mb-6 lg:mb-0">
+                    <div className="flex items-center mb-4">
+                      <div className="w-12 h-12 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-xl flex items-center justify-center mr-4 shadow-lg">
+                        <svg
+                          className="w-6 h-6 text-white"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M13 10V3L4 14h7v7l9-11h-7z"
+                          />
+                        </svg>
+                      </div>
+                      <div>
+                        <h2 className="text-3xl lg:text-4xl font-bold">
+                          {t('purchase_trading_license')}
+                        </h2>
+                        <p className="text-purple-200 mt-1 text-lg">
+                          {t('purchase_subtitle')}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="hidden lg:flex items-center space-x-4">
+                    <div className="flex items-center space-x-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2">
+                      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                      <span className="text-sm font-medium">
+                        {t('live_trading')}
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2">
+                      <svg
+                        className="w-4 h-4 text-yellow-400"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                      </svg>
+                      <span className="text-sm font-medium">
+                        {t('premium')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                  {/* Account Number Input */}
+                  <div className="relative">
+                    <label className="block text-purple-200 text-sm font-semibold mb-3 flex items-center">
+                      <svg
+                        className="w-4 h-4 mr-2 text-purple-300"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
+                        />
+                      </svg>
+                      {t('trading_account_number')}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        name="accountNumber"
+                        value={codeForm.accountNumber}
+                        onChange={handleCodeFormChange}
+                        placeholder={t('enter_account_number_placeholder')}
+                        className="w-full px-4 py-3 pl-11 rounded-xl bg-white/95 backdrop-blur-sm text-gray-900 placeholder-gray-500 border border-white/20 focus:ring-2 focus:ring-purple-300 focus:border-transparent focus:bg-white transition-all duration-300 shadow-lg"
+                        required
+                      />
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <svg
+                          className="w-5 h-5 text-gray-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                          />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Platform Selection */}
+                  <div className="relative">
+                    <label className="block text-purple-200 text-sm font-semibold mb-3 flex items-center">
+                      <svg
+                        className="w-4 h-4 mr-2 text-purple-300"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                        />
+                      </svg>
+                      {t('trading_platform_label')}
+                    </label>
+                    <div className="relative">
+                      <select
+                        name="platform"
+                        value={codeForm.platform}
+                        onChange={handleCodeFormChange}
+                        className="w-full px-4 py-3 pl-11 rounded-xl bg-white/95 backdrop-blur-sm text-gray-900 border border-white/20 focus:ring-2 focus:ring-purple-300 focus:border-transparent focus:bg-white transition-all duration-300 shadow-lg appearance-none"
+                      >
+                        <option value="exness">Exness</option>
+                        <option value="xm">XM</option>
+                        <option value="ic-markets">IC Markets</option>
+                        <option value="pepperstone">Pepperstone</option>
+                        <option value="fxpro">FxPro</option>
+                        <option value="other">Other</option>
+                      </select>
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <svg
+                          className="w-5 h-5 text-gray-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                          />
+                        </svg>
+                      </div>
+                      <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                        <svg
+                          className="w-5 h-5 text-gray-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M19 9l-7 7-7-7"
+                          />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Plan Selection */}
+                  <div className="relative">
+                    <label className="block text-purple-200 text-sm font-semibold mb-3 flex items-center">
+                      <svg
+                        className="w-4 h-4 mr-2 text-purple-300"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                      {t('subscription_plan')}
+                    </label>
+                    <div className="relative">
+                      <select
+                        name="plan"
+                        value={codeForm.plan}
+                        onChange={handleCodeFormChange}
+                        className="w-full px-4 py-3 pl-11 rounded-xl bg-white/95 backdrop-blur-sm text-gray-900 border border-white/20 focus:ring-2 focus:ring-purple-300 focus:border-transparent focus:bg-white transition-all duration-300 shadow-lg appearance-none"
+                      >
+                        <option value="30">30 Days - $99</option>
+                        <option value="60">60 Days - $189</option>
+                        <option value="90">90 Days - $269</option>
+                      </select>
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <svg
+                          className="w-5 h-5 text-gray-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                          />
+                        </svg>
+                      </div>
+                      <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                        <svg
+                          className="w-5 h-5 text-gray-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M19 9l-7 7-7-7"
+                          />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
+                  <button
+                    onClick={handlePurchaseLicense}
+                    disabled={generatingCode || !codeForm.accountNumber}
+                    className="group relative w-full sm:w-auto bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-white font-bold py-4 px-8 rounded-2xl transition-all duration-300 flex items-center justify-center shadow-2xl hover:shadow-yellow-500/25 transform hover:-translate-y-1 hover:scale-105 disabled:from-gray-400 disabled:to-gray-500 disabled:transform-none disabled:shadow-none"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-yellow-300 to-orange-400 rounded-2xl blur opacity-30 group-hover:opacity-40 transition duration-300"></div>
+                    <div className="relative flex items-center">
+                      {generatingCode ? (
+                        <>
+                          <svg
+                            className="animate-spin -ml-1 mr-3 h-6 w-6"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                          >
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                            ></circle>
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            ></path>
+                          </svg>
+                          <span className="text-lg">
+                            {t('purchasing_license')}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <svg
+                            className="w-6 h-6 mr-3 group-hover:rotate-12 transition-transform duration-300"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M13 10V3L4 14h7v7l9-11h-7z"
+                            />
+                          </svg>
+                          <span className="text-lg">
+                            {t('purchase_license_now')}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </button>
+
+                  <div className="flex items-center text-purple-200 text-sm">
+                    <svg
+                      className="w-4 h-4 mr-2 text-green-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
                     </svg>
-                  </div>
-                  <div>
-                    <h2 className="text-3xl lg:text-4xl font-bold">{t('purchase_trading_license')}</h2>
-                    <p className="text-purple-200 mt-1 text-lg">{t('purchase_subtitle')}</p>
+                    {t('instant_activation')}
                   </div>
                 </div>
-              </div>
-              
-              <div className="hidden lg:flex items-center space-x-4">
-                <div className="flex items-center space-x-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2">
-                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                  <span className="text-sm font-medium">{t('live_trading')}</span>
-                </div>
-                <div className="flex items-center space-x-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2">
-                  <svg className="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                  </svg>
-                  <span className="text-sm font-medium">{t('premium')}</span>
-                </div>
+
+                {generatedCode && (
+                  <div className="mt-8 bg-gradient-to-r from-white/10 to-white/5 backdrop-blur-sm rounded-2xl border border-white/20 shadow-2xl overflow-hidden">
+                    <div className="bg-gradient-to-r from-green-400/20 to-emerald-400/20 px-6 py-4 border-b border-white/10">
+                      <div className="flex items-center">
+                        <div className="w-10 h-10 bg-gradient-to-br from-green-400 to-emerald-500 rounded-xl flex items-center justify-center mr-4">
+                          <svg
+                            className="w-5 h-5 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-xl text-white mb-1">
+                            {t('license_created_success')}
+                          </h3>
+                          <p className="text-green-200 text-sm">
+                            {t('license_ready_for_payment_activation')}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="p-6">
+                      <div className="bg-gradient-to-r from-gray-900/50 to-gray-800/50 rounded-xl p-4 border border-gray-600/30">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-purple-200 text-sm font-medium">
+                            {t('license_code')}
+                          </span>
+                          <button
+                            onClick={() =>
+                              navigator.clipboard.writeText(generatedCode)
+                            }
+                            className="text-purple-300 hover:text-white transition-colors duration-200 p-1 rounded-lg hover:bg-white/10"
+                            title={t('copy_to_clipboard')}
+                          >
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                              />
+                            </svg>
+                          </button>
+                        </div>
+                        <div className="bg-black/30 rounded-lg p-4 font-mono text-2xl font-bold tracking-wider text-center text-white border border-gray-500/30">
+                          {generatedCode}
+                        </div>
+                      </div>
+                      <div className="mt-4 flex items-center justify-center space-x-4 text-sm">
+                        <div className="flex items-center text-purple-200">
+                          <svg
+                            className="w-4 h-4 mr-2 text-blue-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
+                          {t('activate_within_24h')}
+                        </div>
+                        <div className="w-1 h-1 bg-purple-400 rounded-full"></div>
+                        <div className="flex items-center text-purple-200">
+                          <svg
+                            className="w-4 h-4 mr-2 text-green-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M9 12l2 2 4-4m5.99-4.99v0A9 9 0 1120 12h-4"
+                            />
+                          </svg>
+                          {t('secure_payment_required')}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
+          )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-              {/* Account Number Input */}
-              <div className="relative">
-                <label className="block text-purple-200 text-sm font-semibold mb-3 flex items-center">
-                  <svg className="w-4 h-4 mr-2 text-purple-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                  </svg>
-                  {t('trading_account_number')}
-                </label>
-                <div className="relative">
+          {/* Modern Points System - Redesigned */}
+          <div className="relative overflow-hidden bg-gradient-to-br from-purple-600 via-blue-600 to-indigo-800 rounded-3xl shadow-2xl mb-12">
+            {/* Background Pattern */}
+            <div className="absolute inset-0 opacity-10">
+              <div
+                className="absolute inset-0"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
+                }}
+              />
+            </div>
+
+            <div className="relative p-8 lg:p-12">
+              {/* Header */}
+              <div className="flex flex-col lg:flex-row items-center justify-between mb-8">
+                <div className="text-center lg:text-left mb-6 lg:mb-0">
+                  <div className="flex items-center justify-center lg:justify-start mb-4">
+                    <div className="w-14 h-14 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-2xl flex items-center justify-center mr-4 shadow-xl">
+                      <svg
+                        className="w-7 h-7 text-white"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                    </div>
+                    <div>
+                      <h2 className="text-3xl lg:text-4xl font-bold text-white">
+                        {language === 'th'
+                          ? 'ซื้อใบอนุญาตเทรด'
+                          : 'Buy Trading License'}
+                      </h2>
+                      <p className="text-purple-200 text-lg">
+                        {language === 'th'
+                          ? 'ปลดล็อคความสามารถในการเทรดแบบมืออาชีพทันที'
+                          : 'Unlock professional trading capabilities instantly'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Points Balance Display */}
+                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 text-center lg:text-right">
+                  <p className="text-purple-200 text-sm font-medium mb-1">
+                    {language === 'th' ? 'แต้มของคุณ' : 'Your Points'}
+                  </p>
+                  <div className="text-4xl font-black text-white mb-2">
+                    {user?.points || 0}
+                    <span className="text-lg font-semibold ml-2 opacity-80">
+                      {language === 'th' ? 'แต้ม' : 'PTS'}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => refreshUserData()}
+                    className="text-purple-200 hover:text-white text-sm flex items-center gap-1"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                      />
+                    </svg>
+                    {language === 'th' ? 'รีเฟรช' : 'Refresh'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Main Form Grid */}
+              <div className="grid lg:grid-cols-3 gap-6 mb-8">
+                {/* Trading Account Input */}
+                <div>
+                  <label className="block text-purple-200 text-sm font-semibold mb-3 flex items-center">
+                    <svg
+                      className="w-4 h-4 mr-2"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      />
+                    </svg>
+                    {language === 'th'
+                      ? 'หมายเลขบัญชีเทรด'
+                      : 'Trading Account Number'}
+                  </label>
                   <input
                     type="text"
-                    name="accountNumber"
-                    value={codeForm.accountNumber}
-                    onChange={handleCodeFormChange}
-                    placeholder={t('enter_account_number_placeholder')}
-                    className="w-full px-4 py-3 pl-11 rounded-xl bg-white/95 backdrop-blur-sm text-gray-900 placeholder-gray-500 border border-white/20 focus:ring-2 focus:ring-purple-300 focus:border-transparent focus:bg-white transition-all duration-300 shadow-lg"
+                    placeholder={
+                      language === 'th'
+                        ? 'กรอกหมายเลขบัญชีของคุณ'
+                        : 'Enter your account number'
+                    }
+                    className="w-full px-4 py-3 rounded-xl bg-white/95 text-gray-900 placeholder-gray-500 border border-white/20 focus:ring-2 focus:ring-yellow-400 focus:border-transparent transition-all duration-300"
+                    id="pointsAccountNumber"
                     required
                   />
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                  </div>
                 </div>
-              </div>
 
-              {/* Platform Selection */}
-              <div className="relative">
-                <label className="block text-purple-200 text-sm font-semibold mb-3 flex items-center">
-                  <svg className="w-4 h-4 mr-2 text-purple-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
-                  {t('trading_platform_label')}
-                </label>
-                <div className="relative">
+                {/* Platform Selection */}
+                <div>
+                  <label className="block text-purple-200 text-sm font-semibold mb-3 flex items-center">
+                    <svg
+                      className="w-4 h-4 mr-2"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                      />
+                    </svg>
+                    {language === 'th' ? 'แพลตฟอร์มเทรด' : 'Trading Platform'}
+                  </label>
                   <select
                     name="platform"
                     value={codeForm.platform}
                     onChange={handleCodeFormChange}
-                    className="w-full px-4 py-3 pl-11 rounded-xl bg-white/95 backdrop-blur-sm text-gray-900 border border-white/20 focus:ring-2 focus:ring-purple-300 focus:border-transparent focus:bg-white transition-all duration-300 shadow-lg appearance-none"
+                    className="w-full px-4 py-3 rounded-xl bg-white/95 text-gray-900 border border-white/20 focus:ring-2 focus:ring-yellow-400 focus:border-transparent transition-all duration-300"
                   >
                     <option value="exness">Exness</option>
                     <option value="xm">XM</option>
@@ -806,145 +1795,421 @@ export default function LandingPage() {
                     <option value="fxpro">FxPro</option>
                     <option value="other">Other</option>
                   </select>
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
                 </div>
-              </div>
 
-              {/* Plan Selection */}
-              <div className="relative">
-                <label className="block text-purple-200 text-sm font-semibold mb-3 flex items-center">
-                  <svg className="w-4 h-4 mr-2 text-purple-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  {t('subscription_plan')}
-                </label>
-                <div className="relative">
-                  <select
-                    name="plan"
-                    value={codeForm.plan}
-                    onChange={handleCodeFormChange}
-                    className="w-full px-4 py-3 pl-11 rounded-xl bg-white/95 backdrop-blur-sm text-gray-900 border border-white/20 focus:ring-2 focus:ring-purple-300 focus:border-transparent focus:bg-white transition-all duration-300 shadow-lg appearance-none"
-                  >
-                    <option value="30">30 Days - $99</option>
-                    <option value="60">60 Days - $189</option>
-                    <option value="90">90 Days - $269</option>
-                  </select>
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                {/* Plan Selection (Points Purchase) */}
+                <div>
+                  <label className="block text-purple-200 text-sm font-semibold mb-3 flex items-center">
+                    <svg
+                      className="w-4 h-4 mr-2"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
                     </svg>
-                  </div>
-                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
-              <button
-                onClick={handlePurchaseLicense}
-                disabled={generatingCode || !codeForm.accountNumber}
-                className="group relative w-full sm:w-auto bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-white font-bold py-4 px-8 rounded-2xl transition-all duration-300 flex items-center justify-center shadow-2xl hover:shadow-yellow-500/25 transform hover:-translate-y-1 hover:scale-105 disabled:from-gray-400 disabled:to-gray-500 disabled:transform-none disabled:shadow-none"
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-yellow-300 to-orange-400 rounded-2xl blur opacity-30 group-hover:opacity-40 transition duration-300"></div>
-                <div className="relative flex items-center">
-                  {generatingCode ? (
-                    <>
-                      <svg className="animate-spin -ml-1 mr-3 h-6 w-6" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      <span className="text-lg">{t('purchasing_license')}</span>
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-6 h-6 mr-3 group-hover:rotate-12 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                      <span className="text-lg">{t('purchase_license_now')}</span>
-                    </>
+                    {language === 'th'
+                      ? 'แผนการสมัครสมาชิก'
+                      : 'Subscription Plan'}
+                  </label>
+                  {plansError && (
+                    <div className="text-xs text-red-200 mb-2">
+                      {language === 'th'
+                        ? 'โหลดแผนไม่สำเร็จ'
+                        : 'Failed to load plans'}
+                      : {plansError}
+                    </div>
                   )}
+                  <div className="relative">
+                    <select
+                      className="w-full px-4 py-3 rounded-xl bg-white text-gray-900 border-2 border-yellow-400 focus:ring-4 focus:ring-yellow-300 focus:border-yellow-500 transition-all duration-300 cursor-pointer hover:bg-yellow-50"
+                      id="pointsPlan"
+                      value={codeForm.plan}
+                      onChange={(e) => {
+                        console.log('[Plan Select] Changed to:', e.target.value)
+                        setCodeForm((prev) => ({
+                          ...prev,
+                          plan: e.target.value
+                        }))
+                      }}
+                    >
+                      {loadingPlans && (
+                        <option>
+                          {language === 'th'
+                            ? 'กำลังโหลด...'
+                            : 'Loading plans...'}
+                        </option>
+                      )}
+                      {!loadingPlans && plans.length === 0 && (
+                        <option value="">
+                          {language === 'th'
+                            ? 'ไม่มีแผนพร้อมใช้งาน'
+                            : 'No plans available'}
+                        </option>
+                      )}
+                      {plans.map((p) => (
+                        <option
+                          key={p.id}
+                          value={p.isLifetime ? 'lifetime' : p.days}
+                        >
+                          {p.isLifetime
+                            ? `${p.name} - ${language === 'th' ? 'ตลอดชีพ' : 'Lifetime'} - ${p.points} ${language === 'th' ? 'แต้ม' : 'Pts'}`
+                            : `${p.name || p.days + ' days'} - ${p.days} ${language === 'th' ? 'วัน' : 'Days'} - ${p.points} ${language === 'th' ? 'แต้ม' : 'Pts'}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {/* Points Indicator Below Dropdown */}
+                  {(() => {
+                    const selected = plans.find((p) =>
+                      codeForm.plan === 'lifetime'
+                        ? p.isLifetime
+                        : !p.isLifetime && String(p.days) === codeForm.plan
+                    )
+                    if (selected) {
+                      const hasEnough = (user?.points || 0) >= selected.points
+                      return (
+                        <div
+                          className={`text-xs mt-2 px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 ${hasEnough ? 'bg-green-400/20 text-green-200' : 'bg-red-400/20 text-red-200'}`}
+                        >
+                          <svg
+                            className="w-3.5 h-3.5"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                          <span>
+                            {language === 'th' ? 'ต้องการ' : 'Needs'}{' '}
+                            <strong>{selected.points}</strong>{' '}
+                            {language === 'th' ? 'แต้ม' : 'pts'} •{' '}
+                            {language === 'th' ? 'คุณมี' : 'You have'}{' '}
+                            <strong>{user?.points || 0}</strong>
+                          </span>
+                        </div>
+                      )
+                    }
+                    return null
+                  })()}
                 </div>
-              </button>
-              
-              <div className="flex items-center text-purple-200 text-sm">
-                <svg className="w-4 h-4 mr-2 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                {t('instant_activation')}
+              </div>
+
+              {/* Action Buttons Row */}
+              <div className="flex flex-col sm:flex-row gap-4 mb-8">
+                {/* Buy with Points Button */}
+                <button
+                  onClick={() => {
+                    console.log('[Buy Button] Clicked')
+                    const plan = document.getElementById('pointsPlan').value
+                    const accountNumber = document.getElementById(
+                      'pointsAccountNumber'
+                    )?.value
+                    const platform = codeForm.platform
+
+                    console.log('[Buy Button] Values:', {
+                      plan,
+                      accountNumber,
+                      platform,
+                      userPoints: user?.points
+                    })
+
+                    if (!accountNumber) {
+                      showModalAlert(
+                        language === 'th'
+                          ? 'กรุณากรอกหมายเลขบัญชี'
+                          : 'Please enter account number',
+                        'warning'
+                      )
+                      return
+                    }
+
+                    // Set form data and show modal for confirmation
+                    setBuyPointsForm({
+                      accountNumber,
+                      platform,
+                      plan
+                    })
+                    setShowBuyPointsModal(true)
+                  }}
+                  disabled={(() => {
+                    if (generatingCode || !codeForm.plan) {
+                      console.log(
+                        '[Buy Button] Disabled: generating or no plan',
+                        { generatingCode, plan: codeForm.plan }
+                      )
+                      return true
+                    }
+                    const selected = plans.find((p) =>
+                      codeForm.plan === 'lifetime'
+                        ? p.isLifetime
+                        : !p.isLifetime && String(p.days) === codeForm.plan
+                    )
+                    if (!selected) {
+                      console.log(
+                        '[Buy Button] Disabled: plan not found in list',
+                        {
+                          searchingFor: codeForm.plan,
+                          availablePlans: plans.map((p) => ({
+                            days: p.days,
+                            isLifetime: p.isLifetime
+                          }))
+                        }
+                      )
+                      return true
+                    }
+                    const needed = selected.points
+                    const hasEnough = (user?.points || 0) >= needed
+                    console.log('[Buy Button] Points check:', {
+                      needed,
+                      userPoints: user?.points,
+                      hasEnough
+                    })
+                    return !hasEnough
+                  })()}
+                  className="flex-1 group relative bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-white font-bold py-4 px-8 rounded-2xl transition-all duration-300 flex items-center justify-center shadow-2xl hover:shadow-yellow-500/25 transform hover:-translate-y-1 disabled:from-gray-400 disabled:to-gray-500 disabled:transform-none disabled:shadow-none disabled:cursor-not-allowed"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-yellow-300 to-orange-400 rounded-2xl blur opacity-30 group-hover:opacity-40 transition duration-300"></div>
+                  <div className="relative flex items-center">
+                    {generatingCode ? (
+                      <>
+                        <svg
+                          className="animate-spin -ml-1 mr-3 h-6 w-6"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          ></circle>
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          ></path>
+                        </svg>
+                        <span className="text-lg">
+                          {language === 'th'
+                            ? 'กำลังสร้าง...'
+                            : 'Generating...'}
+                        </span>
+                      </>
+                    ) : (() => {
+                        // Determine required points for selected plan
+                        const selected = plans.find((p) =>
+                          codeForm.plan === 'lifetime'
+                            ? p.isLifetime
+                            : !p.isLifetime && String(p.days) === codeForm.plan
+                        )
+                        const needed = selected
+                          ? selected.points
+                          : parseInt(codeForm.plan || '0', 10)
+                        return (user?.points || 0) < needed
+                      })() ? (
+                      <>
+                        <svg
+                          className="w-6 h-6 mr-3"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+                          />
+                        </svg>
+                        <span className="text-lg">
+                          {language === 'th'
+                            ? 'แต้มไม่เพียงพอ'
+                            : 'Insufficient Points'}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <svg
+                          className="w-6 h-6 mr-3 group-hover:rotate-12 transition-transform duration-300"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M13 10V3L4 14h7v7l9-11h-7z"
+                          />
+                        </svg>
+                        <span className="text-lg">
+                          {language === 'th'
+                            ? 'ซื้อด้วยแต้มทันที'
+                            : 'Buy with Points Now'}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </button>
+
+                {/* Top-up Points Button - Redesigned */}
+                <button
+                  onClick={() => {
+                    setTopUpAmount('')
+                    setShowTopUpModal(true)
+                  }}
+                  className="group flex-1 relative bg-gradient-to-r from-green-400 via-emerald-500 to-teal-600 hover:from-green-500 hover:via-emerald-600 hover:to-teal-700 text-white font-bold py-4 px-8 rounded-2xl transition-all duration-300 flex items-center justify-center shadow-xl hover:shadow-2xl hover:shadow-green-500/50 transform hover:-translate-y-1 hover:scale-105 overflow-hidden"
+                >
+                  {/* Animated background shimmer */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-1000"></div>
+
+                  {/* Icon with animation */}
+                  <div className="relative mr-3 bg-white/20 rounded-full p-2 group-hover:rotate-90 transition-transform duration-300">
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2.5"
+                        d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  </div>
+
+                  {/* Text content */}
+                  <div className="relative flex flex-col items-start">
+                    <span className="text-lg font-extrabold tracking-wide">
+                      {language === 'th' ? 'เติมแต้ม' : 'Top-up Points'}
+                    </span>
+                    <span className="text-xs font-normal opacity-90">
+                      {language === 'th'
+                        ? 'เติมเงิน รับแต้มทันที'
+                        : 'Add funds, get points'}
+                    </span>
+                  </div>
+
+                  {/* Arrow indicator */}
+                  <svg
+                    className="w-5 h-5 ml-3 relative group-hover:translate-x-1 transition-transform duration-300"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2.5"
+                      d="M13 7l5 5m0 0l-5 5m5-5H6"
+                    />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Info Cards */}
+              {/* <div className="grid md:grid-cols-3 gap-4">
+                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 text-center">
+                  <div className="w-10 h-10 bg-green-400 rounded-lg flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <h3 className="text-white font-semibold mb-1">{language === 'th' ? 'เปิดใช้งานทันที' : 'Instant Activation'}</h3>
+                  <p className="text-purple-200 text-sm">{language === 'th' ? 'ไม่ต้องรอการชำระเงิน' : 'No payment waiting'}</p>
+                </div>
+                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 text-center">
+                  <div className="w-10 h-10 bg-blue-400 rounded-lg flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-white font-semibold mb-1">{language === 'th' ? 'ปลอดภัย 100%' : '100% Secure'}</h3>
+                  <p className="text-purple-200 text-sm">{language === 'th' ? 'การเข้ารหัส SSL' : 'SSL Encryption'}</p>
+                </div>
+                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 text-center">
+                  <div className="w-10 h-10 bg-purple-400 rounded-lg flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-white font-semibold mb-1">{language === 'th' ? 'อัตราแลกเปลี่ยน' : 'Exchange Rate'}</h3>
+                  <p className="text-purple-200 text-sm">1 {language === 'th' ? 'แต้ม' : 'Point'} = 1 {language === 'th' ? 'วัน' : 'Day'}</p>
+                </div>
+              </div> */}
+            </div>
+          </div>
+
+          {/* Info Box */}
+          <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-start">
+              <svg
+                className="w-5 h-5 text-blue-400 mt-0.5 mr-3"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <div>
+                <h3 className="text-sm font-medium text-blue-800 mb-1">
+                  {language === 'th'
+                    ? 'วิธีใช้งานระบบแต้ม'
+                    : 'How Points System Works'}
+                </h3>
+                <div className="text-sm text-blue-700">
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>
+                      {language === 'th'
+                        ? 'เติมเงิน: ส่งคำขอเติมเงิน รอแอดมินอนุมัติ'
+                        : 'Top-up: Submit request, wait for admin approval'}
+                    </li>
+                    <li>
+                      {language === 'th'
+                        ? 'อัตราแลกเปลี่ยน: 1 USD = 1 แต้ม = 1 วันใบอนุญาต'
+                        : 'Exchange rate: 1 USD = 1 Point = 1 Day license'}
+                    </li>
+                    <li>
+                      {language === 'th'
+                        ? 'ซื้อใบอนุญาต: ใช้แต้มซื้อได้ทันที ไม่ต้องรอการชำระเงิน'
+                        : 'Buy license: Use points instantly, no payment waiting'}
+                    </li>
+                    <li>
+                      {language === 'th'
+                        ? 'ใบอนุญาตจะเปิดใช้งานทันทีหลังจากซื้อ'
+                        : 'License activates immediately after purchase'}
+                    </li>
+                  </ul>
+                </div>
               </div>
             </div>
-
-            {generatedCode && (
-              <div className="mt-8 bg-gradient-to-r from-white/10 to-white/5 backdrop-blur-sm rounded-2xl border border-white/20 shadow-2xl overflow-hidden">
-                <div className="bg-gradient-to-r from-green-400/20 to-emerald-400/20 px-6 py-4 border-b border-white/10">
-                  <div className="flex items-center">
-                    <div className="w-10 h-10 bg-gradient-to-br from-green-400 to-emerald-500 rounded-xl flex items-center justify-center mr-4">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-xl text-white mb-1">{t('license_created_success')}</h3>
-                      <p className="text-green-200 text-sm">{t('license_ready_for_payment_activation')}</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="p-6">
-                  <div className="bg-gradient-to-r from-gray-900/50 to-gray-800/50 rounded-xl p-4 border border-gray-600/30">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-purple-200 text-sm font-medium">{t('license_code')}</span>
-                      <button 
-                        onClick={() => navigator.clipboard.writeText(generatedCode)}
-                        className="text-purple-300 hover:text-white transition-colors duration-200 p-1 rounded-lg hover:bg-white/10"
-                        title={t('copy_to_clipboard')}
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                      </button>
-                    </div>
-                    <div className="bg-black/30 rounded-lg p-4 font-mono text-2xl font-bold tracking-wider text-center text-white border border-gray-500/30">
-                      {generatedCode}
-                    </div>
-                  </div>
-                  <div className="mt-4 flex items-center justify-center space-x-4 text-sm">
-                    <div className="flex items-center text-purple-200">
-                      <svg className="w-4 h-4 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      {t('activate_within_24h')}
-                    </div>
-                    <div className="w-1 h-1 bg-purple-400 rounded-full"></div>
-                    <div className="flex items-center text-purple-200">
-                      <svg className="w-4 h-4 mr-2 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.99-4.99v0A9 9 0 1120 12h-4" />
-                      </svg>
-                      {t('secure_payment_required')}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
         {/* My Trading Licenses Section */}
         <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">{t('my_trading_licenses') || t('license_header')}</h2>
+            <h2 className="text-2xl font-bold text-gray-900">
+              {t('my_trading_licenses') || t('license_header')}
+            </h2>
             <button
               onClick={fetchMyCodes}
               disabled={loadingCodes}
@@ -996,7 +2261,9 @@ export default function LandingPage() {
                 <div className="text-2xl font-bold text-green-600">
                   {myCodes.filter((code) => code.status === 'activated').length}
                 </div>
-                <div className="text-sm text-green-700">{t('active_licenses')}</div>
+                <div className="text-sm text-green-700">
+                  {t('active_licenses')}
+                </div>
               </div>
               <div className="bg-yellow-50 rounded-lg p-4">
                 <div className="text-2xl font-bold text-yellow-600">
@@ -1005,7 +2272,9 @@ export default function LandingPage() {
                       .length
                   }
                 </div>
-                <div className="text-sm text-yellow-700">{t('pending_payment')}</div>
+                <div className="text-sm text-yellow-700">
+                  {t('pending_payment')}
+                </div>
               </div>
               <div className="bg-gray-50 rounded-lg p-4">
                 <div className="text-2xl font-bold text-gray-600">
@@ -1016,7 +2285,9 @@ export default function LandingPage() {
                     ).length
                   }
                 </div>
-                <div className="text-sm text-gray-700">{t('expired_cancelled')}</div>
+                <div className="text-sm text-gray-700">
+                  {t('expired_cancelled')}
+                </div>
               </div>
               <div className="bg-blue-50 rounded-lg p-4">
                 <div className="text-2xl font-bold text-blue-600">
@@ -1034,7 +2305,9 @@ export default function LandingPage() {
                     return expiringSoon
                   })()}
                 </div>
-                <div className="text-sm text-blue-700">{t('expiring_soon')}</div>
+                <div className="text-sm text-blue-700">
+                  {t('expiring_soon')}
+                </div>
               </div>
             </div>
           )}
@@ -1062,14 +2335,30 @@ export default function LandingPage() {
               <table className="w-full table-auto">
                 <thead>
                   <tr className="bg-gray-50">
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">{t('license_header')}</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">{t('platform_header')}</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">{t('account_header')}</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">{t('plan_header')}</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">{t('status_header')}</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">{t('expires_header')}</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">{t('time_left_header')}</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">{t('actions_header')}</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                      {t('license_header')}
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                      {t('platform_header')}
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                      {t('account_header')}
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                      {t('plan_header')}
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                      {t('status_header')}
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                      {t('expires_header')}
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                      {t('time_left_header')}
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                      {t('actions_header')}
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -1086,7 +2375,25 @@ export default function LandingPage() {
                           {code.accountNumber}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900">
-                          {code.plan} days
+                          {code.cumulativePlanDays &&
+                          code.cumulativePlanDays > code.plan ? (
+                            <div className="flex flex-col leading-tight">
+                              <span>
+                                {code.plan} {t('days') || 'days'}
+                                <span className="text-xs text-gray-500 ml-1">
+                                  (+{code.cumulativePlanDays - code.plan})
+                                </span>
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                = {code.cumulativePlanDays}{' '}
+                                {t('days') || 'days'}
+                              </span>
+                            </div>
+                          ) : (
+                            <span>
+                              {code.plan} {t('days') || 'days'}
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <span
@@ -1166,7 +2473,7 @@ export default function LandingPage() {
                                 )
                               })()
                             : code.status === 'pending_payment'
-          ? t('pay_to_activate')
+                              ? t('pay_to_activate')
                               : '-'}
                         </td>
                         <td className="px-4 py-3 text-sm">
@@ -1192,7 +2499,9 @@ export default function LandingPage() {
                                     timeRemaining.days > 0 && (
                                       <div className="text-xs text-gray-500">
                                         {timeRemaining.days} day
-                                        {timeRemaining.days !== 1 ? 's' : ''}{' '}
+                                        {timeRemaining.days !== 1
+                                          ? 's'
+                                          : ''}{' '}
                                         left
                                       </div>
                                     )}
@@ -1200,7 +2509,9 @@ export default function LandingPage() {
                               )
                             })()
                           ) : code.status === 'pending_payment' ? (
-                            <span className="text-gray-400 text-xs">{t('pay_to_see_countdown')}</span>
+                            <span className="text-gray-400 text-xs">
+                              {t('pay_to_see_countdown')}
+                            </span>
                           ) : (
                             <span className="text-gray-400">-</span>
                           )}
@@ -1215,10 +2526,14 @@ export default function LandingPage() {
                             </button>
                           )}
                           {code.status === 'pending_payment' && (
-                            <span className="text-xs text-gray-400">{t('pay_to_activate')}</span>
+                            <span className="text-xs text-gray-400">
+                              {t('pay_to_activate')}
+                            </span>
                           )}
                           {code.status === 'expired' && (
-                            <span className="text-xs text-red-400">{t('expired')}</span>
+                            <span className="text-xs text-red-400">
+                              {t('expired')}
+                            </span>
                           )}
                         </td>
                       </tr>
@@ -1300,36 +2615,209 @@ export default function LandingPage() {
             })()}
         </div>
 
-        {/* History Section */}
-        <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">{t('history_title')}</h2>
+        {/* History Section - Redesigned */}
+        <div className="bg-gradient-to-br from-slate-50 to-gray-100 rounded-3xl shadow-2xl p-8 mb-8 border border-gray-200">
+          {/* Header with animated icon */}
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center">
+              <div className="relative">
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl blur opacity-30 animate-pulse"></div>
+                <div className="relative w-14 h-14 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
+                  <svg
+                    className="w-7 h-7 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                </div>
+              </div>
+              <div className="ml-4">
+                <h2 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                  {t('history_title')}
+                </h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  {language === 'th'
+                    ? 'ติดตามธุรกรรมและกิจกรรมทั้งหมดของคุณ'
+                    : 'Track all your transactions and activities'}
+                </p>
+              </div>
+            </div>
             <button
               onClick={fetchHistory}
               disabled={historyLoading}
-              className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg transition duration-200 flex items-center"
+              className="group relative bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-white font-semibold px-6 py-3 rounded-xl transition-all duration-300 flex items-center shadow-lg hover:shadow-xl hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {historyLoading ? (
-                <svg className="animate-spin w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <svg
+                  className="animate-spin w-5 h-5 mr-2"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
                 </svg>
               ) : (
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                <svg
+                  className="w-5 h-5 mr-2 group-hover:rotate-180 transition-transform duration-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
                 </svg>
               )}
               {t('refresh')}
             </button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Purchase History */}
+          {/* Tab Navigation */}
+          <div className="flex flex-wrap gap-2 mb-6 bg-white rounded-xl p-2 shadow-inner">
+            <button
+              onClick={() => setActiveHistoryTab('purchases')}
+              className={`flex-1 min-w-[140px] px-4 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
+                activeHistoryTab === 'purchases'
+                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg scale-105'
+                  : 'bg-transparent text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"
+                />
+              </svg>
+              <span>{t('purchase_history')}</span>
+              <span
+                className={`text-xs px-2 py-1 rounded-full ${
+                  activeHistoryTab === 'purchases'
+                    ? 'bg-white/20'
+                    : 'bg-blue-100 text-blue-700'
+                }`}
+              >
+                {purchaseHistory.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveHistoryTab('extensions')}
+              className={`flex-1 min-w-[140px] px-4 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
+                activeHistoryTab === 'extensions'
+                  ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg scale-105'
+                  : 'bg-transparent text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <span>{t('extension_history')}</span>
+              <span
+                className={`text-xs px-2 py-1 rounded-full ${
+                  activeHistoryTab === 'extensions'
+                    ? 'bg-white/20'
+                    : 'bg-purple-100 text-purple-700'
+                }`}
+              >
+                {extensionHistory.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveHistoryTab('topups')}
+              className={`flex-1 min-w-[140px] px-4 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
+                activeHistoryTab === 'topups'
+                  ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg scale-105'
+                  : 'bg-transparent text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <span>{language === 'th' ? 'เติมแต้ม' : 'Top-ups'}</span>
+              <span
+                className={`text-xs px-2 py-1 rounded-full ${
+                  activeHistoryTab === 'topups'
+                    ? 'bg-white/20'
+                    : 'bg-green-100 text-green-700'
+                }`}
+              >
+                {topUpHistory.length}
+              </span>
+            </button>
+          </div>
+
+          {/* Tab Content */}
+          <div className="bg-white rounded-2xl shadow-lg p-6 min-h-[400px]">
+            {/* Purchase History Tab */}
+            {activeHistoryTab === 'purchases' && (
             <div>
               <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-                <svg className="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8V4m0 4a4 4 0 100 8m0-8a4 4 0 010 8m6 4H6" /></svg>
+                <svg
+                  className="w-5 h-5 mr-2 text-blue-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M12 8V4m0 4a4 4 0 100 8m0-8a4 4 0 010 8m6 4H6"
+                  />
+                </svg>
                 {t('purchase_history')}
-                <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{purchaseHistory.length}</span>
+                <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                  {purchaseHistory.length}
+                </span>
               </h3>
               {purchaseHistory.length === 0 ? (
                 <p className="text-sm text-gray-500">{t('no_history_yet')}</p>
@@ -1338,23 +2826,41 @@ export default function LandingPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-3 py-2 text-left font-medium text-gray-700">{t('license_code')}</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-700">{t('plan_days')}</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-700">{t('price_label')}</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-700">{t('status_label')}</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-700">{t('created_at')}</th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-700">
+                          {t('license_code')}
+                        </th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-700">
+                          {t('plan_days')}
+                        </th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-700">
+                          {t('price_label')}
+                        </th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-700">
+                          {t('status_label')}
+                        </th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-700">
+                          {t('created_at')}
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {purchaseHistory.map(item => (
+                      {purchaseHistory.map((item) => (
                         <tr key={item.id} className="hover:bg-gray-50">
-                          <td className="px-3 py-2 font-mono text-xs text-blue-600 font-semibold">{item.licenseCode}</td>
-                          <td className="px-3 py-2">{item.planDays}</td>
-                          <td className="px-3 py-2">${item.price}</td>
-                          <td className="px-3 py-2">
-                            <span className={`inline-flex px-2 py-0.5 text-xs rounded-full font-medium ${item.status === 'activated' ? 'bg-green-100 text-green-700' : item.status === 'paid' ? 'bg-blue-100 text-blue-700' : item.status === 'pending_payment' ? 'bg-yellow-100 text-yellow-700' : item.status === 'expired' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>{item.status.replace('_',' ')}</span>
+                          <td className="px-3 py-2 font-mono text-xs text-blue-600 font-semibold">
+                            {item.licenseCode}
                           </td>
-                          <td className="px-3 py-2 text-xs text-gray-500">{new Date(item.createdAt).toLocaleDateString()}</td>
+                          <td className="px-3 py-2">{item.planDays}</td>
+                          <td className="px-3 py-2">฿{item.price}</td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={`inline-flex px-2 py-0.5 text-xs rounded-full font-medium ${item.status === 'activated' ? 'bg-green-100 text-green-700' : item.status === 'paid' ? 'bg-blue-100 text-blue-700' : item.status === 'pending_payment' ? 'bg-yellow-100 text-yellow-700' : item.status === 'expired' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}
+                            >
+                              {item.status.replace('_', ' ')}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-gray-500">
+                            {new Date(item.createdAt).toLocaleDateString()}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1362,13 +2868,29 @@ export default function LandingPage() {
                 </div>
               )}
             </div>
+            )}
 
-            {/* Extension History */}
+            {/* Extension History Tab */}
+            {activeHistoryTab === 'extensions' && (
             <div>
               <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-                <svg className="w-5 h-5 mr-2 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <svg
+                  className="w-5 h-5 mr-2 text-purple-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
                 {t('extension_history')}
-                <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">{extensionHistory.length}</span>
+                <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+                  {extensionHistory.length}
+                </span>
               </h3>
               {extensionHistory.length === 0 ? (
                 <p className="text-sm text-gray-500">{t('no_history_yet')}</p>
@@ -1377,23 +2899,65 @@ export default function LandingPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-3 py-2 text-left font-medium text-gray-700">{t('license_code')}</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-700">{t('requested_days')}</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-700">{t('status_label')}</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-700">{t('requested_on')}</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-700">{t('processed_on')}</th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-700">
+                          {t('license_code')}
+                        </th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-700">
+                          {t('requested_days')}
+                        </th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-700">
+                          {language === 'th'
+                            ? 'รวมแผน (วัน)'
+                            : 'Total Plan (days)'}
+                        </th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-700">
+                          {t('status_label')}
+                        </th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-700">
+                          {t('requested_on')}
+                        </th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-700">
+                          {t('processed_on')}
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {extensionHistory.map(item => (
+                      {extensionHistory.map((item) => (
                         <tr key={item.id} className="hover:bg-gray-50">
-                          <td className="px-3 py-2 font-mono text-xs text-purple-600 font-semibold">{item.licenseCode}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-purple-600 font-semibold">
+                            {item.licenseCode}
+                          </td>
                           <td className="px-3 py-2">{item.requestedDays}</td>
                           <td className="px-3 py-2">
-                            <span className={`inline-flex px-2 py-0.5 text-xs rounded-full font-medium ${item.status === 'approved' ? 'bg-green-100 text-green-700' : item.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{item.status}</span>
+                            {item.cumulativePlanDays ? (
+                              <span className="inline-flex items-center space-x-1">
+                                <span>{item.cumulativePlanDays}</span>
+                                {item.totalExtendedDays ? (
+                                  <span className="text-xs text-gray-400">
+                                    (+{item.totalExtendedDays}{' '}
+                                    {language === 'th' ? 'ขยาย' : 'extended'})
+                                  </span>
+                                ) : null}
+                              </span>
+                            ) : (
+                              '-'
+                            )}
                           </td>
-                          <td className="px-3 py-2 text-xs text-gray-500">{new Date(item.requestedAt).toLocaleDateString()}</td>
-                          <td className="px-3 py-2 text-xs text-gray-500">{item.processedAt ? new Date(item.processedAt).toLocaleDateString() : '-'}</td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={`inline-flex px-2 py-0.5 text-xs rounded-full font-medium ${item.status === 'approved' ? 'bg-green-100 text-green-700' : item.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}
+                            >
+                              {item.status}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-gray-500">
+                            {new Date(item.requestedAt).toLocaleDateString()}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-gray-500">
+                            {item.processedAt
+                              ? new Date(item.processedAt).toLocaleDateString()
+                              : '-'}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1401,6 +2965,141 @@ export default function LandingPage() {
                 </div>
               )}
             </div>
+            )}
+
+            {/* Top-up History Tab */}
+            {activeHistoryTab === 'topups' && (
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                <svg
+                  className="w-5 h-5 mr-2 text-green-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                {language === 'th' ? 'ประวัติการเติมแต้ม' : 'Top-up History'}
+                <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                  {topUpHistory.length}
+                </span>
+              </h3>
+              {topUpHistory.length === 0 ? (
+                <p className="text-sm text-gray-500">{t('no_history_yet')}</p>
+              ) : (
+                <div className="overflow-x-auto border border-gray-100 rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                          {language === 'th' ? 'จำนวนเงิน' : 'Amount'}
+                        </th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                          {language === 'th' ? 'แต้มที่ได้รับ' : 'Points'}
+                        </th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                          {language === 'th'
+                            ? 'วิธีชำระเงิน'
+                            : 'Payment Method'}
+                        </th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                          {t('status_label')}
+                        </th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                          {language === 'th' ? 'วันที่ขอ' : 'Requested On'}
+                        </th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                          {language === 'th' ? 'วันที่อนุมัติ' : 'Processed On'}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {topUpHistory.map((item) => (
+                        <tr key={item.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm font-semibold text-green-600">
+                            ฿{item.amount.toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            <span className="inline-flex items-center px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
+                              {item.points} {language === 'th' ? 'แต้ม' : 'pts'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-900 capitalize">
+                            {item.paymentMethod.replace('_', ' ')}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                item.status === 'approved'
+                                  ? 'bg-green-100 text-green-800'
+                                  : item.status === 'rejected'
+                                    ? 'bg-red-100 text-red-800'
+                                    : 'bg-yellow-100 text-yellow-800'
+                              }`}
+                            >
+                              {item.status === 'approved'
+                                ? language === 'th'
+                                  ? 'อนุมัติแล้ว'
+                                  : 'Approved'
+                                : item.status === 'rejected'
+                                  ? language === 'th'
+                                    ? 'ปฏิเสธ'
+                                    : 'Rejected'
+                                  : language === 'th'
+                                    ? 'รอดำเนินการ'
+                                    : 'Pending'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-900">
+                            {new Date(item.createdAt).toLocaleDateString(
+                              language === 'th' ? 'th-TH' : 'en-US'
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-900">
+                            {item.processedAt
+                              ? new Date(item.processedAt).toLocaleDateString(
+                                  language === 'th' ? 'th-TH' : 'en-US'
+                                )
+                              : '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {/* Show rejection reason if exists */}
+                  {topUpHistory.some(
+                    (item) => item.status === 'rejected' && item.rejectionReason
+                  ) && (
+                    <div className="border-t border-gray-100 p-3 bg-red-50">
+                      <p className="text-xs font-medium text-red-700 mb-2">
+                        {language === 'th'
+                          ? 'เหตุผลการปฏิเสธ:'
+                          : 'Rejection Reasons:'}
+                      </p>
+                      {topUpHistory
+                        .filter(
+                          (item) =>
+                            item.status === 'rejected' && item.rejectionReason
+                        )
+                        .map((item) => (
+                          <div
+                            key={item.id}
+                            className="text-xs text-red-600 mb-1"
+                          >
+                            • ฿{item.amount} - {item.rejectionReason}
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            )}
           </div>
         </div>
 
@@ -1422,6 +3121,43 @@ export default function LandingPage() {
               </h3>
               <p className="text-green-700 text-lg">{user?.email}</p>
             </div>
+                    {recentPointsLicense && (
+                      <div className="mb-4 p-4 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow flex items-start justify-between">
+                        <div>
+                          <div className="text-xs uppercase tracking-wide opacity-80">
+                            {language === 'th' ? 'สร้างสำเร็จ' : 'Generated'}
+                          </div>
+                          <div className="font-mono text-sm md:text-base font-semibold break-all">
+                            {recentPointsLicense.code}
+                          </div>
+                          <div className="text-xs mt-1 opacity-80">
+                            {language === 'th' ? 'คลิกคัดลอกเพื่อนำไปใช้ในระบบเทรด' : 'Copy and use this license in your trading system'}
+                          </div>
+                          {recentPointsLicense.expiresAtThai && (
+                            <div className="text-[11px] mt-1 opacity-70">
+                              {language === 'th' ? 'วันหมดอายุ (เวลาไทย): ' : 'Expiry (Thai time): '} {recentPointsLicense.expiresAtThai}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end space-y-2 ml-4">
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(recentPointsLicense.code)
+                              showNotification(language === 'th' ? 'คัดลอกโค้ดแล้ว' : 'Code copied')
+                            }}
+                            className="px-3 py-1.5 text-xs font-medium rounded bg-white/90 text-emerald-600 hover:bg-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-white shadow"
+                          >
+                            {language === 'th' ? 'คัดลอก' : 'Copy'}
+                          </button>
+                          <button
+                            onClick={() => setRecentPointsLicense(null)}
+                            className="px-2 py-1 text-[10px] rounded text-white/70 hover:text-white"
+                          >
+                            {language === 'th' ? 'ซ่อน' : 'Hide'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
           </div>
         </div> */}
 
@@ -1481,7 +3217,7 @@ export default function LandingPage() {
 
       {/* Extend Code Modal */}
       {showExtendModal && (
-  <div className="fixed inset-0 bg-gradient-to-br from-black/40 via-gray-800/30 to-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-gradient-to-br from-black/40 via-gray-800/30 to-black/40 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full mx-4">
             <div className="text-center mb-6">
               <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4">
@@ -1499,7 +3235,9 @@ export default function LandingPage() {
                   />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-gray-900 mb-2">{t('extend_trading_license')}</h3>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">
+                {t('extend_trading_license')}
+              </h3>
               <p className="text-gray-600 mb-4">
                 {t('code_label')}{' '}
                 <span className="font-mono font-bold text-blue-600">
@@ -1526,19 +3264,72 @@ export default function LandingPage() {
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   required
                 >
-                  <option value="7">7 Days (Trial Extension)</option>
-                  <option value="30">30 Days (Monthly Extension)</option>
-                  <option value="90">90 Days (Quarterly Extension)</option>
-                  <option value="180">180 Days (Semi-Annual Extension)</option>
-                  <option value="365">365 Days (Annual Extension)</option>
+                  <option value="7">
+                    7 {language === 'th' ? 'วัน' : 'Days'} (7{' '}
+                    {language === 'th' ? 'แต้ม' : 'Points'})
+                  </option>
+                  <option value="30">
+                    30 {language === 'th' ? 'วัน' : 'Days'} (30{' '}
+                    {language === 'th' ? 'แต้ม' : 'Points'})
+                  </option>
+                  <option value="60">
+                    60 {language === 'th' ? 'วัน' : 'Days'} (60{' '}
+                    {language === 'th' ? 'แต้ม' : 'Points'})
+                  </option>
+                  <option value="90">
+                    90 {language === 'th' ? 'วัน' : 'Days'} (90{' '}
+                    {language === 'th' ? 'แต้ม' : 'Points'})
+                  </option>
+                  <option value="180">
+                    180 {language === 'th' ? 'วัน' : 'Days'} (180{' '}
+                    {language === 'th' ? 'แต้ม' : 'Points'})
+                  </option>
+                  <option value="365">
+                    365 {language === 'th' ? 'วัน' : 'Days'} (365{' '}
+                    {language === 'th' ? 'แต้ม' : 'Points'})
+                  </option>
                 </select>
-                <p className="text-xs text-gray-500 mt-1">{t('extension_plan_helper')}</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {language === 'th'
+                    ? '1 แต้ม = 1 วัน'
+                    : '1 Point = 1 Day Extension'}
+                </p>
               </div>
 
-              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+              {/* Points Info */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-blue-800">
+                    {language === 'th' ? 'แต้มที่จำเป็น' : 'Required Points'}:
+                  </span>
+                  <span className="text-lg font-bold text-blue-600">
+                    {parseInt(extendPlan)}{' '}
+                    {language === 'th' ? 'แต้ม' : 'Points'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-blue-800">
+                    {language === 'th' ? 'แต้มคงเหลือ' : 'Your Points'}:
+                  </span>
+                  <span
+                    className={`text-lg font-bold ${user?.points >= parseInt(extendPlan) ? 'text-green-600' : 'text-red-600'}`}
+                  >
+                    {user?.points || 0} {language === 'th' ? 'แต้ม' : 'Points'}
+                  </span>
+                </div>
+                {user?.points < parseInt(extendPlan) && (
+                  <div className="mt-2 text-sm text-red-600">
+                    {language === 'th'
+                      ? '⚠️ แต้มไม่เพียงพอ! กรุณาเติมเงินเพื่อเพิ่มแต้ม'
+                      : '⚠️ Insufficient points! Please top up to add more points.'}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                 <div className="flex items-start">
                   <svg
-                    className="w-5 h-5 text-orange-400 mt-0.5 mr-3"
+                    className="w-5 h-5 text-green-400 mt-0.5 mr-3"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -1547,18 +3338,37 @@ export default function LandingPage() {
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth="2"
-                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.996-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+                      d="M13 10V3L4 14h7v7l9-11h-7z"
                     ></path>
                   </svg>
                   <div>
-                    <h3 className="text-sm font-medium text-orange-800 mb-1">{t('admin_approval_required')}</h3>
-                    <div className="text-sm text-orange-700">
+                    <h3 className="text-sm font-medium text-green-800 mb-1">
+                      {language === 'th'
+                        ? 'ขยายใบอนุญาตทันที!'
+                        : 'Instant License Extension!'}
+                    </h3>
+                    <div className="text-sm text-green-700">
                       <ul className="list-disc list-inside space-y-1">
-                        <li>{t('extension_bullet_admin_verification')}</li>
-                        <li>{t('extension_bullet_request_submitted')}</li>
-                        <li>{t('extension_bullet_effect_after_approval')}</li>
-                        <li>{t('extension_bullet_receive_notification')}</li>
-                        <li>{t('extension_bullet_same_license_key')}</li>
+                        <li>
+                          {language === 'th'
+                            ? 'แต้มจะถูกหักทันทีหลังจากกดยืนยัน'
+                            : 'Points will be deducted immediately upon confirmation'}
+                        </li>
+                        <li>
+                          {language === 'th'
+                            ? 'ใบอนุญาตของคุณจะถูกขยายทันที'
+                            : 'Your license will be extended instantly'}
+                        </li>
+                        <li>
+                          {language === 'th'
+                            ? 'ไม่จำเป็นต้องรออนุมัติจากแอดมิน'
+                            : 'No admin approval required'}
+                        </li>
+                        <li>
+                          {language === 'th'
+                            ? 'ใบอนุญาตเดิมจะยังคงใช้งานได้'
+                            : 'Same license key continues to work'}
+                        </li>
                       </ul>
                     </div>
                   </div>
@@ -1579,7 +3389,11 @@ export default function LandingPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={extendingCode || !extendPlan}
+                  disabled={
+                    extendingCode ||
+                    !extendPlan ||
+                    user?.points < parseInt(extendPlan)
+                  }
                   className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                 >
                   {extendingCode ? (
@@ -1603,10 +3417,27 @@ export default function LandingPage() {
                           d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                         ></path>
                       </svg>
-                      {t('extending')}
+                      {language === 'th' ? 'กำลังขยาย...' : 'Extending...'}
                     </>
                   ) : (
-                    t('submit_extension_request')
+                    <>
+                      <svg
+                        className="w-5 h-5 mr-2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M13 10V3L4 14h7v7l9-11h-7z"
+                        />
+                      </svg>
+                      {language === 'th' ? 'ขยายทันที' : 'Extend Now'} (
+                      {parseInt(extendPlan)}{' '}
+                      {language === 'th' ? 'แต้ม' : 'Points'})
+                    </>
                   )}
                 </button>
               </div>
@@ -1616,34 +3447,509 @@ export default function LandingPage() {
       )}
 
       {/* Notifications */}
-      <div className="fixed top-4 right-4 z-50 space-y-2">
-        {notifications.map((notification) => (
-          <div
-            key={notification.id}
-            className={`max-w-sm p-4 rounded-lg shadow-lg transition-all duration-300 ${
-              notification.type === 'success'
-                ? 'bg-green-500 text-white'
-                : notification.type === 'error'
-                  ? 'bg-red-500 text-white'
-                  : 'bg-blue-500 text-white'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium">{notification.message}</p>
+      <div className="fixed top-4 right-4 z-50 flex flex-col space-y-2 w-80">
+        {notifications.map((notification) => {
+          const baseColor =
+            notification.type === 'success'
+              ? 'bg-green-500'
+              : notification.type === 'error'
+                ? 'bg-red-500'
+                : notification.type === 'warning'
+                  ? 'bg-yellow-500'
+                  : 'bg-blue-500'
+          return (
+            <div
+              key={notification.id}
+              className={`group relative overflow-hidden p-4 pr-10 rounded-lg shadow-lg text-white transition-all duration-300 ease-out ${baseColor} ${notification.closing ? 'opacity-0 translate-x-8 max-h-0 py-0 mt-0 mb-0' : 'opacity-100 translate-x-0'} `}
+            >
+              <div className="absolute inset-x-0 bottom-0 h-0.5 bg-white/20">
+                <div className="h-full bg-white/60 origin-left animate-notif-shrink-5s" />
+              </div>
+              <p className="text-sm font-medium break-words pr-2">
+                {notification.message}
+              </p>
               <button
-                onClick={() =>
+                onClick={() => {
+                  // trigger closing animation
                   setNotifications((prev) =>
-                    prev.filter((n) => n.id !== notification.id)
+                    prev.map((n) =>
+                      n.id === notification.id ? { ...n, closing: true } : n
+                    )
                   )
-                }
-                className="ml-2 text-white hover:text-gray-200"
+                  setTimeout(() => {
+                    setNotifications((prev) =>
+                      prev.filter((n) => n.id !== notification.id)
+                    )
+                  }, 300)
+                }}
+                className="absolute top-1 right-1 px-2 py-1 text-xs rounded opacity-70 hover:opacity-100 transition-colors"
+                aria-label="Close notification"
               >
                 ×
               </button>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
+
+      {/* Buy Points Modal */}
+      {showBuyPointsModal && (
+        <div className="fixed inset-0 bg-gradient-to-br from-black/40 via-gray-800/30 to-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-8 max-w-lg w-full mx-4">
+            <div className="text-center mb-6">
+              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 mb-4">
+                <svg
+                  className="h-8 w-8 text-blue-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-2">
+                {language === 'th'
+                  ? 'ยืนยันการซื้อใบอนุญาต'
+                  : 'Confirm License Purchase'}
+              </h3>
+              <p className="text-gray-600">
+                {language === 'th'
+                  ? 'กรุณาตรวจสอบข้อมูลก่อนดำเนินการ'
+                  : 'Please review your purchase details'}
+              </p>
+            </div>
+
+            {/* Purchase Details */}
+            <div className="bg-gray-50 rounded-lg p-6 mb-6">
+              <h4 className="font-semibold text-gray-800 mb-4 flex items-center">
+                <svg
+                  className="w-5 h-5 mr-2 text-blue-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                {language === 'th' ? 'รายละเอียดการซื้อ' : 'Purchase Details'}
+              </h4>
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">
+                    {language === 'th' ? 'บัญชีเทรด:' : 'Trading Account:'}
+                  </span>
+                  <span className="font-mono font-semibold">
+                    {buyPointsForm.accountNumber}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">
+                    {language === 'th' ? 'แพลตฟอร์ม:' : 'Platform:'}
+                  </span>
+                  <span className="font-semibold capitalize">
+                    {buyPointsForm.platform}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">
+                    {language === 'th' ? 'แผน:' : 'Plan:'}
+                  </span>
+                  <span className="font-semibold">
+                    {(() => {
+                      const sel = plans.find((p) =>
+                        buyPointsForm.plan === 'lifetime'
+                          ? p.isLifetime
+                          : !p.isLifetime &&
+                            String(p.days) === String(buyPointsForm.plan)
+                      )
+                      if (!sel) return buyPointsForm.plan
+                      if (sel.isLifetime)
+                        return `${sel.name} (${language === 'th' ? 'ตลอดชีพ' : 'Lifetime'})`
+                      return `${sel.name || sel.days + ' days'} (${sel.days} ${language === 'th' ? 'วัน' : 'Days'})`
+                    })()}
+                  </span>
+                </div>
+                <hr className="my-3" />
+                <div className="flex justify-between text-lg">
+                  <span className="font-semibold text-gray-800">
+                    {language === 'th' ? 'แต้มที่ต้องใช้:' : 'Points Required:'}
+                  </span>
+                  <span className="font-bold text-blue-600">
+                    {(() => {
+                      const sel = plans.find((p) =>
+                        buyPointsForm.plan === 'lifetime'
+                          ? p.isLifetime
+                          : !p.isLifetime &&
+                            String(p.days) === String(buyPointsForm.plan)
+                      )
+                      return sel ? sel.points : buyPointsForm.plan
+                    })()}{' '}
+                    {language === 'th' ? 'แต้ม' : 'Points'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">
+                    {language === 'th' ? 'แต้มคงเหลือ:' : 'Remaining Points:'}
+                  </span>
+                  <span className="font-semibold text-gray-800">
+                    {(() => {
+                      const sel = plans.find((p) =>
+                        buyPointsForm.plan === 'lifetime'
+                          ? p.isLifetime
+                          : !p.isLifetime &&
+                            String(p.days) === String(buyPointsForm.plan)
+                      )
+                      const cost = sel
+                        ? sel.points
+                        : parseInt(buyPointsForm.plan || '0', 10)
+                      return Math.max(0, (user?.points || 0) - cost)
+                    })()}{' '}
+                    {language === 'th' ? 'แต้ม' : 'Points'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Instant Activation Notice */}
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+              <div className="flex items-start">
+                <svg
+                  className="w-5 h-5 text-green-400 mt-0.5 mr-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+                <div>
+                  <h3 className="text-sm font-medium text-green-800 mb-1">
+                    {language === 'th'
+                      ? '🚀 เปิดใช้งานทันที!'
+                      : '🚀 Instant Activation!'}
+                  </h3>
+                  <div className="text-sm text-green-700">
+                    <ul className="list-disc list-inside space-y-1">
+                      <li>
+                        {language === 'th'
+                          ? 'แต้มจะถูกหักทันทีหลังจากยืนยัน'
+                          : 'Points will be deducted immediately'}
+                      </li>
+                      <li>
+                        {language === 'th'
+                          ? 'ใบอนุญาตจะเปิดใช้งานทันที'
+                          : 'License will be activated instantly'}
+                      </li>
+                      <li>
+                        {language === 'th'
+                          ? 'ไม่ต้องรอการชำระเงิน'
+                          : 'No payment processing required'}
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBuyPointsModal(false)
+                  setBuyPointsForm({
+                    accountNumber: '',
+                    platform: 'exness',
+                    plan: codeForm.plan || ''
+                  })
+                }}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-4 rounded-lg transition duration-200"
+              >
+                {language === 'th' ? 'ยกเลิก' : 'Cancel'}
+              </button>
+              <button
+                onClick={async () => {
+                  setShowBuyPointsModal(false)
+                  await handlePointsPurchase(
+                    buyPointsForm.plan,
+                    buyPointsForm.accountNumber
+                  )
+                  setBuyPointsForm({
+                    accountNumber: '',
+                    platform: 'exness',
+                    plan: codeForm.plan || ''
+                  })
+                }}
+                disabled={(() => {
+                  if (generatingCode) return true
+                  const sel = plans.find((p) =>
+                    buyPointsForm.plan === 'lifetime'
+                      ? p.isLifetime
+                      : !p.isLifetime &&
+                        String(p.days) === String(buyPointsForm.plan)
+                  )
+                  const cost = sel
+                    ? sel.points
+                    : parseInt(buyPointsForm.plan || '0', 10)
+                  return (user?.points || 0) < cost
+                })()}
+                className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              >
+                {generatingCode ? (
+                  <>
+                    <svg
+                      className="animate-spin w-5 h-5 mr-2"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    {language === 'th' ? 'กำลังสร้าง...' : 'Creating...'}
+                  </>
+                ) : (
+                  <>
+                    <svg
+                      className="w-5 h-5 mr-2"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M13 10V3L4 14h7v7l9-11h-7z"
+                      />
+                    </svg>
+                    {language === 'th' ? 'ยืนยันและซื้อ' : 'Confirm & Buy'}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Top-up Points Modal */}
+      {showTopUpModal && (
+        <div className="fixed inset-0 bg-gradient-to-br from-black/40 via-gray-800/30 to-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-8 max-w-lg w-full mx-4">
+            <div className="text-center mb-6">
+              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-gradient-to-br from-emerald-100 to-green-100 mb-4">
+                <svg
+                  className="h-8 w-8 text-emerald-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                  />
+                </svg>
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-2">
+                {language === 'th' ? 'เติมแต้ม' : 'Top-up Points'}
+              </h3>
+              <p className="text-gray-600">
+                {language === 'th'
+                  ? 'เติมเงินเพื่อรับแต้มสำหรับซื้อใบอนุญาต'
+                  : 'Add money to receive points for license purchases'}
+              </p>
+            </div>
+
+            {/* Amount Input */}
+            <div className="mb-6">
+              <label className="block text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide">
+                {language === 'th' ? 'จำนวนเงิน (บาท)' : 'Amount (THB)'}
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <span className="text-gray-500 text-lg font-semibold">฿</span>
+                </div>
+                <input
+                  type="number"
+                  min="1"
+                  max="100000"
+                  placeholder="300"
+                  value={topUpAmount}
+                  onChange={(e) => setTopUpAmount(e.target.value)}
+                  className="w-full pl-8 pr-4 py-4 text-lg font-semibold bg-gray-50 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all duration-200"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            {/* Exchange Rate Info */}
+            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 mb-6">
+              <div className="flex items-start">
+                <svg
+                  className="w-5 h-5 text-emerald-400 mt-0.5 mr-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <div>
+                  <h3 className="text-sm font-medium text-emerald-800 mb-1">
+                    {language === 'th' ? 'อัตราแลกเปลี่ยน' : 'Exchange Rate'}
+                  </h3>
+                  <div className="text-sm text-emerald-700">
+                    <p className="font-semibold mb-2">
+                      1 {language === 'th' ? 'บาท' : 'THB'} = 1 {language === 'th' ? 'แต้ม' : 'Point'} = 1{' '}
+                      {language === 'th' ? 'วันใบอนุญาต' : 'Day License'}
+                    </p>
+                    {topUpAmount &&
+                      !isNaN(parseFloat(topUpAmount)) &&
+                      parseFloat(topUpAmount) > 0 && (
+                        <div className="bg-emerald-100 rounded-lg p-3 mt-3">
+                          <p className="font-semibold text-emerald-800">
+                            ฿{parseFloat(topUpAmount).toFixed(2)} ={' '}
+                            {Math.floor(parseFloat(topUpAmount))}{' '}
+                            {language === 'th' ? 'แต้ม' : 'Points'}
+                          </p>
+                          <p className="text-xs text-emerald-600 mt-1">
+                            {language === 'th'
+                              ? 'แต้มใหม่หลังเติม:'
+                              : 'Total points after top-up:'}{' '}
+                            {(user?.points || 0) +
+                              Math.floor(parseFloat(topUpAmount))}{' '}
+                            {language === 'th' ? 'แต้ม' : 'Points'}
+                          </p>
+                        </div>
+                      )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Admin Approval Notice */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <div className="flex items-start">
+                <svg
+                  className="w-5 h-5 text-blue-400 mt-0.5 mr-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <div>
+                  <h3 className="text-sm font-medium text-blue-800 mb-1">
+                    {language === 'th'
+                      ? '⏳ รอการอนุมัติ'
+                      : '⏳ Pending Approval'}
+                  </h3>
+                  <div className="text-sm text-blue-700">
+                    <ul className="list-disc list-inside space-y-1">
+                      <li>
+                        {language === 'th'
+                          ? 'คำขอจะถูกส่งไปยังแอดมิน'
+                          : 'Request will be sent to admin'}
+                      </li>
+                      <li>
+                        {language === 'th'
+                          ? 'รอการอนุมัติก่อนได้รับแต้ม'
+                          : 'Wait for approval before receiving points'}
+                      </li>
+                      <li>
+                        {language === 'th'
+                          ? 'คุณจะได้รับการแจ้งเตือนเมื่อได้รับอนุมัติ'
+                          : 'You will be notified when approved'}
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTopUpModal(false)
+                  setTopUpAmount('')
+                }}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-4 rounded-lg transition duration-200"
+              >
+                {language === 'th' ? 'ยกเลิก' : 'Cancel'}
+              </button>
+              <button
+                onClick={async () => {
+                  if (!topUpAmount || parseFloat(topUpAmount) < 1) {
+                    showModalAlert(
+                      language === 'th'
+                        ? 'กรุณากรอกจำนวนเงินที่ถูกต้อง'
+                        : 'Please enter a valid amount',
+                      'warning'
+                    )
+                    return
+                  }
+                  setShowTopUpModal(false)
+                  await handleTopUpRequest(parseFloat(topUpAmount))
+                  setTopUpAmount('')
+                }}
+                disabled={!topUpAmount || parseFloat(topUpAmount) < 1}
+                className="flex-1 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              >
+                <svg
+                  className="w-5 h-5 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                {language === 'th' ? 'ส่งคำขอ' : 'Submit Request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Alert Modal */}
       {alertModalVisible && (
@@ -1651,49 +3957,97 @@ export default function LandingPage() {
           <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full mx-4 transform transition-all duration-200">
             <div className="text-center">
               {/* Icon based on type */}
-              <div className={`mx-auto flex items-center justify-center h-12 w-12 rounded-full mb-4 ${
-                modalContent.type === 'error' ? 'bg-red-100' :
-                modalContent.type === 'success' ? 'bg-green-100' :
-                modalContent.type === 'warning' ? 'bg-yellow-100' :
-                'bg-blue-100'
-              }`}>
+              <div
+                className={`mx-auto flex items-center justify-center h-12 w-12 rounded-full mb-4 ${
+                  modalContent.type === 'error'
+                    ? 'bg-red-100'
+                    : modalContent.type === 'success'
+                      ? 'bg-green-100'
+                      : modalContent.type === 'warning'
+                        ? 'bg-yellow-100'
+                        : 'bg-blue-100'
+                }`}
+              >
                 {modalContent.type === 'error' ? (
-                  <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  <svg
+                    className="h-6 w-6 text-red-600"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 ) : modalContent.type === 'success' ? (
-                  <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  <svg
+                    className="h-6 w-6 text-green-600"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M5 13l4 4L19 7"
+                    />
                   </svg>
                 ) : modalContent.type === 'warning' ? (
-                  <svg className="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  <svg
+                    className="h-6 w-6 text-yellow-600"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+                    />
                   </svg>
                 ) : (
-                  <svg className="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <svg
+                    className="h-6 w-6 text-blue-600"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
                   </svg>
                 )}
               </div>
-              
+
               {/* Title */}
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 {modalContent.title}
               </h3>
-              
+
               {/* Message */}
               <div className="text-gray-600 mb-6 whitespace-pre-line text-sm leading-relaxed">
                 {modalContent.message}
               </div>
-              
+
               {/* OK Button */}
               <button
                 onClick={hideModalAlert}
                 className={`w-full px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
-                  modalContent.type === 'error' ? 'bg-red-600 hover:bg-red-700 text-white' :
-                  modalContent.type === 'success' ? 'bg-green-600 hover:bg-green-700 text-white' :
-                  modalContent.type === 'warning' ? 'bg-yellow-600 hover:bg-yellow-700 text-white' :
-                  'bg-blue-600 hover:bg-blue-700 text-white'
+                  modalContent.type === 'error'
+                    ? 'bg-red-600 hover:bg-red-700 text-white'
+                    : modalContent.type === 'success'
+                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                      : modalContent.type === 'warning'
+                        ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
+                        : 'bg-blue-600 hover:bg-blue-700 text-white'
                 }`}
               >
                 {t('ok')}
@@ -1702,6 +4056,6 @@ export default function LandingPage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }

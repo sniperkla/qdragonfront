@@ -1,6 +1,12 @@
 import { connectToDatabase } from '@/lib/mongodb'
 import mongoose from 'mongoose'
-import { emitExtensionRequestUpdate, emitAdminNotification, emitCustomerAccountUpdate, emitCodesUpdate, emitNotificationToAdminAndClient } from '@/lib/websocket'
+import {
+  emitExtensionRequestUpdate,
+  emitAdminNotification,
+  emitCustomerAccountUpdate,
+  emitCodesUpdate,
+  emitNotificationToAdminAndClient
+} from '@/lib/websocket'
 import User from '@/lib/userModel'
 import { sendExtensionDecisionEmail } from '@/lib/emailService'
 
@@ -98,7 +104,10 @@ export async function GET(request) {
     const extensionRequests = await ExtensionRequest.find(query)
       .populate('userId', 'username email')
       .populate('codeId', 'code platform accountNumber')
-      .populate('customerAccountId', 'license platform accountNumber status expireDate')
+      .populate(
+        'customerAccountId',
+        'license platform accountNumber status expireDate'
+      )
       .sort({ requestedAt: -1 })
       .limit(100)
 
@@ -212,18 +221,29 @@ export async function PUT(request) {
         })
 
         // Update code request based on license source
-        if (extensionRequest.licenseSource === 'codeRequest' || extensionRequest.licenseSource === 'both') {
+        if (
+          extensionRequest.licenseSource === 'codeRequest' ||
+          extensionRequest.licenseSource === 'both'
+        ) {
           if (extensionRequest.codeId) {
             await CodeRequest.findByIdAndUpdate(extensionRequest.codeId._id, {
-              plan: extensionRequest.codeId.plan + extensionRequest.requestedDays,
+              plan:
+                extensionRequest.codeId.plan + extensionRequest.requestedDays,
               expiresAt: newExpiryDate
             })
-            console.log('Updated CodeRequest for license:', extensionRequest.licenseCode)
+            console.log(
+              'Updated CodeRequest for license:',
+              extensionRequest.licenseCode
+            )
           } else {
-            console.log('Warning: licenseSource indicates CodeRequest but codeId is null')
+            console.log(
+              'Warning: licenseSource indicates CodeRequest but codeId is null'
+            )
           }
         } else if (extensionRequest.licenseSource === 'customerAccount') {
-          console.log('Customer account only license - no CodeRequest to update')
+          console.log(
+            'Customer account only license - no CodeRequest to update'
+          )
         }
 
         // Update extension request
@@ -256,7 +276,10 @@ export async function PUT(request) {
             newExpiry: newExpiryThai,
             status: 'approved'
           })
-          await emitAdminNotification(`Extension approved: ${extensionRequest.licenseCode} (+${extensionRequest.requestedDays} days)`, 'success')
+          await emitAdminNotification(
+            `Extension approved: ${extensionRequest.licenseCode} (+${extensionRequest.requestedDays} days)`,
+            'success'
+          )
           if (userId) {
             await emitCustomerAccountUpdate(userId, {
               action: 'extended',
@@ -278,18 +301,27 @@ export async function PUT(request) {
 
             // Send approval email
             try {
-              const userDoc = await User.findById(userId).select('email username preferredLanguage')
+              const userDoc = await User.findById(userId).select(
+                'email username preferredLanguage'
+              )
               if (userDoc?.email) {
-                await sendExtensionDecisionEmail(userDoc.email, userDoc.username, {
-                  licenseCode: extensionRequest.licenseCode,
-                  decision: 'approved',
-                  addedDays: extensionRequest.requestedDays,
-                  newExpiry: newExpiryThai,
-                  language: userDoc.preferredLanguage || 'en'
-                })
+                await sendExtensionDecisionEmail(
+                  userDoc.email,
+                  userDoc.username,
+                  {
+                    licenseCode: extensionRequest.licenseCode,
+                    decision: 'approved',
+                    addedDays: extensionRequest.requestedDays,
+                    newExpiry: newExpiryThai,
+                    language: userDoc.preferredLanguage || 'en'
+                  }
+                )
               }
             } catch (emailErr) {
-              console.warn('Failed to send extension approval email:', emailErr.message)
+              console.warn(
+                'Failed to send extension approval email:',
+                emailErr.message
+              )
             }
           }
         } catch (wsErr) {
@@ -333,12 +365,15 @@ export async function PUT(request) {
       try {
         await emitExtensionRequestUpdate({
           action: 'rejected',
-            requestId: extensionRequest._id.toString(),
+          requestId: extensionRequest._id.toString(),
           licenseCode: extensionRequest.licenseCode,
           reason: rejectionReason,
           status: 'rejected'
         })
-        await emitAdminNotification(`Extension rejected: ${extensionRequest.licenseCode}`, 'warning')
+        await emitAdminNotification(
+          `Extension rejected: ${extensionRequest.licenseCode}`,
+          'warning'
+        )
         let userId = null
         if (extensionRequest.userId) {
           userId = extensionRequest.userId.toString()
@@ -354,17 +389,26 @@ export async function PUT(request) {
 
           // Send rejection email
           try {
-            const userDoc = await User.findById(userId).select('email username preferredLanguage')
+            const userDoc = await User.findById(userId).select(
+              'email username preferredLanguage'
+            )
             if (userDoc?.email) {
-              await sendExtensionDecisionEmail(userDoc.email, userDoc.username, {
-                licenseCode: extensionRequest.licenseCode,
-                decision: 'rejected',
-                rejectionReason,
-                language: userDoc.preferredLanguage || 'en'
-              })
+              await sendExtensionDecisionEmail(
+                userDoc.email,
+                userDoc.username,
+                {
+                  licenseCode: extensionRequest.licenseCode,
+                  decision: 'rejected',
+                  rejectionReason,
+                  language: userDoc.preferredLanguage || 'en'
+                }
+              )
             }
           } catch (emailErr) {
-            console.warn('Failed to send extension rejection email:', emailErr.message)
+            console.warn(
+              'Failed to send extension rejection email:',
+              emailErr.message
+            )
           }
         }
       } catch (wsErr) {
@@ -411,8 +455,8 @@ export async function DELETE(request) {
 
     await connectToDatabase()
 
-  const requestDoc = await ExtensionRequest.findById(requestId)
-  const deletedRequest = await ExtensionRequest.findByIdAndDelete(requestId)
+    const requestDoc = await ExtensionRequest.findById(requestId)
+    const deletedRequest = await ExtensionRequest.findByIdAndDelete(requestId)
 
     if (!deletedRequest) {
       return new Response(
@@ -423,11 +467,18 @@ export async function DELETE(request) {
 
     // Emit WebSocket to admin (and possibly user if we can resolve user from license)
     try {
-      const { emitExtensionRequestUpdate, emitAdminNotification } = await import('@/lib/websocket')
+      const { emitExtensionRequestUpdate, emitAdminNotification } =
+        await import('@/lib/websocket')
       await emitExtensionRequestUpdate({ action: 'deleted', requestId })
-      await emitAdminNotification(`Extension request ${requestId} deleted`, 'info')
+      await emitAdminNotification(
+        `Extension request ${requestId} deleted`,
+        'info'
+      )
     } catch (emitErr) {
-      console.warn('WebSocket emission on extension delete failed (non-fatal):', emitErr.message)
+      console.warn(
+        'WebSocket emission on extension delete failed (non-fatal):',
+        emitErr.message
+      )
     }
 
     return new Response(

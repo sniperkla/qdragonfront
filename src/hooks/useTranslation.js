@@ -274,18 +274,18 @@ const translations = {
     confirm_payment: 'Confirm Payment',
     activate_action: 'Activate',
     cancel_action: 'Cancel',
-  history_title: 'History',
-  purchase_history: 'Purchase History',
-  extension_history: 'Extension History',
-  no_history_yet: 'No history yet',
-  purchase: 'Purchase',
-  extension: 'Extension',
-  plan_days: 'Plan (Days)',
-  requested_days: 'Requested Days',
-  requested_on: 'Requested On',
-  processed_on: 'Processed On',
-  price_label: 'Price',
-  status_label: 'Status',
+    history_title: 'History',
+    purchase_history: 'Purchase History',
+    extension_history: 'Extension History',
+    no_history_yet: 'No history yet',
+    purchase: 'Purchase',
+    extension: 'Extension',
+    plan_days: 'Plan (Days)',
+    requested_days: 'Requested Days',
+    requested_on: 'Requested On',
+    processed_on: 'Processed On',
+    price_label: 'Price',
+    status_label: 'Status',
     pay_to_activate: 'Pay to activate',
     pay_to_see_countdown: 'Pay to see countdown',
     extend: 'Extend',
@@ -317,33 +317,38 @@ const translations = {
     account_creation_agreement:
       'By creating an account, you agree to our Terms of Service',
     email_verification_required_secure:
-      'Email verification required • Secure Trading Platform'
-    ,resend_activation_email: 'Resend Activation Email'
-    ,activation_email_sent: 'Activation email sent'
-    ,activation_email_resent: 'Activation email resent'
-    ,activation_email_failed: 'Failed to send activation email'
-    ,activation_email_limit_reached: 'Resend limit reached'
-    ,activation_email_never_sent: 'Activation email not yet sent'
-    ,activation_status: 'Activation Email'
-    ,resent_count: 'Resent Count'
-  ,demo_license_title: 'Demo License (username = DEMO)'
-  ,mark_as_demo: 'Mark as demo (forces username to DEMO)'
-  ,demo_days_placeholder: 'Demo days (e.g. 3)'
-  ,demo_days_help: 'Provide a short-term access period (1-60 days) for demo accounts.'
-  ,demo_mode_extra_days_disabled: 'Demo mode: extra days disabled (use Demo Days field below).'
-  ,selected: 'selected'
-    ,bulk_mode: 'Bulk Mode'
-    ,bulk_mode_on: 'Bulk Mode ON'
-    ,select_visible: 'Select Visible'
-    ,clear_selection: 'Clear'
-    ,suspend_selected: 'Suspend Selected'
-    ,delete_selected: 'Delete Selected'
-    ,no_customers_selected: 'No customers selected'
-    ,bulk_suspend_confirm: 'Suspend {count} active account(s)?'
-    ,bulk_delete_confirm: 'Delete {count} suspended account(s)? This cannot be undone.'
-    ,bulk_suspend_processed: 'Bulk suspend processed: {success} success, {skipped} skipped'
-    ,bulk_delete_processed: 'Bulk delete processed: {success} success, {skipped} skipped'
-    ,processing_bulk: 'Processing bulk action...'
+      'Email verification required • Secure Trading Platform',
+    resend_activation_email: 'Resend Activation Email',
+    activation_email_sent: 'Activation email sent',
+    activation_email_resent: 'Activation email resent',
+    activation_email_failed: 'Failed to send activation email',
+    activation_email_limit_reached: 'Resend limit reached',
+    activation_email_never_sent: 'Activation email not yet sent',
+    activation_status: 'Activation Email',
+    resent_count: 'Resent Count',
+    demo_license_title: 'Demo License (username = DEMO)',
+    mark_as_demo: 'Mark as demo (forces username to DEMO)',
+    demo_days_placeholder: 'Demo days (e.g. 3)',
+    demo_days_help:
+      'Provide a short-term access period (1-60 days) for demo accounts.',
+    demo_mode_extra_days_disabled:
+      'Demo mode: extra days disabled (use Demo Days field below).',
+    selected: 'selected',
+    bulk_mode: 'Bulk Mode',
+    bulk_mode_on: 'Bulk Mode ON',
+    select_visible: 'Select Visible',
+    clear_selection: 'Clear',
+    suspend_selected: 'Suspend Selected',
+    delete_selected: 'Delete Selected',
+    no_customers_selected: 'No customers selected',
+    bulk_suspend_confirm: 'Suspend {count} active account(s)?',
+    bulk_delete_confirm:
+      'Delete {count} suspended account(s)? This cannot be undone.',
+    bulk_suspend_processed:
+      'Bulk suspend processed: {success} success, {skipped} skipped',
+    bulk_delete_processed:
+      'Bulk delete processed: {success} success, {skipped} skipped',
+    processing_bulk: 'Processing bulk action...'
   },
 
   th: {
@@ -614,18 +619,18 @@ const translations = {
     confirm_payment: 'ยืนยันการชำระเงิน',
     activate_action: 'เปิดใช้งาน',
     cancel_action: 'ยกเลิก',
-  history_title: 'ประวัติ',
-  purchase_history: 'ประวัติการซื้อ',
-  extension_history: 'ประวัติการขยายเวลา',
-  no_history_yet: 'ยังไม่มีประวัติ',
-  purchase: 'การซื้อ',
-  extension: 'การขยายเวลา',
-  plan_days: 'แผน (วัน)',
-  requested_days: 'ระยะเวลา (วัน)',
-  requested_on: 'วันที่ร้องขอ',
-  processed_on: 'วันที่ดำเนินการ',
-  price_label: 'ราคา',
-  status_label: 'สถานะ',
+    history_title: 'ประวัติ',
+    purchase_history: 'ประวัติการซื้อ',
+    extension_history: 'ประวัติการขยายเวลา',
+    no_history_yet: 'ยังไม่มีประวัติ',
+    purchase: 'การซื้อ',
+    extension: 'การขยายเวลา',
+    plan_days: 'แผน (วัน)',
+    requested_days: 'ระยะเวลา (วัน)',
+    requested_on: 'วันที่ร้องขอ',
+    processed_on: 'วันที่ดำเนินการ',
+    price_label: 'ราคา',
+    status_label: 'สถานะ',
     pay_to_activate: 'ชำระเงินเพื่อเปิดใช้งาน',
     pay_to_see_countdown: 'ชำระเงินเพื่อดูเวลานับถอยหลัง',
     extend: 'เพิ่มเวลา',
@@ -654,33 +659,36 @@ const translations = {
     account_creation_agreement:
       'เมื่อสร้างบัญชีแสดงว่าคุณยอมรับเงื่อนไขการให้บริการของเรา',
     email_verification_required_secure:
-      'ต้องยืนยันอีเมล • แพลตฟอร์มการเทรดที่ปลอดภัย'
-    ,resend_activation_email: 'ส่งอีเมลเปิดใช้งานอีกครั้ง'
-    ,activation_email_sent: 'ส่งอีเมลเปิดใช้งานแล้ว'
-    ,activation_email_resent: 'ส่งอีเมลเปิดใช้งานซ้ำแล้ว'
-    ,activation_email_failed: 'ส่งอีเมลเปิดใช้งานไม่สำเร็จ'
-    ,activation_email_limit_reached: 'ถึงขีดจำกัดการส่งซ้ำ'
-    ,activation_email_never_sent: 'ยังไม่ได้ส่งอีเมลเปิดใช้งาน'
-    ,activation_status: 'อีเมลเปิดใช้งาน'
-    ,resent_count: 'จำนวนครั้งที่ส่งซ้ำ'
-  ,demo_license_title: 'ใบอนุญาตเดโม่ (ชื่อผู้ใช้ = DEMO)'
-  ,mark_as_demo: 'ทำเป็นเดโม่ (บังคับชื่อผู้ใช้เป็น DEMO)'
-  ,demo_days_placeholder: 'วันเดโม่ (เช่น 3)'
-  ,demo_days_help: 'กำหนดจำนวนวันให้ทดลองใช้งานชั่วคราว (1-60 วัน) สำหรับบัญชีเดโม่'
-  ,demo_mode_extra_days_disabled: 'โหมดเดโม่: ปิดการเพิ่มวันพิเศษ (ใช้ช่อง วันเดโม่ ด้านล่าง)'
-  ,selected: 'ที่เลือก'
-    ,bulk_mode: 'โหมดหลายรายการ'
-    ,bulk_mode_on: 'โหมดหลายรายการเปิดอยู่'
-    ,select_visible: 'เลือกที่แสดง'
-    ,clear_selection: 'ล้างการเลือก'
-    ,suspend_selected: 'ระงับที่เลือก'
-    ,delete_selected: 'ลบที่เลือก'
-    ,no_customers_selected: 'ยังไม่ได้เลือกบัญชี'
-    ,bulk_suspend_confirm: 'ระงับ {count} บัญชีที่ใช้งานอยู่หรือไม่?'
-    ,bulk_delete_confirm: 'ลบ {count} บัญชีที่ถูกระงับหรือไม่? การกระทำนี้ไม่สามารถย้อนกลับ'
-    ,bulk_suspend_processed: 'ระงับแบบกลุ่ม: สำเร็จ {success} ข้าม {skipped}'
-    ,bulk_delete_processed: 'ลบแบบกลุ่ม: สำเร็จ {success} ข้าม {skipped}'
-    ,processing_bulk: 'กำลังประมวลผลแบบกลุ่ม...'
+      'ต้องยืนยันอีเมล • แพลตฟอร์มการเทรดที่ปลอดภัย',
+    resend_activation_email: 'ส่งอีเมลเปิดใช้งานอีกครั้ง',
+    activation_email_sent: 'ส่งอีเมลเปิดใช้งานแล้ว',
+    activation_email_resent: 'ส่งอีเมลเปิดใช้งานซ้ำแล้ว',
+    activation_email_failed: 'ส่งอีเมลเปิดใช้งานไม่สำเร็จ',
+    activation_email_limit_reached: 'ถึงขีดจำกัดการส่งซ้ำ',
+    activation_email_never_sent: 'ยังไม่ได้ส่งอีเมลเปิดใช้งาน',
+    activation_status: 'อีเมลเปิดใช้งาน',
+    resent_count: 'จำนวนครั้งที่ส่งซ้ำ',
+    demo_license_title: 'ใบอนุญาตเดโม่ (ชื่อผู้ใช้ = DEMO)',
+    mark_as_demo: 'ทำเป็นเดโม่ (บังคับชื่อผู้ใช้เป็น DEMO)',
+    demo_days_placeholder: 'วันเดโม่ (เช่น 3)',
+    demo_days_help:
+      'กำหนดจำนวนวันให้ทดลองใช้งานชั่วคราว (1-60 วัน) สำหรับบัญชีเดโม่',
+    demo_mode_extra_days_disabled:
+      'โหมดเดโม่: ปิดการเพิ่มวันพิเศษ (ใช้ช่อง วันเดโม่ ด้านล่าง)',
+    selected: 'ที่เลือก',
+    bulk_mode: 'โหมดหลายรายการ',
+    bulk_mode_on: 'โหมดหลายรายการเปิดอยู่',
+    select_visible: 'เลือกที่แสดง',
+    clear_selection: 'ล้างการเลือก',
+    suspend_selected: 'ระงับที่เลือก',
+    delete_selected: 'ลบที่เลือก',
+    no_customers_selected: 'ยังไม่ได้เลือกบัญชี',
+    bulk_suspend_confirm: 'ระงับ {count} บัญชีที่ใช้งานอยู่หรือไม่?',
+    bulk_delete_confirm:
+      'ลบ {count} บัญชีที่ถูกระงับหรือไม่? การกระทำนี้ไม่สามารถย้อนกลับ',
+    bulk_suspend_processed: 'ระงับแบบกลุ่ม: สำเร็จ {success} ข้าม {skipped}',
+    bulk_delete_processed: 'ลบแบบกลุ่ม: สำเร็จ {success} ข้าม {skipped}',
+    processing_bulk: 'กำลังประมวลผลแบบกลุ่ม...'
   }
 }
 

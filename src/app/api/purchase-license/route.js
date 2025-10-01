@@ -2,7 +2,12 @@ import { verifyAuth } from '@/lib/auth'
 import { connectToDatabase } from '@/lib/mongodb'
 import CodeRequest from '@/lib/codeRequestModel'
 import User from '@/lib/userModel'
-import { emitNewCodeGenerated, emitAdminNotification, emitCodesUpdate } from '@/lib/websocket'
+import PlanSetting from '@/lib/planSettingModel'
+import {
+  emitNewCodeGenerated,
+  emitAdminNotification,
+  emitCodesUpdate
+} from '@/lib/websocket'
 import { sendPurchaseConfirmationEmail } from '@/lib/emailService'
 
 // Purchase license API (simplified from generate-code)
@@ -38,15 +43,19 @@ export async function POST(req) {
       )
     }
 
-    // Plan pricing
-    const planPricing = {
-      30: { days: 30, price: 99 },
-      60: { days: 60, price: 189 },
-      90: { days: 90, price: 269 }
+    await connectToDatabase()
+
+    // Fetch dynamic plan from PlanSetting collection (active only)
+    const planDays = parseInt(plan, 10)
+    if (isNaN(planDays)) {
+      return new Response(JSON.stringify({ error: 'Invalid plan format' }), {
+        status: 400
+      })
     }
 
-    if (!planPricing[plan]) {
-      return new Response(JSON.stringify({ error: 'Invalid plan selected' }), {
+    const planSetting = await PlanSetting.findOne({ days: planDays, isActive: true })
+    if (!planSetting) {
+      return new Response(JSON.stringify({ error: 'Selected plan not available' }), {
         status: 400
       })
     }
@@ -59,10 +68,7 @@ export async function POST(req) {
       return `${prefix}-${timestamp}-${random}`
     }
 
-    const licenseCode = generateLicenseCode()
-    const planInfo = planPricing[plan]
-
-    await connectToDatabase()
+  const licenseCode = generateLicenseCode()
 
     // Get user info
     const user = await User.findById(authData.id)
@@ -78,11 +84,14 @@ export async function POST(req) {
       username: user.username,
       accountNumber,
       platform,
-      plan: planInfo.days,
+      plan: planSetting.days,
       code: licenseCode,
-      price: planInfo.price,
+      price: planSetting.price,
       status: 'pending_payment',
-      expiresAt: new Date(Date.now() + planInfo.days * 24 * 60 * 60 * 1000)
+      // Handle lifetime: set expiry far in future (e.g., +50 years) if isLifetime
+      expiresAt: planSetting.isLifetime
+        ? new Date(Date.now() + 50 * 365 * 24 * 60 * 60 * 1000)
+        : new Date(Date.now() + planSetting.days * 24 * 60 * 60 * 1000)
     })
     await licenseRequest.save()
 
@@ -91,9 +100,9 @@ export async function POST(req) {
       username: user.username,
       accountNumber,
       platform,
-      plan: `${planInfo.days} days`,
+      plan: `${planSetting.isLifetime ? 'Lifetime' : planSetting.days + ' days'}`,
       license: licenseCode,
-      price: planInfo.price,
+      price: planSetting.price,
       status: 'pending_payment'
     })
 
@@ -105,13 +114,19 @@ export async function POST(req) {
         username: user.username,
         accountNumber,
         platform,
-        plan: planInfo.days,
+        plan: planSetting.days,
         status: 'pending_payment',
         createdAt: licenseRequest.createdAt
       })
-      await emitAdminNotification(`New license purchase: ${licenseCode} (${planInfo.days}d)`, 'info')
+      await emitAdminNotification(
+        `New license purchase: ${licenseCode} (${planSetting.isLifetime ? 'Lifetime' : planSetting.days + 'd'})`,
+        'info'
+      )
     } catch (wsErr) {
-      console.warn('WebSocket emission failed (purchase-license):', wsErr.message)
+      console.warn(
+        'WebSocket emission failed (purchase-license):',
+        wsErr.message
+      )
     }
 
     // Emit user-specific codes update (so client fetches history real-time)
@@ -123,7 +138,10 @@ export async function POST(req) {
         status: 'pending_payment'
       })
     } catch (userEmitErr) {
-      console.warn('Failed to emit user codes update (purchase):', userEmitErr.message)
+      console.warn(
+        'Failed to emit user codes update (purchase):',
+        userEmitErr.message
+      )
     }
 
     // Send purchase confirmation email (non-blocking but awaited here for simplicity)
@@ -131,15 +149,18 @@ export async function POST(req) {
       if (user.email) {
         await sendPurchaseConfirmationEmail(user.email, user.username, {
           licenseCode,
-          planDays: planInfo.days,
-          price: planInfo.price,
+          planDays: planSetting.days,
+          price: planSetting.price,
           status: 'pending_payment',
           currency: 'USD',
           language: user.preferredLanguage || 'en'
         })
       }
     } catch (emailErr) {
-      console.warn('Failed to send purchase confirmation email:', emailErr.message)
+      console.warn(
+        'Failed to send purchase confirmation email:',
+        emailErr.message
+      )
     }
 
     return new Response(
@@ -148,8 +169,8 @@ export async function POST(req) {
         license: licenseCode,
         accountNumber,
         platform,
-        plan: planInfo.days,
-        price: planInfo.price,
+        plan: planSetting.days,
+        price: planSetting.price,
         currency: 'USD',
         status: 'pending_payment',
         message:

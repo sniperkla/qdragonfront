@@ -162,8 +162,12 @@ function ResetPasswordContent() {
                 ></path>
               </svg>
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">{t('invalid_reset_link_title')}</h3>
-            <p className="text-gray-600 mb-6">{t('invalid_reset_link_message')}</p>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              {t('invalid_reset_link_title')}
+            </h3>
+            <p className="text-gray-600 mb-6">
+              {t('invalid_reset_link_message')}
+            </p>
             <button
               onClick={handleBackToLogin}
               className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600 text-white font-semibold py-3 px-4 rounded-lg transition duration-200"
@@ -213,7 +217,9 @@ function ResetPasswordContent() {
             {/* Fallback Dragon Icon */}
             <span className="text-3xl sm:text-4xl hidden">🐉</span>
           </div>
-          <p className="text-white/90 text-sm sm:text-base">{t('reset_password_title') || 'Reset Password'}</p>
+          <p className="text-white/90 text-sm sm:text-base">
+            {t('reset_password_title') || 'Reset Password'}
+          </p>
           <p className="text-xs sm:text-sm text-yellow-300 font-medium mt-1 sm:mt-2">
             {t('create_new_password_subtitle') || 'Create Your New Password'}
           </p>
@@ -295,7 +301,9 @@ function ResetPasswordContent() {
 
               {/* Password Requirements */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
-                <h4 className="text-xs sm:text-sm font-medium text-blue-700 mb-2">{t('password_requirements_title')}</h4>
+                <h4 className="text-xs sm:text-sm font-medium text-blue-700 mb-2">
+                  {t('password_requirements_title')}
+                </h4>
                 <ul className="text-xs sm:text-sm text-blue-600 space-y-1">
                   <li className="flex items-center">
                     <span
@@ -421,7 +429,9 @@ function ResetPasswordContent() {
                 {message}
               </p>
               <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
-                <p className="text-xs sm:text-sm text-green-700">{t('redirecting_login_3s')}</p>
+                <p className="text-xs sm:text-sm text-green-700">
+                  {t('redirecting_login_3s')}
+                </p>
               </div>
               <button
                 onClick={handleBackToLogin}

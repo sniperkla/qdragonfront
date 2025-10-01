@@ -156,3 +156,13 @@ html, body, #__next, [data-reactroot] {
 .animation-delay-4000 {
   animation-delay: 4s;
 }
+
+/* Notification progress bar shrink animation */
+@keyframes notif-shrink {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+.animate-notif-shrink-5s {
+  animation: notif-shrink 5s linear forwards;
+}

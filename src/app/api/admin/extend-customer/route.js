@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server'
 import { connectToDatabase } from '@/lib/mongodb'
 import CustomerAccount from '@/lib/customerAccountModel'
-import { emitCodesUpdate, emitCustomerAccountUpdate, emitNotificationToAdminAndClient } from '@/lib/websocket'
+import {
+  emitCodesUpdate,
+  emitCustomerAccountUpdate,
+  emitNotificationToAdminAndClient
+} from '@/lib/websocket'
 import User from '@/lib/userModel'
 import { sendAdminExtensionEmail } from '@/lib/emailService'
 
@@ -125,7 +129,10 @@ export async function POST(request) {
 
     // Emit WebSocket updates so landing page reflects new expiry automatically
     try {
-      const user = await User.findOne({ username: customerAccount.user }, '_id email preferredLanguage username')
+      const user = await User.findOne(
+        { username: customerAccount.user },
+        '_id email preferredLanguage username'
+      )
       if (user) {
         const userId = user._id.toString()
         const daysAdded = parseInt(extendDays)
@@ -150,18 +157,25 @@ export async function POST(request) {
         // Send extension email notification
         if (user.email) {
           try {
-            const emailResult = await sendAdminExtensionEmail(user.email, user.username || customerAccount.user, {
-              licenseCode: customerAccount.license,
-              addedDays: daysAdded,
-              oldExpiry: customerAccount.expireDate,
-              newExpiry: newExpiryThaiFormat,
-              language: user.preferredLanguage || 'en'
-            })
+            const emailResult = await sendAdminExtensionEmail(
+              user.email,
+              user.username || customerAccount.user,
+              {
+                licenseCode: customerAccount.license,
+                addedDays: daysAdded,
+                oldExpiry: customerAccount.expireDate,
+                newExpiry: newExpiryThaiFormat,
+                language: user.preferredLanguage || 'en'
+              }
+            )
             if (!emailResult.success) {
               console.warn('Admin extension email failed:', emailResult.error)
             }
           } catch (emailErr) {
-            console.warn('Error sending admin extension email:', emailErr.message)
+            console.warn(
+              'Error sending admin extension email:',
+              emailErr.message
+            )
           }
         }
       }

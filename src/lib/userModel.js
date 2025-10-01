@@ -6,6 +6,7 @@ const UserSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
   preferredLanguage: { type: String, enum: ['en', 'th'], default: 'en' },
+    points: { type: Number, default: 0 }, // Points balance for purchasing licenses
     isEmailVerified: { type: Boolean, default: false },
     emailVerificationToken: { type: String },
     emailVerificationExpires: { type: Date },

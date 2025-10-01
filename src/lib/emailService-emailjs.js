@@ -9,7 +9,12 @@ const EMAILJS_PRIVATE_KEY = process.env.EMAILJS_PRIVATE_KEY
 
 // Validate configuration
 const validateEmailConfig = () => {
-  if (!EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY || !EMAILJS_PRIVATE_KEY) {
+  if (
+    !EMAILJS_SERVICE_ID ||
+    !EMAILJS_TEMPLATE_ID ||
+    !EMAILJS_PUBLIC_KEY ||
+    !EMAILJS_PRIVATE_KEY
+  ) {
     throw new Error(
       'EmailJS configuration missing: EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, and EMAILJS_PRIVATE_KEY must be set'
     )
@@ -24,7 +29,10 @@ export const sendVerificationEmail = async (
 ) => {
   try {
     console.log('Attempting to send verification email to:', email)
-    console.log('EmailJS Service ID configured:', EMAILJS_SERVICE_ID ? 'Yes' : 'No')
+    console.log(
+      'EmailJS Service ID configured:',
+      EMAILJS_SERVICE_ID ? 'Yes' : 'No'
+    )
 
     // Validate configuration
     validateEmailConfig()
@@ -49,13 +57,16 @@ export const sendVerificationEmail = async (
       to_email: email
     })
 
-    const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(emailData)
-    })
+    const response = await fetch(
+      'https://api.emailjs.com/api/v1.0/email/send',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(emailData)
+      }
+    )
 
     if (!response.ok) {
       const errorText = await response.text()

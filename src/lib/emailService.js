@@ -6,11 +6,9 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 // Validate configuration
 const validateEmailConfig = () => {
   if (!process.env.RESEND_API_KEY) {
-    throw new Error(
-      'Email configuration missing: RESEND_API_KEY must be set'
-    )
+    throw new Error('Email configuration missing: RESEND_API_KEY must be set')
   }
-  
+
   if (!process.env.EMAIL_FROM) {
     throw new Error(
       'Email configuration missing: EMAIL_FROM must be set (e.g., noreply@yourdomain.com)'
@@ -27,7 +25,10 @@ export const sendVerificationEmail = async (
 ) => {
   try {
     console.log('Attempting to send verification email to:', email)
-    console.log('Resend API Key configured:', process.env.RESEND_API_KEY ? 'Yes' : 'No')
+    console.log(
+      'Resend API Key configured:',
+      process.env.RESEND_API_KEY ? 'Yes' : 'No'
+    )
     console.log('Email FROM configured:', process.env.EMAIL_FROM ? 'Yes' : 'No')
 
     // Validate configuration
@@ -83,9 +84,7 @@ export const sendVerificationEmail = async (
       th: 'หากคุณไม่ได้ร้องขอให้เพิกเฉยอีเมลนี้'
     }
 
-    const listItemsHtml = nextItems[lang]
-      .map((li) => `<li>${li}</li>`)
-      .join('')
+    const listItemsHtml = nextItems[lang].map((li) => `<li>${li}</li>`).join('')
 
     const emailData = {
       from: `Q-DRAGON Trading Platform <${process.env.EMAIL_FROM}>`,
@@ -124,9 +123,11 @@ export const sendVerificationEmail = async (
               </div>
               
               <p style="color: #666; line-height: 1.6; margin-bottom: 30px;">
-                ${lang === 'en'
-                  ? `Enter this verification code on the verification page to activate your trading account. If you didn't create an account with Q-DRAGON, please ignore this email.`
-                  : 'นำโค้ดยืนยันนี้ไปกรอกในหน้าการยืนยันเพื่อเปิดใช้งานบัญชี หากคุณไม่ได้สมัครสมาชิก โปรดเพิกเฉยอีเมลนี้'}
+                ${
+                  lang === 'en'
+                    ? `Enter this verification code on the verification page to activate your trading account. If you didn't create an account with Q-DRAGON, please ignore this email.`
+                    : 'นำโค้ดยืนยันนี้ไปกรอกในหน้าการยืนยันเพื่อเปิดใช้งานบัญชี หากคุณไม่ได้สมัครสมาชิก โปรดเพิกเฉยอีเมลนี้'
+                }
               </p>
               
               <!-- Features -->
@@ -196,7 +197,7 @@ export const sendPasswordResetEmail = async (
 ) => {
   try {
     console.log('Attempting to send password reset email to:', email)
-    
+
     // Validate configuration
     validateEmailConfig()
 
@@ -222,7 +223,10 @@ export const sendPasswordResetEmail = async (
       en: 'Or copy and paste this link into your browser:',
       th: 'หรือคัดลอกลิงก์นี้ไปวางในเบราว์เซอร์:'
     }
-    const securityInfoTitle = { en: 'Security Information', th: 'ข้อมูลความปลอดภัย' }
+    const securityInfoTitle = {
+      en: 'Security Information',
+      th: 'ข้อมูลความปลอดภัย'
+    }
     const securityList = {
       en: [
         'This password reset link expires in 1 hour',
@@ -371,12 +375,14 @@ export const sendPurchaseConfirmationEmail = async (
       th: `สวัสดี ${username}, การสั่งซื้อใบอนุญาตของคุณถูกสร้างเรียบร้อยแล้ว`
     }
     const nextSteps = {
-      en: status === 'pending_payment'
-        ? 'Please complete the payment to activate your license.'
-        : 'Your license is now active. You can start using it immediately.' ,
-      th: status === 'pending_payment'
-        ? 'กรุณาชำระเงินเพื่อเปิดใช้งานใบอนุญาตของคุณ.'
-        : 'ใบอนุญาตของคุณใช้งานได้แล้ว สามารถเริ่มใช้งานได้ทันที.'
+      en:
+        status === 'pending_payment'
+          ? 'Please complete the payment to activate your license.'
+          : 'Your license is now active. You can start using it immediately.',
+      th:
+        status === 'pending_payment'
+          ? 'กรุณาชำระเงินเพื่อเปิดใช้งานใบอนุญาตของคุณ.'
+          : 'ใบอนุญาตของคุณใช้งานได้แล้ว สามารถเริ่มใช้งานได้ทันที.'
     }
     const summaryLabel = { en: 'Purchase Summary', th: 'สรุปคำสั่งซื้อ' }
     const licenseLabel = { en: 'License Code', th: 'รหัสใบอนุญาต' }
@@ -430,11 +436,11 @@ export const sendExtensionDecisionEmail = async (
       th: `สวัสดี ${username},`
     }
     const bodyApproved = {
-      en: `Your extension request has been approved. ${addedDays} extra days have been added to your license.` ,
+      en: `Your extension request has been approved. ${addedDays} extra days have been added to your license.`,
       th: `คำขอขยายวันของคุณได้รับการอนุมัติ เพิ่มวันใช้งานจำนวน ${addedDays} วันแล้ว`
     }
     const bodyRejected = {
-      en: `Unfortunately, your extension request was rejected.` ,
+      en: `Unfortunately, your extension request was rejected.`,
       th: `ขออภัย คำขอขยายวันของคุณถูกปฏิเสธ`
     }
     const newExpiryLabel = { en: 'New Expiry', th: 'วันหมดอายุใหม่' }
@@ -444,8 +450,8 @@ export const sendExtensionDecisionEmail = async (
     const summaryLabel = { en: 'Extension Summary', th: 'สรุปการขยายวัน' }
 
     const decisionBadge = isApproved
-      ? `<span style="display:inline-block;padding:4px 10px;border-radius:16px;background:#dcfce7;color:#166534;font-size:12px;font-weight:600;">${lang==='en'?'Approved':'อนุมัติ'}</span>`
-      : `<span style="display:inline-block;padding:4px 10px;border-radius:16px;background:#fee2e2;color:#991b1b;font-size:12px;font-weight:600;">${lang==='en'?'Rejected':'ปฏิเสธ'}</span>`
+      ? `<span style="display:inline-block;padding:4px 10px;border-radius:16px;background:#dcfce7;color:#166534;font-size:12px;font-weight:600;">${lang === 'en' ? 'Approved' : 'อนุมัติ'}</span>`
+      : `<span style="display:inline-block;padding:4px 10px;border-radius:16px;background:#fee2e2;color:#991b1b;font-size:12px;font-weight:600;">${lang === 'en' ? 'Rejected' : 'ปฏิเสธ'}</span>`
 
     const extraRows = isApproved
       ? `<tr><td style="padding:6px 4px;font-weight:bold;color:#374151;">${addedDaysLabel[lang]}</td><td style="padding:6px 4px;color:#374151;">${addedDays}</td></tr><tr><td style="padding:6px 4px;font-weight:bold;color:#374151;">${newExpiryLabel[lang]}</td><td style="padding:6px 4px;color:#374151;">${newExpiry}</td></tr>`
@@ -559,4 +565,3 @@ export const sendAdminExtensionEmail = async (
     return { success: false, error: err.message }
   }
 }
-

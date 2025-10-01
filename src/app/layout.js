@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 // Thai font with full glyph coverage
 const notoThai = Noto_Sans_Thai({
   variable: '--font-noto-thai',
-  subsets: ['thai','latin'],
-  weight: ['300','400','500','600','700']
+  subsets: ['thai', 'latin'],
+  weight: ['300', '400', '500', '600', '700']
 })
 
 export const metadata = {
@@ -26,7 +26,7 @@ export const metadata = {
     width: 'device-width',
     initialScale: 1,
     maximumScale: 1,
-    userScalable: false,
+    userScalable: false
   },
   icons: {
     icon: [

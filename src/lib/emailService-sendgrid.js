@@ -8,7 +8,7 @@ const validateEmailConfig = () => {
       'SendGrid configuration missing: SENDGRID_API_KEY must be set'
     )
   }
-  
+
   if (!process.env.EMAIL_FROM) {
     throw new Error(
       'Email configuration missing: EMAIL_FROM must be set (must be verified in SendGrid)'
@@ -24,7 +24,10 @@ export const sendVerificationEmail = async (
 ) => {
   try {
     console.log('Attempting to send verification email to:', email)
-    console.log('SendGrid API Key configured:', process.env.SENDGRID_API_KEY ? 'Yes' : 'No')
+    console.log(
+      'SendGrid API Key configured:',
+      process.env.SENDGRID_API_KEY ? 'Yes' : 'No'
+    )
     console.log('Email FROM configured:', process.env.EMAIL_FROM ? 'Yes' : 'No')
 
     // Validate configuration
@@ -128,16 +131,20 @@ export const sendVerificationEmail = async (
     const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${process.env.SENDGRID_API_KEY}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.SENDGRID_API_KEY}`,
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify(emailData)
     })
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ message: 'Unknown error' }))
+      const errorData = await response
+        .json()
+        .catch(() => ({ message: 'Unknown error' }))
       console.error('SendGrid API error:', response.status, errorData)
-      throw new Error(`Failed to send email: ${response.status} ${errorData.message || errorData}`)
+      throw new Error(
+        `Failed to send email: ${response.status} ${errorData.message || errorData}`
+      )
     }
 
     // SendGrid returns 202 with no body on success

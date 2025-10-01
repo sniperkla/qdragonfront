@@ -5,7 +5,7 @@ import { sendVerificationEmail } from '@/lib/emailService'
 
 export async function POST(req) {
   try {
-  const { username, email, password, language } = await req.json()
+    const { username, email, password, language } = await req.json()
 
     // Input validation
     if (!username || !email || !password) {
@@ -69,7 +69,7 @@ export async function POST(req) {
       username,
       email,
       password: hashedPassword,
-      preferredLanguage: (language === 'th' ? 'th' : 'en'),
+      preferredLanguage: language === 'th' ? 'th' : 'en',
       isEmailVerified: false,
       emailVerificationToken: verificationToken,
       emailVerificationExpires: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours

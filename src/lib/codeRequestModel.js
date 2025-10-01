@@ -24,10 +24,11 @@ const CodeRequestSchema = new mongoose.Schema(
     paidAt: { type: Date },
     activatedAt: { type: Date },
     expiresAt: { type: Date, required: true },
-    isActive: { type: Boolean, default: false }
-    ,activationEmailSent: { type: Boolean, default: false }
-    ,activationEmailSentAt: { type: Date }
-    ,activationEmailResentCount: { type: Number, default: 0 }
+    isActive: { type: Boolean, default: false },
+    pointsUsed: { type: Number, default: 0 }, // Points used for this license (0 = paid with money)
+    activationEmailSent: { type: Boolean, default: false },
+    activationEmailSentAt: { type: Date },
+    activationEmailResentCount: { type: Number, default: 0 }
   },
   {
     timestamps: true

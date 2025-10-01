@@ -108,7 +108,10 @@ export async function POST(req) {
         status: 'pending_payment',
         createdAt: codeRequest.createdAt
       })
-      await emitAdminNotification(`New trading code: ${tradingCode} (${planInfo.days}d)`, 'info')
+      await emitAdminNotification(
+        `New trading code: ${tradingCode} (${planInfo.days}d)`,
+        'info'
+      )
     } catch (wsErr) {
       console.warn('WebSocket emission failed (generate-code):', wsErr.message)
     }

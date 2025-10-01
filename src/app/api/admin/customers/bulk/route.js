@@ -6,16 +6,24 @@ export async function POST(req) {
   try {
     const adminSession = req.cookies.get('admin-session')?.value
     if (adminSession !== 'authenticated') {
-      return new Response(JSON.stringify({ error: 'Admin authentication required' }), { status: 401 })
+      return new Response(
+        JSON.stringify({ error: 'Admin authentication required' }),
+        { status: 401 }
+      )
     }
 
     const { action, ids } = await req.json()
 
     if (!action || !['suspend', 'delete'].includes(action)) {
-      return new Response(JSON.stringify({ error: 'Invalid action. Use suspend or delete.' }), { status: 400 })
+      return new Response(
+        JSON.stringify({ error: 'Invalid action. Use suspend or delete.' }),
+        { status: 400 }
+      )
     }
     if (!Array.isArray(ids) || ids.length === 0) {
-      return new Response(JSON.stringify({ error: 'ids array required' }), { status: 400 })
+      return new Response(JSON.stringify({ error: 'ids array required' }), {
+        status: 400
+      })
     }
 
     await connectToDatabase()
@@ -23,7 +31,10 @@ export async function POST(req) {
     const accounts = await CustomerAccount.find({ _id: { $in: ids } })
 
     if (!accounts || accounts.length === 0) {
-      return new Response(JSON.stringify({ error: 'No accounts found for provided ids' }), { status: 404 })
+      return new Response(
+        JSON.stringify({ error: 'No accounts found for provided ids' }),
+        { status: 404 }
+      )
     }
 
     const processed = []
@@ -39,7 +50,10 @@ export async function POST(req) {
       try {
         if (action === 'suspend') {
           if (acc.status !== 'valid') {
-            skipped.push({ id: acc._id.toString(), reason: `status ${acc.status} not valid for suspend` })
+            skipped.push({
+              id: acc._id.toString(),
+              reason: `status ${acc.status} not valid for suspend`
+            })
             continue
           }
           acc.status = 'suspended'
@@ -55,7 +69,10 @@ export async function POST(req) {
             await CodeRequest.deleteOne({ code: acc.license })
           } catch (crErr) {
             // Non-fatal
-            console.warn('Bulk delete associated code request failed:', crErr.message)
+            console.warn(
+              'Bulk delete associated code request failed:',
+              crErr.message
+            )
           }
           await CustomerAccount.findByIdAndDelete(acc._id)
           processed.push({ id: acc._id.toString(), license: acc.license })
@@ -70,8 +87,16 @@ export async function POST(req) {
           const userDoc = await User.findOne({ username: acc.user }, '_id')
           if (userDoc) {
             const userId = userDoc._id.toString()
-            const { emitCodesUpdate, emitCustomerAccountUpdate, emitNotificationToAdminAndClient } = emitFns
-            const eventPayload = { action: action === 'suspend' ? 'account-suspended' : 'account-deleted', license: acc.license }
+            const {
+              emitCodesUpdate,
+              emitCustomerAccountUpdate,
+              emitNotificationToAdminAndClient
+            } = emitFns
+            const eventPayload = {
+              action:
+                action === 'suspend' ? 'account-suspended' : 'account-deleted',
+              license: acc.license
+            }
             await emitCodesUpdate(userId, eventPayload)
             await emitCustomerAccountUpdate(userId, eventPayload)
             await emitNotificationToAdminAndClient(
@@ -83,7 +108,10 @@ export async function POST(req) {
             )
           }
         } catch (emitErr) {
-          console.warn('Bulk websocket emission failed (non-fatal):', emitErr.message)
+          console.warn(
+            'Bulk websocket emission failed (non-fatal):',
+            emitErr.message
+          )
         }
       } catch (innerErr) {
         console.error('Bulk action item error:', innerErr)
@@ -107,6 +135,8 @@ export async function POST(req) {
     )
   } catch (error) {
     console.error('Admin bulk customer action error:', error)
-    return new Response(JSON.stringify({ error: 'Internal server error' }), { status: 500 })
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+      status: 500
+    })
   }
 }
