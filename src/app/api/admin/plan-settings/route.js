@@ -1,15 +1,21 @@
 import { connectToDatabase } from '@/lib/mongodb'
 import PlanSetting from '@/lib/planSettingModel'
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
+
 
 // Get all plan settings
 export async function GET(req) {
   try {
     const adminSession = req.cookies.get('admin-session')?.value
     if (adminSession !== 'authenticated') {
-      return new Response(
-        JSON.stringify({ error: 'Admin authentication required' }),
-        { status: 401 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Admin authentication required' }, 401)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Admin authentication required' }), { status: 401 })
     }
 
     const { searchParams } = new URL(req.url)
@@ -52,6 +58,13 @@ export async function GET(req) {
     )
   } catch (error) {
     console.error('Plan settings fetch error:', error)
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Internal server error' }, 500)
+    }
+    
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500
     })
@@ -63,26 +76,42 @@ export async function POST(req) {
   try {
     const adminSession = req.cookies.get('admin-session')?.value
     if (adminSession !== 'authenticated') {
-      return new Response(
-        JSON.stringify({ error: 'Admin authentication required' }),
-        { status: 401 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Admin authentication required' }, 401)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Admin authentication required' }), { status: 401 })
     }
 
-    const { name, days, price, points, description, isActive, isLifetime, sortOrder } = await req.json()
+    // Decrypt request body (automatically handles both encrypted and plain requests)
+
+
+    const body = await decryptRequestBody(req)
+    const { name, days, price, points, description, isActive, isLifetime, sortOrder } =body
 
     if (!name || !days || price === undefined || points === undefined) {
-      return new Response(
-        JSON.stringify({ error: 'Name, days, price, and points are required' }),
-        { status: 400 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Name, days, price, and points are required' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Name, days, price, and points are required' }), { status: 400 })
     }
 
     if (days <= 0 || price < 0 || points < 0) {
-      return new Response(
-        JSON.stringify({ error: 'Days must be positive, price and points cannot be negative' }),
-        { status: 400 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Days must be positive, price and points cannot be negative' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Days must be positive, price and points cannot be negative' }), { status: 400 })
     }
 
     await connectToDatabase()
@@ -90,10 +119,14 @@ export async function POST(req) {
     // Check for duplicate plan names
     const existingPlan = await PlanSetting.findOne({ name: name.trim() })
     if (existingPlan) {
-      return new Response(
-        JSON.stringify({ error: 'A plan with this name already exists' }),
-        { status: 400 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'A plan with this name already exists' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'A plan with this name already exists' }), { status: 400 })
     }
 
     const planData = {
@@ -141,6 +174,13 @@ export async function POST(req) {
     )
   } catch (error) {
     console.error('Plan creation error:', error)
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Internal server error' }, 500)
+    }
+    
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500
     })
@@ -152,29 +192,45 @@ export async function PUT(req) {
   try {
     const adminSession = req.cookies.get('admin-session')?.value
     if (adminSession !== 'authenticated') {
-      return new Response(
-        JSON.stringify({ error: 'Admin authentication required' }),
-        { status: 401 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Admin authentication required' }, 401)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Admin authentication required' }), { status: 401 })
     }
 
-    const { planId, name, days, price, points, description, isActive, isLifetime, sortOrder } = await req.json()
+    // Decrypt request body (automatically handles both encrypted and plain requests)
+
+
+    const body = await decryptRequestBody(req)
+    const { planId, name, days, price, points, description, isActive, isLifetime, sortOrder } =body
 
     if (!planId) {
-      return new Response(
-        JSON.stringify({ error: 'Plan ID is required' }),
-        { status: 400 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Plan ID is required' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Plan ID is required' }), { status: 400 })
     }
 
     await connectToDatabase()
 
     const plan = await PlanSetting.findById(planId)
     if (!plan) {
-      return new Response(
-        JSON.stringify({ error: 'Plan not found' }),
-        { status: 404 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Plan not found' }, 404)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Plan not found' }), { status: 404 })
     }
 
     // Check for duplicate names (excluding current plan)
@@ -184,10 +240,14 @@ export async function PUT(req) {
         _id: { $ne: planId }
       })
       if (existingPlan) {
-        return new Response(
-          JSON.stringify({ error: 'A plan with this name already exists' }),
-          { status: 400 }
-        )
+        // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'A plan with this name already exists' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'A plan with this name already exists' }), { status: 400 })
       }
     }
 
@@ -195,28 +255,40 @@ export async function PUT(req) {
     if (name !== undefined) plan.name = name.trim()
     if (days !== undefined) {
       if (days <= 0) {
-        return new Response(
-          JSON.stringify({ error: 'Days must be positive' }),
-          { status: 400 }
-        )
+        // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Days must be positive' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Days must be positive' }), { status: 400 })
       }
       plan.days = parseInt(days)
     }
     if (price !== undefined) {
       if (price < 0) {
-        return new Response(
-          JSON.stringify({ error: 'Price cannot be negative' }),
-          { status: 400 }
-        )
+        // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Price cannot be negative' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Price cannot be negative' }), { status: 400 })
       }
       plan.price = parseFloat(price)
     }
     if (points !== undefined) {
       if (points < 0) {
-        return new Response(
-          JSON.stringify({ error: 'Points cannot be negative' }),
-          { status: 400 }
-        )
+        // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Points cannot be negative' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Points cannot be negative' }), { status: 400 })
       }
       plan.points = parseFloat(points)
     }
@@ -258,6 +330,13 @@ export async function PUT(req) {
     )
   } catch (error) {
     console.error('Plan update error:', error)
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Internal server error' }, 500)
+    }
+    
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500
     })
@@ -269,44 +348,74 @@ export async function DELETE(req) {
   try {
     const adminSession = req.cookies.get('admin-session')?.value
     if (adminSession !== 'authenticated') {
-      return new Response(
-        JSON.stringify({ error: 'Admin authentication required' }),
-        { status: 401 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Admin authentication required' }, 401)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Admin authentication required' }), { status: 401 })
     }
 
-    const { planId } = await req.json()
+    // Decrypt request body (automatically handles both encrypted and plain requests)
+
+
+    const body = await decryptRequestBody(req)
+    const { planId } =body
 
     if (!planId) {
-      return new Response(
-        JSON.stringify({ error: 'Plan ID is required' }),
-        { status: 400 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Plan ID is required' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Plan ID is required' }), { status: 400 })
     }
 
     await connectToDatabase()
 
     const plan = await PlanSetting.findById(planId)
     if (!plan) {
-      return new Response(
-        JSON.stringify({ error: 'Plan not found' }),
-        { status: 404 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Plan not found' }, 404)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Plan not found' }), { status: 404 })
     }
 
     await PlanSetting.findByIdAndDelete(planId)
 
     console.log(`Plan deleted: ${plan.name}`)
 
-    return new Response(
-      JSON.stringify({
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
         success: true,
         message: 'Plan deleted successfully'
-      }),
-      { status: 200 }
-    )
+      }, 200)
+    }
+    
+    return new Response(JSON.stringify({
+        success: true,
+        message: 'Plan deleted successfully'
+      }), { status: 200 })
   } catch (error) {
     console.error('Plan deletion error:', error)
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Internal server error' }, 500)
+    }
+    
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500
     })

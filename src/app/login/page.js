@@ -4,6 +4,7 @@ import { useTranslation } from '../../hooks/useTranslation'
 import { useRouter } from 'next/navigation'
 import { useDispatch } from 'react-redux'
 import { loginSuccess } from '../../store/slices/authSlice'
+import { encryptedFetch } from '@/lib/clientEncryption'
 
 // Inline debug logger
 const debugLogger = {
@@ -183,26 +184,45 @@ export default function LoginPage() {
     debugLogger.log('Login attempt started', { username })
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const response = await encryptedFetch('/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
+        body: {
           username,
           password
-        })
+        }
       })
-      const data = await res.json()
 
-      debugLogger.log('Login API response received', {
-        status: res.status,
-        ok: res.ok,
+      // Parse response data once
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Login failed')
+      }
+
+      debugLogger.log('Login API response received (encrypted)', {
         requiresVerification: data.requiresVerification,
         hasEmail: !!data.email
       })
 
-      if (res.ok) {
+      if (data.requiresVerification) {
+        // User needs to verify email - redirect to verification page
+        debugLogger.log(
+          'Email verification required, redirecting to verify-email',
+          {
+            email: data.email,
+            username: data.username
+          }
+        )
+        const verifyUrl = `/verify-email?email=${encodeURIComponent(
+          data.email
+        )}&username=${encodeURIComponent(data.username)}&lang=${language}`
+        debugLogger.log('Verify URL created', { verifyUrl })
+        router.push(verifyUrl)
+      } else {
+        // Login successful
         const userData = data?.user
         if (!userData) {
           debugLogger.error('Login succeeded but user payload missing', {
@@ -223,30 +243,10 @@ export default function LoginPage() {
         )
         debugLogger.log('Login successful, redirecting to landing')
         router.push('/landing') // Redirect to landing page after successful login
-      } else if (res.status === 403 && data.requiresVerification) {
-        // User needs to verify email - redirect to verification page
-        debugLogger.log(
-          'Email verification required, redirecting to verify-email',
-          {
-            email: data.email,
-            username: data.username
-          }
-        )
-        const verifyUrl = `/verify-email?email=${encodeURIComponent(
-          data.email
-        )}&username=${encodeURIComponent(data.username)}&lang=${language}`
-        debugLogger.log('Verify URL created', { verifyUrl })
-        router.push(verifyUrl)
-      } else {
-        debugLogger.error('Login failed', {
-          status: res.status,
-          error: data.error
-        })
-        setError(data.error || 'Username or password incorrect')
       }
     } catch (error) {
-      debugLogger.error('Login network error', error)
-      setError('Network error. Please try again.')
+      debugLogger.error('Login error', error)
+      setError(error.message || 'Username or password incorrect')
     } finally {
       setIsLoading(false)
     }

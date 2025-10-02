@@ -51,6 +51,8 @@ const ExtensionRequest =
 // Import other models
 import CodeRequest from '@/lib/codeRequestModel'
 import CustomerAccount from '@/lib/customerAccountModel'
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
+
 
 // Format date to Thai Buddhist Era format with time
 const formatThaiDateTime = (date) => {
@@ -86,7 +88,14 @@ export async function GET(request) {
     // Verify admin authentication
     if (!(await verifyAdmin(request))) {
       console.log('Admin authentication failed')
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Unauthorized' }, 401)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401
       })
     }
@@ -111,16 +120,31 @@ export async function GET(request) {
       .sort({ requestedAt: -1 })
       .limit(100)
 
-    return new Response(
-      JSON.stringify({
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
         success: true,
         total: extensionRequests.length,
         requests: extensionRequests
-      }),
-      { status: 200 }
-    )
+      }, 200)
+    }
+    
+    return new Response(JSON.stringify({
+        success: true,
+        total: extensionRequests.length,
+        requests: extensionRequests
+      }), { status: 200 })
   } catch (error) {
     console.error('Error fetching extension requests:', error)
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Internal server error' }, 500)
+    }
+    
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500
     })
@@ -135,25 +159,44 @@ export async function PUT(request) {
     // Verify admin authentication
     if (!(await verifyAdmin(request))) {
       console.log('Admin authentication failed')
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Unauthorized' }, 401)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401
       })
     }
 
-    const { requestId, action, rejectionReason } = await request.json()
+    // Decrypt request body (automatically handles both encrypted and plain requests)
+
+
+    const body = await decryptRequestBody(request)
+    const { requestId, action, rejectionReason } =body
 
     if (!requestId || !action || !['approve', 'reject'].includes(action)) {
-      return new Response(
-        JSON.stringify({ error: 'Valid request ID and action are required' }),
-        { status: 400 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Valid request ID and action are required' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Valid request ID and action are required' }), { status: 400 })
     }
 
     if (action === 'reject' && !rejectionReason) {
-      return new Response(
-        JSON.stringify({ error: 'Rejection reason is required' }),
-        { status: 400 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Rejection reason is required' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Rejection reason is required' }), { status: 400 })
     }
 
     await connectToDatabase()
@@ -164,17 +207,25 @@ export async function PUT(request) {
       .populate('customerAccountId')
 
     if (!extensionRequest) {
-      return new Response(
-        JSON.stringify({ error: 'Extension request not found' }),
-        { status: 404 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Extension request not found' }, 404)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Extension request not found' }), { status: 404 })
     }
 
     if (extensionRequest.status !== 'pending') {
-      return new Response(
-        JSON.stringify({ error: 'Extension request already processed' }),
-        { status: 400 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Extension request already processed' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Extension request already processed' }), { status: 400 })
     }
 
     if (action === 'approve') {
@@ -186,10 +237,14 @@ export async function PUT(request) {
         })
 
         if (!customerAccount) {
-          return new Response(
-            JSON.stringify({ error: 'Customer account not found' }),
-            { status: 404 }
-          )
+          // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Customer account not found' }, 404)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Customer account not found' }), { status: 404 })
         }
 
         // Parse current expiry date
@@ -328,23 +383,38 @@ export async function PUT(request) {
           console.warn('WebSocket approve emission failed:', wsErr.message)
         }
 
-        return new Response(
-          JSON.stringify({
+        // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
             success: true,
             message: 'Extension request approved and processed successfully',
             licenseCode: extensionRequest.licenseCode,
             oldExpiry: customerAccount.expireDate,
             newExpiry: newExpiryThai,
             extendedDays: extensionRequest.requestedDays
-          }),
-          { status: 200 }
-        )
+          }, 200)
+    }
+    
+    return new Response(JSON.stringify({
+            success: true,
+            message: 'Extension request approved and processed successfully',
+            licenseCode: extensionRequest.licenseCode,
+            oldExpiry: customerAccount.expireDate,
+            newExpiry: newExpiryThai,
+            extendedDays: extensionRequest.requestedDays
+          }), { status: 200 })
       } catch (extensionError) {
         console.error('Error processing extension:', extensionError)
-        return new Response(
-          JSON.stringify({ error: 'Failed to process extension' }),
-          { status: 500 }
-        )
+        // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Failed to process extension' }, 500)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Failed to process extension' }), { status: 500 })
       }
     } else if (action === 'reject') {
       // Reject the extension request
@@ -415,18 +485,34 @@ export async function PUT(request) {
         console.warn('WebSocket reject emission failed:', wsErr.message)
       }
 
-      return new Response(
-        JSON.stringify({
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
           success: true,
           message: 'Extension request rejected',
           licenseCode: extensionRequest.licenseCode,
           rejectionReason: rejectionReason
-        }),
-        { status: 200 }
-      )
+        }, 200)
+    }
+    
+    return new Response(JSON.stringify({
+          success: true,
+          message: 'Extension request rejected',
+          licenseCode: extensionRequest.licenseCode,
+          rejectionReason: rejectionReason
+        }), { status: 200 })
     }
   } catch (error) {
     console.error('Error processing extension request:', error)
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Internal server error' }, 500)
+    }
+    
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500
     })
@@ -440,15 +526,33 @@ export async function DELETE(request) {
 
     // Verify admin authentication
     if (!(await verifyAdmin(request))) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Unauthorized' }, 401)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401
       })
     }
 
-    const { requestId } = await request.json()
+    // Decrypt request body (automatically handles both encrypted and plain requests)
+
+
+    const body = await decryptRequestBody(request)
+    const { requestId } =body
 
     if (!requestId) {
-      return new Response(JSON.stringify({ error: 'Request ID is required' }), {
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Request ID is required' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Request ID is required' }), {
         status: 400
       })
     }
@@ -459,10 +563,14 @@ export async function DELETE(request) {
     const deletedRequest = await ExtensionRequest.findByIdAndDelete(requestId)
 
     if (!deletedRequest) {
-      return new Response(
-        JSON.stringify({ error: 'Extension request not found' }),
-        { status: 404 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Extension request not found' }, 404)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Extension request not found' }), { status: 404 })
     }
 
     // Emit WebSocket to admin (and possibly user if we can resolve user from license)
@@ -481,15 +589,29 @@ export async function DELETE(request) {
       )
     }
 
-    return new Response(
-      JSON.stringify({
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
         success: true,
         message: 'Extension request deleted successfully'
-      }),
-      { status: 200 }
-    )
+      }, 200)
+    }
+    
+    return new Response(JSON.stringify({
+        success: true,
+        message: 'Extension request deleted successfully'
+      }), { status: 200 })
   } catch (error) {
     console.error('Error deleting extension request:', error)
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Internal server error' }, 500)
+    }
+    
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500
     })

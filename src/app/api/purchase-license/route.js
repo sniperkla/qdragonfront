@@ -9,6 +9,8 @@ import {
   emitCodesUpdate
 } from '@/lib/websocket'
 import { sendPurchaseConfirmationEmail } from '@/lib/emailService'
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
+
 
 // Purchase license API (simplified from generate-code)
 export async function POST(req) {
@@ -16,31 +18,51 @@ export async function POST(req) {
     // Verify user authentication
     const authData = verifyAuth(req)
     if (!authData) {
-      return new Response(
-        JSON.stringify({ error: 'Authentication required' }),
-        { status: 401 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Authentication required' }, 401)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Authentication required' }), { status: 401 })
     }
 
-    const { accountNumber, platform, plan } = await req.json()
+    // Decrypt request body (automatically handles both encrypted and plain requests)
+
+
+    const body = await decryptRequestBody(req)
+    const { accountNumber, platform, plan } =body
 
     // Input validation
     if (!accountNumber || !platform || !plan) {
-      return new Response(
-        JSON.stringify({
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
           error: 'Account number, platform, and plan are required'
-        }),
-        { status: 400 }
-      )
+        }, 400)
+    }
+    
+    return new Response(JSON.stringify({
+          error: 'Account number, platform, and plan are required'
+        }), { status: 400 })
     }
 
     if (accountNumber.length < 4) {
-      return new Response(
-        JSON.stringify({
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
           error: 'Account number must be at least 4 characters'
-        }),
-        { status: 400 }
-      )
+        }, 400)
+    }
+    
+    return new Response(JSON.stringify({
+          error: 'Account number must be at least 4 characters'
+        }), { status: 400 })
     }
 
     await connectToDatabase()
@@ -48,7 +70,14 @@ export async function POST(req) {
     // Fetch dynamic plan from PlanSetting collection (active only)
     const planDays = parseInt(plan, 10)
     if (isNaN(planDays)) {
-      return new Response(JSON.stringify({ error: 'Invalid plan format' }), {
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Invalid plan format' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Invalid plan format' }), {
         status: 400
       })
     }
@@ -58,12 +87,16 @@ export async function POST(req) {
       isActive: true
     })
     if (!planSetting) {
-      return new Response(
-        JSON.stringify({ error: 'Selected plan not available' }),
-        {
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Selected plan not available' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Selected plan not available' }), {
           status: 400
-        }
-      )
+        })
     }
 
     // Generate unique license code
@@ -79,7 +112,14 @@ export async function POST(req) {
     // Get user info
     const user = await User.findById(authData.id)
     if (!user) {
-      return new Response(JSON.stringify({ error: 'User not found' }), {
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'User not found' }, 404)
+    }
+    
+    return new Response(JSON.stringify({ error: 'User not found' }), {
         status: 404
       })
     }
@@ -169,8 +209,11 @@ export async function POST(req) {
       )
     }
 
-    return new Response(
-      JSON.stringify({
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
         success: true,
         license: licenseCode,
         accountNumber,
@@ -181,11 +224,30 @@ export async function POST(req) {
         status: 'pending_payment',
         message:
           'License purchase initiated successfully. Please proceed to payment.'
-      }),
-      { status: 200 }
-    )
+      }, 200)
+    }
+    
+    return new Response(JSON.stringify({
+        success: true,
+        license: licenseCode,
+        accountNumber,
+        platform,
+        plan: planSetting.days,
+        price: planSetting.price,
+        currency: 'THB',
+        status: 'pending_payment',
+        message:
+          'License purchase initiated successfully. Please proceed to payment.'
+      }), { status: 200 })
   } catch (error) {
     console.error('License purchase error:', error)
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Internal server error' }, 500)
+    }
+    
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500
     })

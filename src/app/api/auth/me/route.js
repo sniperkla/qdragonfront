@@ -1,12 +1,21 @@
 import { connectToDatabase } from '@/lib/mongodb'
 import User from '@/lib/userModel'
 import { verifyAuth } from '@/lib/auth'
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
+
 
 export async function GET(req) {
   try {
     const authResult = verifyAuth(req)
     if (!authResult) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Unauthorized' }, 401)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401
       })
     }
@@ -15,7 +24,14 @@ export async function GET(req) {
     const user = await User.findById(authResult.id).select('-password')
 
     if (!user) {
-      return new Response(JSON.stringify({ error: 'User not found' }), {
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'User not found' }, 404)
+    }
+    
+    return new Response(JSON.stringify({ error: 'User not found' }), {
         status: 404
       })
     }
@@ -65,6 +81,13 @@ export async function GET(req) {
     )
   } catch (error) {
     console.error('Get user data error:', error)
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Internal server error' }, 500)
+    }
+    
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500
     })

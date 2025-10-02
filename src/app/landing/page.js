@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { logout, loginSuccess } from '../../store/slices/authSlice'
 import { useTranslation } from '../../hooks/useTranslation'
+import { encryptedFetch } from '@/lib/clientEncryption'
 // Use dynamic import to avoid SSR bundling issues
 let socketIOClientFactory = null
 const getSocketIO = async () => {
@@ -27,6 +28,12 @@ export default function LandingPage() {
     if (Number.isNaN(numeric) || numeric < 0) return 0
     return numeric
   }
+
+  // Store user in ref for WebSocket handlers to access latest value
+  const userRef = useRef(user)
+  useEffect(() => {
+    userRef.current = user
+  }, [user])
 
   // Format date with time (HH:MM)
   const formatDateTime = (dateString, locale = 'en-US') => {
@@ -169,18 +176,28 @@ export default function LandingPage() {
         credentials: 'include',
         cache: 'no-store'
       })
-      if (response.ok) {
-        const data = await response.json()
-        dispatch(
-          loginSuccess({
-            id: data.user.id,
-            name: data.user.username,
-            email: data.user.email || data.user.username,
-            points: normalizePoints(data.user.points)
-          })
-        )
-        console.log('User data refreshed:', data.user)
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch user data')
       }
+      
+      const data = await response.json()
+      
+      // Validate response has user data
+      if (!data || !data.user) {
+        // console.error('Invalid user data response:', data)
+        return
+      }
+      
+      dispatch(
+        loginSuccess({
+          id: data.user.id,
+          name: data.user.username,
+          email: data.user.email || data.user.username,
+          points: normalizePoints(data.user.points)
+        })
+      )
+      // console.log('User data refreshed:', data.user)
     } catch (error) {
       console.error('Failed to refresh user data:', error)
     }
@@ -192,7 +209,7 @@ export default function LandingPage() {
     const checkAuth = async () => {
       setIsLoading(true)
       try {
-        console.log('Checking authentication...')
+        // console.log('Checking authentication...')
         const response = await fetch('/api/auth/me', {
           credentials: 'include',
           cache: 'no-store'
@@ -200,30 +217,34 @@ export default function LandingPage() {
 
         if (!isActive) return
 
-        if (response.ok) {
-          const data = await response.json()
-          console.log('Auth check successful:', data)
-          dispatch(
-            loginSuccess({
-              id: data.user.id,
-              name: data.user.username,
-              email: data.user.email || data.user.username,
-              points: normalizePoints(data.user.points)
-            })
-          )
-          setIsLoading(false)
-        } else {
-          console.log('Auth check failed with status:', response.status)
-          if (response.status === 500) {
-            console.log('Server error, not redirecting')
-            setIsLoading(false)
-            return
-          }
-          router.push('/')
+        if (!response.ok) {
+          throw new Error('Authentication failed')
         }
+
+        const data = await response.json()
+
+        // Validate response has user data
+        if (!data || !data.user) {
+          // console.error('Invalid auth response:', data)
+          throw new Error('Invalid authentication response')
+        }
+
+        // console.log('User authenticated:', data.user)
+        // console.log('Auth check successful:', data)
+        dispatch(
+          loginSuccess({
+            id: data.user.id,
+            name: data.user.username,
+            email: data.user.email || data.user.username,
+            points: normalizePoints(data.user.points)
+          })
+        )
+        setIsLoading(false)
       } catch (error) {
         if (!isActive) return
         console.error('Auth check error:', error)
+        // On authentication error, redirect to login
+        router.push('/')
         setIsLoading(false)
       }
     }
@@ -240,23 +261,22 @@ export default function LandingPage() {
     // Starting fetchMyCodes
     setLoadingCodes(true)
     try {
-      // Fetch unified licenses
+      // Fetch unified licenses (with encryption)
       // Fetching from /api/my-licenses
-      const licensesResponse = await fetch('/api/my-licenses', {
+      const licensesData = await encryptedFetch('/api/my-licenses', {
         credentials: 'include'
       })
-      const licensesData = await licensesResponse.json()
 
-      if (licensesResponse.ok && licensesData.licenses) {
-        console.log(
-          '✅ Fetched unified licenses:',
-          licensesData.licenses.length,
-          'licenses'
-        )
-        console.log(
-          '📊 License statuses:',
-          licensesData.licenses.map((l) => ({ code: l.code, status: l.status }))
-        )
+      if (licensesData.licenses) {
+        // console.log(
+        //   '✅ Fetched unified licenses:',
+        //   licensesData.licenses.length,
+        //   'licenses'
+        // )
+        // console.log(
+        //   '📊 License statuses:',
+        //   licensesData.licenses.map((l) => ({ code: l.code, status: l.status }))
+        // )
         setMyCodes(licensesData.licenses)
       } else {
         console.error('❌ Failed to fetch licenses:', licensesData.error)
@@ -267,7 +287,7 @@ export default function LandingPage() {
       setMyCodes([])
     } finally {
       setLoadingCodes(false)
-      console.log('🏁 fetchMyCodes completed')
+      // console.log('🏁 fetchMyCodes completed')
     }
   }
 
@@ -277,18 +297,15 @@ export default function LandingPage() {
     setLoadingPlans(true)
     setPlansError(null)
     try {
-      console.log('[Plans] Fetching /api/plans ...')
-      const res = await fetch('/api/plans?ts=' + Date.now(), {
+      // console.log('[Plans] Fetching /api/plans ...')
+      const response = await encryptedFetch('/api/plans?ts=' + Date.now(), {
         cache: 'no-store'
       })
-      let data = {}
-      try {
-        data = await res.json()
-      } catch (parseErr) {
-        console.warn('[Plans] Failed to parse JSON', parseErr)
-      }
-      if (res.ok && Array.isArray(data.plans)) {
-        console.log('[Plans] Loaded', data.plans.length, 'plans')
+      
+      const data = await response.json()
+      
+      if (response.ok && Array.isArray(data.plans)) {
+        // console.log('[Plans] Loaded', data.plans.length, 'plans')
         setPlans(data.plans)
         if (data.plans.length === 0) {
           // Provide fallback defaults so user can still proceed
@@ -310,7 +327,7 @@ export default function LandingPage() {
               isLifetime: false
             }
           ]
-          console.log('[Plans] Using fallback defaults')
+          // console.log('[Plans] Using fallback defaults')
           setPlans(fallback)
           // Set default plan in next render to avoid state update during render
           setTimeout(() => {
@@ -350,7 +367,7 @@ export default function LandingPage() {
           }, 0)
         }
       } else {
-        console.warn('[Plans] Non-OK response', res.status, data)
+        console.warn('[Plans] Non-OK response', response.status, data)
         setPlansError(data.error || 'Failed to load plans')
         // Fallback still provided so select stays usable
         const fallback = [
@@ -421,18 +438,16 @@ export default function LandingPage() {
     setHistoryLoading(true)
     try {
       // Add cache busting + no-store to ensure freshest extension status after admin actions
-      const res = await fetch(`/api/history?ts=${Date.now()}`, {
+      const response = await encryptedFetch(`/api/history?ts=${Date.now()}`, {
         credentials: 'include',
         cache: 'no-store'
       })
-      const data = await res.json()
-      if (res.ok) {
-        setPurchaseHistory(data.purchases || [])
-        setExtensionHistory(data.extensions || [])
-        setTopUpHistory(data.topups || [])
-      } else {
-        console.warn('Failed to load history:', data.error)
-      }
+      
+      const data = await response.json()
+      
+      setPurchaseHistory(data.purchases || [])
+      setExtensionHistory(data.extensions || [])
+      setTopUpHistory(data.topups || [])
     } catch (e) {
       console.error('History fetch error:', e)
     } finally {
@@ -484,13 +499,29 @@ export default function LandingPage() {
       const joinRef = { stopped: false }
 
       const attemptJoin = () => {
-        if (!user) return
+        const currentUser = userRef.current
+        if (!currentUser) {
+          // console.log('⚠️ attemptJoin: user is null/undefined (from ref)')
+          return
+        }
+        
+        // console.log('🔍 User object for join (from ref):', {
+        //   id: currentUser.id,
+        //   _id: currentUser._id,
+        //   name: currentUser.name
+        // })
+        
         const idsToTry = []
-        if (user.id) idsToTry.push(user.id)
-        if (user._id && user._id !== user.id) idsToTry.push(user._id)
-        if (idsToTry.length === 0) return
+        if (currentUser.id) idsToTry.push(currentUser.id)
+        if (currentUser._id && currentUser._id !== currentUser.id) idsToTry.push(currentUser._id)
+        
+        if (idsToTry.length === 0) {
+          // console.error('❌ No user IDs found to join room!')
+          return
+        }
+        
         idsToTry.forEach((val) => {
-          console.log('🔗 Attempting join-user for:', val)
+          // console.log('🔗 Attempting join-user for:', val, '(type:', typeof val, ')')
           s.emit('join-user', val)
         })
         setJoinStatus((prev) => ({ ...prev, attempts: prev.attempts + 1 }))
@@ -665,7 +696,7 @@ export default function LandingPage() {
 
       // Broadcast fallback for points updates
       s.on('points-updated-broadcast', (data) => {
-        console.log('🔔 Received points-updated-broadcast event:', data)
+        // console.log('🔔 Received points-updated-broadcast event:', data)
         setLastWsEvent('points-updated-broadcast')
         if (data?.newPoints !== undefined) {
           dispatch(
@@ -680,7 +711,7 @@ export default function LandingPage() {
       })
 
       s.on('topup-status-updated', (data) => {
-        console.log('🔔 Received topup-status-updated event:', data)
+        // console.log('🔔 Received topup-status-updated event:', data)
         setLastWsEvent('topup-status-updated')
         if (data?.status === 'approved' && data?.points) {
           showNotification(
@@ -703,7 +734,7 @@ export default function LandingPage() {
 
       // Listen for new code/license generation events (admin creates license)
       s.on('new-code-generated', (data) => {
-        console.log('🔔 Received new-code-generated event:', data)
+        // console.log('🔔 Received new-code-generated event:', data)
         setLastWsEvent('new-code-generated')
         fetchMyCodes()
         fetchHistory() // Refresh purchase history
@@ -711,7 +742,7 @@ export default function LandingPage() {
 
       // Listen for topup-processed (admin approval confirmation)
       s.on('topup-processed', (data) => {
-        console.log('🔔 Received topup-processed event:', data)
+        // console.log('🔔 Received topup-processed event:', data)
         setLastWsEvent('topup-processed')
         fetchHistory() // Refresh topup history
         refreshUserData() // Update points
@@ -728,13 +759,27 @@ export default function LandingPage() {
 
   // Re-emit join when user changes AFTER socket established
   useEffect(() => {
-    if (!socket || !wsConnected) return
+    if (!socket || !wsConnected) {
+      // console.log('⏸️ Skip re-join: socket or wsConnected not ready', { 
+      //   hasSocket: !!socket, 
+      //   wsConnected 
+      // })
+      return
+    }
+    
+    if (!user) {
+      // console.log('⏸️ Skip re-join: user not available yet')
+      return
+    }
+    
+    // console.log('🔄 User data available, attempting to join rooms...')
+    
     if (user?.id) {
-      console.log('🔄 Re-joining (user.id effect):', user.id)
+      // console.log('🔄 Re-joining with user.id:', user.id)
       socket.emit('join-user', user.id)
     }
     if (user?._id && user._id !== user?.id) {
-      console.log('🔄 Re-joining (user._id effect):', user._id)
+      // console.log('🔄 Re-joining with user._id:', user._id)
       socket.emit('join-user', user._id)
     }
   }, [user?.id, user?._id, wsConnected, socket])
@@ -936,20 +981,21 @@ export default function LandingPage() {
 
     setExtendingCode(true)
     try {
-      const response = await fetch('/api/extend-license', {
+      const response = await encryptedFetch('/api/extend-license', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
+        body: {
           codeId: selectedCode._id,
           extendPlan: extendPlan,
           source: selectedCode.source,
           licenseCode: selectedCode.code
-        })
+        }
       })
-
+      
       const data = await response.json()
-      if (response.ok) {
+
+      if (data.success || data.status) {
         // Check if extension was completed immediately or is pending
         if (data.status === 'completed') {
           showModalAlert(
@@ -981,16 +1027,10 @@ export default function LandingPage() {
             }
           )
         }
-        return
-      } else {
-        showModalAlert(
-          data.error || 'Failed to submit extension request',
-          'error'
-        )
       }
     } catch (error) {
       console.error('Error extending code:', error)
-      showModalAlert('Failed to extend code', 'error')
+      showModalAlert(error.message || 'Failed to extend code', 'error')
     } finally {
       setExtendingCode(false)
     }
@@ -999,7 +1039,7 @@ export default function LandingPage() {
   const handleLogout = async () => {
     try {
       // Call logout API to clear cookie
-      await fetch('/api/auth/logout', {
+      await encryptedFetch('/api/auth/logout', {
         method: 'POST',
         credentials: 'include'
       })
@@ -1019,9 +1059,10 @@ export default function LandingPage() {
   const handleChangeAccount = async (license) => {
     try {
       // Fetch current settings and user credits
-      const response = await fetch('/api/change-account-number', {
+      const response = await encryptedFetch('/api/change-account-number', {
         credentials: 'include'
       })
+      
       const data = await response.json()
 
       if (!data.success) {
@@ -1079,20 +1120,19 @@ export default function LandingPage() {
 
     setChangingAccount(true)
     try {
-      const response = await fetch('/api/change-account-number', {
+      const response = await encryptedFetch('/api/change-account-number', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
+        body: {
           licenseCode: changeAccountForm.licenseCode,
           newAccountNumber: changeAccountForm.newAccountNumber
-        })
+        }
       })
-
+      
       const data = await response.json()
 
-      if (response.ok) {
-        showModalAlert(
+      showModalAlert(
           `${language === 'th' ? 'เปลี่ยนหมายเลขบัญชีสำเร็จ!' : 'Account Number Changed Successfully!'}\n\n${language === 'th' ? 'ใบอนุญาต' : 'License'}: ${data.data.licenseCode}\n${language === 'th' ? 'หมายเลขเดิม' : 'Old number'}: ${data.data.oldAccountNumber}\n${language === 'th' ? 'หมายเลขใหม่' : 'New number'}: ${data.data.newAccountNumber}\n${language === 'th' ? 'เครดิตที่ใช้' : 'Credits used'}: ${data.data.creditsDeducted} ${language === 'th' ? 'เครดิต' : 'credits'}\n${language === 'th' ? 'เครดิตคงเหลือ' : 'Remaining credits'}: ${data.data.remainingCredits} ${language === 'th' ? 'เครดิต' : 'credits'}`,
           'success',
           language === 'th' ? 'เปลี่ยนหมายเลขบัญชีสำเร็จ' : 'Change Successful',
@@ -1108,22 +1148,18 @@ export default function LandingPage() {
             refreshUserData() // Refresh points
           }
         )
-      } else {
-        if (response.status === 400 && data.required) {
-          showModalAlert(
-            `${language === 'th' ? 'เครดิตไม่เพียงพอ!' : 'Insufficient Credits!'}\n\n${language === 'th' ? 'ต้องการ' : 'Required'}: ${data.required} ${language === 'th' ? 'เครดิต' : 'credits'}\n${language === 'th' ? 'มีอยู่' : 'Current'}: ${data.current} ${language === 'th' ? 'เครดิต' : 'credits'}\n${language === 'th' ? 'ขาด' : 'Need'}: ${data.required - data.current} ${language === 'th' ? 'เครดิตเพิ่ม' : 'more credits'}`,
-            'error'
-          )
-        } else {
-          showModalAlert(
-            data.error || 'Failed to change account number',
-            'error'
-          )
-        }
-      }
     } catch (error) {
       console.error('Error changing account number:', error)
-      showModalAlert('Failed to change account number', 'error')
+      
+      // Check if it's an insufficient credits error
+      if (error.required && error.current) {
+        showModalAlert(
+          `${language === 'th' ? 'เครดิตไม่เพียงพอ!' : 'Insufficient Credits!'}\n\n${language === 'th' ? 'ต้องการ' : 'Required'}: ${error.required} ${language === 'th' ? 'เครดิต' : 'credits'}\n${language === 'th' ? 'มีอยู่' : 'Current'}: ${error.current} ${language === 'th' ? 'เครดิต' : 'credits'}\n${language === 'th' ? 'ขาด' : 'Need'}: ${error.required - error.current} ${language === 'th' ? 'เครดิตเพิ่ม' : 'more credits'}`,
+          'error'
+        )
+      } else {
+        showModalAlert(error.message || 'Failed to change account number', 'error')
+      }
     } finally {
       setChangingAccount(false)
     }
@@ -1145,22 +1181,22 @@ export default function LandingPage() {
 
     setGeneratingCode(true)
     try {
-      const response = await fetch('/api/purchase-license', {
+      const response = await encryptedFetch('/api/purchase-license', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         credentials: 'include',
-        body: JSON.stringify({
+        body: {
           accountNumber: codeForm.accountNumber,
           platform: codeForm.platform,
           plan: codeForm.plan
-        })
+        }
       })
-
+      
       const data = await response.json()
 
-      if (response.ok) {
+      if (data.success || data.license) {
         setGeneratedCode(data.license)
         // Refresh licenses list
         fetchMyCodes()
@@ -1184,70 +1220,21 @@ export default function LandingPage() {
   // Points System Functions
   const handleTopUpRequest = async (amount) => {
     try {
-      console.log('Submitting top-up request for amount:', amount)
-
-      // First test with simple endpoint
-      console.log('Testing API connectivity...')
-      const testResponse = await fetch('/api/test-topup', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ test: true, amount })
-      })
-
-      console.log('Test response status:', testResponse.status)
-      if (!testResponse.ok) {
-        throw new Error(`Test API failed: ${testResponse.status}`)
-      }
-
-      const testData = await testResponse.json()
-      console.log('Test API response:', testData)
-
-      const response = await fetch('/api/topup', {
+      const response = await encryptedFetch('/api/topup', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         credentials: 'include',
-        body: JSON.stringify({
+        body: {
           amount,
           paymentMethod: 'admin_review', // Will be reviewed by admin before approval
           paymentProof: '',
           transactionRef: ''
-        })
-      })
-
-      console.log('Response status:', response.status)
-      console.log('Response ok:', response.ok)
-
-      if (!response.ok) {
-        console.error('Response not ok:', response.status, response.statusText)
-
-        // Try to get error details
-        let errorData
-        try {
-          errorData = await response.json()
-          console.error('Error data:', errorData)
-        } catch (parseError) {
-          console.error('Could not parse error response:', parseError)
-          errorData = {
-            error: `Server error: ${response.status} ${response.statusText}`
-          }
         }
-
-        showModalAlert(
-          errorData.error ||
-            (language === 'th'
-              ? 'ไม่สามารถส่งคำขอได้'
-              : 'Failed to submit request'),
-          'error'
-        )
-        return
-      }
-
+      })
+      
       const data = await response.json()
-      console.log('Success response:', data)
 
       showModalAlert(
         `${language === 'th' ? 'ส่งคำขอเติมเงินสำเร็จ!' : 'Top-up request submitted successfully!'}\n\n${language === 'th' ? 'จำนวนเงิน' : 'Amount'}: $${amount}\n${language === 'th' ? 'เครดิตที่จะได้รับ' : 'Credits to receive'}: ${amount}\n\n${language === 'th' ? 'รอแอดมินอนุมัติเพื่อรับเครดิต' : 'Please wait for admin approval to receive credits'}`,
@@ -1307,24 +1294,23 @@ export default function LandingPage() {
 
     setGeneratingCode(true)
     try {
-      const response = await fetch('/api/purchase-points', {
+      const response = await encryptedFetch('/api/purchase-points', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
+        body: {
           accountNumber,
           platform: codeForm.platform,
           plan: selectedPlan.isLifetime
             ? 'lifetime'
             : String(selectedPlan.days),
           pointsUsed: requiredPoints
-        })
+        }
       })
-
+      
       const data = await response.json()
 
-      if (response.ok) {
-        dispatch(
+      dispatch(
           loginSuccess({
             ...user,
             points: normalizePoints(data.license.remainingPoints)
@@ -1352,21 +1338,12 @@ export default function LandingPage() {
         })
         const acctEl = document.getElementById('pointsAccountNumber')
         if (acctEl) acctEl.value = ''
-      } else {
-        showModalAlert(
-          data.error ||
-            (language === 'th'
-              ? 'ไม่สามารถซื้อใบอนุญาตได้'
-              : 'Failed to purchase license'),
-          'error'
-        )
-      }
     } catch (error) {
       console.error('Error purchasing with points:', error)
       showModalAlert(
-        language === 'th'
+        error.message || (language === 'th'
           ? 'เกิดข้อผิดพลาดในการเชื่อมต่อ'
-          : 'Network error. Please try again.',
+          : 'Network error. Please try again.'),
         'error'
       )
     } finally {
@@ -2135,19 +2112,19 @@ export default function LandingPage() {
                 {/* Buy with Points Button */}
                 <button
                   onClick={() => {
-                    console.log('[Buy Button] Clicked')
+                    // console.log('[Buy Button] Clicked')
                     const plan = document.getElementById('pointsPlan').value
                     const accountNumber = document.getElementById(
                       'pointsAccountNumber'
                     )?.value
                     const platform = codeForm.platform
 
-                    console.log('[Buy Button] Values:', {
-                      plan,
-                      accountNumber,
-                      platform,
-                      userPoints: user?.points
-                    })
+                    // console.log('[Buy Button] Values:', {
+                    //   plan,
+                    //   accountNumber,
+                    //   platform,
+                    //   userPoints: user?.points
+                    // })
 
                     if (!accountNumber) {
                       showModalAlert(
@@ -2169,10 +2146,10 @@ export default function LandingPage() {
                   }}
                   disabled={(() => {
                     if (generatingCode || !codeForm.plan) {
-                      console.log(
-                        '[Buy Button] Disabled: generating or no plan',
-                        { generatingCode, plan: codeForm.plan }
-                      )
+                      // console.log(
+                      //   '[Buy Button] Disabled: generating or no plan',
+                      //   { generatingCode, plan: codeForm.plan }
+                      // )
                       return true
                     }
                     const selected = plans.find((p) =>
@@ -2181,25 +2158,25 @@ export default function LandingPage() {
                         : !p.isLifetime && String(p.days) === codeForm.plan
                     )
                     if (!selected) {
-                      console.log(
-                        '[Buy Button] Disabled: plan not found in list',
-                        {
-                          searchingFor: codeForm.plan,
-                          availablePlans: plans.map((p) => ({
-                            days: p.days,
-                            isLifetime: p.isLifetime
-                          }))
-                        }
-                      )
+                      // console.log(
+                      //   '[Buy Button] Disabled: plan not found in list',
+                      //   {
+                      //     searchingFor: codeForm.plan,
+                      //     availablePlans: plans.map((p) => ({
+                      //       days: p.days,
+                      //       isLifetime: p.isLifetime
+                      //     }))
+                      //   }
+                      // )
                       return true
                     }
                     const needed = selected.points
                     const hasEnough = (user?.points || 0) >= needed
-                    console.log('[Buy Button] Points check:', {
-                      needed,
-                      userPoints: user?.points,
-                      hasEnough
-                    })
+                    // console.log('[Buy Button] Points check:', {
+                    //   needed,
+                    //   userPoints: user?.points,
+                    //   hasEnough
+                    // })
                     return !hasEnough
                   })()}
                   className="flex-1 group relative bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-white font-bold py-4 px-8 rounded-2xl transition-all duration-300 flex items-center justify-center shadow-2xl hover:shadow-yellow-500/25 transform hover:-translate-y-1 disabled:from-gray-400 disabled:to-gray-500 disabled:transform-none disabled:shadow-none disabled:cursor-not-allowed"

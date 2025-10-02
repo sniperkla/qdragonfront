@@ -4,6 +4,8 @@ import CodeRequest from '@/lib/codeRequestModel'
 import CustomerAccount from '@/lib/customerAccountModel'
 import User from '@/lib/userModel'
 import mongoose from 'mongoose'
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
+
 import {
   emitCodesUpdate,
   emitCustomerAccountUpdate,
@@ -63,13 +65,21 @@ export async function POST(request) {
 
     if (!authData) {
       console.log('Authentication failed')
-      return new Response(
-        JSON.stringify({ error: 'Authentication required' }),
-        { status: 401 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Authentication required' }, 401)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Authentication required' }), { status: 401 })
     }
 
-    const { codeId, extendDays, extendPlan } = await request.json()
+    // Decrypt request body (automatically handles both encrypted and plain requests)
+
+
+    const body = await decryptRequestBody(request)
+    const { codeId, extendDays, extendPlan } =body
     console.log('Request data:', { codeId, extendDays, extendPlan })
 
     // Calculate extend days from plan if provided, otherwise use extendDays
@@ -84,28 +94,42 @@ export async function POST(request) {
       }
       actualExtendDays = planToDays[extendPlan]
       if (!actualExtendDays) {
-        return new Response(
-          JSON.stringify({ error: 'Invalid extension plan selected' }),
-          { status: 400 }
-        )
+        // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Invalid extension plan selected' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Invalid extension plan selected' }), { status: 400 })
       }
     }
 
     // Validate input
     if (!codeId || !actualExtendDays || parseInt(actualExtendDays) <= 0) {
-      return new Response(
-        JSON.stringify({
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
           error: 'Valid code ID and extend days/plan are required'
-        }),
-        { status: 400 }
-      )
+        }, 400)
+    }
+    
+    return new Response(JSON.stringify({
+          error: 'Valid code ID and extend days/plan are required'
+        }), { status: 400 })
     }
 
     if (parseInt(actualExtendDays) > 365) {
-      return new Response(
-        JSON.stringify({ error: 'Maximum extension is 365 days' }),
-        { status: 400 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Maximum extension is 365 days' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Maximum extension is 365 days' }), { status: 400 })
     }
 
     await connectToDatabase()
@@ -119,7 +143,14 @@ export async function POST(request) {
 
     if (!user) {
       console.log('User not found in database:', authData.id)
-      return new Response(JSON.stringify({ error: 'User not found' }), {
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'User not found' }, 404)
+    }
+    
+    return new Response(JSON.stringify({ error: 'User not found' }), {
         status: 404
       })
     }
@@ -142,18 +173,26 @@ export async function POST(request) {
 
     if (!codeRequest) {
       console.log('Code not found for user:', authData.id)
-      return new Response(
-        JSON.stringify({ error: 'Code not found or access denied' }),
-        { status: 404 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Code not found or access denied' }, 404)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Code not found or access denied' }), { status: 404 })
     }
 
     // Check if code is activated
     if (codeRequest.status !== 'activated') {
-      return new Response(
-        JSON.stringify({ error: 'Only activated codes can be extended' }),
-        { status: 400 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Only activated codes can be extended' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Only activated codes can be extended' }), { status: 400 })
     }
 
     // Find the associated customer account
@@ -191,12 +230,18 @@ export async function POST(request) {
 
       // Only allow extension for activated codes
       if (codeRequest.status !== 'activated') {
-        return new Response(
-          JSON.stringify({
+        // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
             error: 'Cannot extend code: Code must be activated first.'
-          }),
-          { status: 400 }
-        )
+          }, 400)
+    }
+    
+    return new Response(JSON.stringify({
+            error: 'Cannot extend code: Code must be activated first.'
+          }), { status: 400 })
       }
 
       // Create missing customer account for activated code
@@ -225,33 +270,49 @@ export async function POST(request) {
         )
       } catch (createError) {
         console.error('Failed to create missing customer account:', createError)
-        return new Response(
-          JSON.stringify({
+        // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
             error: 'Failed to create customer account. Please contact support.'
-          }),
-          { status: 500 }
-        )
+          }, 500)
+    }
+    
+    return new Response(JSON.stringify({
+            error: 'Failed to create customer account. Please contact support.'
+          }), { status: 500 })
       }
     }
 
     // Check if account is still valid (not expired or suspended)
     if (workingCustomerAccount.status !== 'valid') {
-      return new Response(
-        JSON.stringify({
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
           error: 'Cannot extend expired or suspended accounts'
-        }),
-        { status: 400 }
-      )
+        }, 400)
+    }
+    
+    return new Response(JSON.stringify({
+          error: 'Cannot extend expired or suspended accounts'
+        }), { status: 400 })
     }
 
     // Parse current expiry date (assuming it's in Thai format DD/MM/YYYY HH:mm)
     let currentExpiryDate
     try {
       if (workingCustomerAccount.plan === 999999) {
-        return new Response(
-          JSON.stringify({ error: 'Lifetime accounts cannot be extended' }),
-          { status: 400 }
-        )
+        // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Lifetime accounts cannot be extended' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Lifetime accounts cannot be extended' }), { status: 400 })
       }
 
       // Parse Thai date format DD/MM/YYYY HH:mm
@@ -273,21 +334,31 @@ export async function POST(request) {
       )
     } catch (error) {
       console.error('Error parsing current expiry date:', error)
-      return new Response(
-        JSON.stringify({ error: 'Invalid expiry date format' }),
-        { status: 500 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Invalid expiry date format' }, 500)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Invalid expiry date format' }), { status: 500 })
     }
 
     // Check if user has enough points (1 point = 1 day)
     const requiredPoints = parseInt(actualExtendDays)
     if (user.points < requiredPoints) {
-      return new Response(
-        JSON.stringify({
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
           error: `Insufficient points. You need ${requiredPoints} points but have only ${user.points} points.`
-        }),
-        { status: 400 }
-      )
+        }, 400)
+    }
+    
+    return new Response(JSON.stringify({
+          error: `Insufficient points. You need ${requiredPoints} points but have only ${user.points} points.`
+        }), { status: 400 })
     }
 
     // Deduct points from user
@@ -368,11 +439,17 @@ export async function POST(request) {
     )
   } catch (error) {
     console.error('Error extending code:', error)
-    return new Response(
-      JSON.stringify({
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
         error: 'Failed to extend code: ' + error.message
-      }),
-      { status: 500 }
-    )
+      }, 500)
+    }
+    
+    return new Response(JSON.stringify({
+        error: 'Failed to extend code: ' + error.message
+      }), { status: 500 })
   }
 }

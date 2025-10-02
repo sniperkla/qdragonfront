@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server'
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
+
 
 export async function POST(request) {
   try {
-    const { adminKey } = await request.json()
+    // Decrypt request body (automatically handles both encrypted and plain requests)
+
+    const body = await decryptRequestBody(request)
+    const { adminKey } =body
     
     if (!adminKey || adminKey !== process.env.ADMIN_KEY) {
       return NextResponse.json(

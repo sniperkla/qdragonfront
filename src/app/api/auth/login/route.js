@@ -2,13 +2,22 @@ import { connectToDatabase } from '@/lib/mongodb'
 import User from '@/lib/userModel'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
 
 // POST /api/auth/login
 export async function POST(req) {
   try {
-    const { username, password } = await req.json()
+    // Decrypt request body (automatically handles both encrypted and plain requests)
+    const body = await decryptRequestBody(req)
+    
+    console.log('🔐 Login route - Decrypted body:', body)
+    
+    const { username, password } = body
+
+    console.log('🔐 Login route - Username:', username, 'Password length:', password?.length)
 
     if (!username || !password) {
+      console.log('❌ Missing username or password')
       return new Response(
         JSON.stringify({ error: 'Username and password required' }),
         { status: 400 }
@@ -16,8 +25,12 @@ export async function POST(req) {
     }
 
     await connectToDatabase()
+    console.log('🔍 Looking for user:', username)
     const user = await User.findOne({ username })
+    console.log('🔍 User found:', !!user, user ? `(${user.username})` : '(none)')
+    
     if (!user) {
+      console.log('❌ User not found in database')
       return new Response(JSON.stringify({ error: 'Invalid credentials' }), {
         status: 401
       })
@@ -68,17 +81,29 @@ export async function POST(req) {
       `auth_token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 60 * 60}`
     )
 
+    const responseData = {
+      success: true,
+      user: {
+        id: user._id.toString(),
+        username: user.username,
+        email: user.email,
+        points: normalizedPoints,
+        preferredLanguage: user.preferredLanguage
+      }
+    }
+
+    // Check if client wants encrypted response
+    const wantsEncrypted = req.headers.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      const encryptedResponse = createEncryptedResponse(responseData, 200)
+      // Copy cookie header to encrypted response
+      encryptedResponse.headers.set('Set-Cookie', headers.get('Set-Cookie'))
+      return encryptedResponse
+    }
+
     return new Response(
-      JSON.stringify({
-        success: true,
-        user: {
-          id: user._id.toString(),
-          username: user.username,
-          email: user.email,
-          points: normalizedPoints,
-          preferredLanguage: user.preferredLanguage
-        }
-      }),
+      JSON.stringify(responseData),
       { status: 200, headers }
     )
   } catch (err) {

@@ -2,6 +2,8 @@ import { connectToDatabase } from '@/lib/mongodb'
 import TopUp from '@/lib/topUpModel'
 import User from '@/lib/userModel'
 import { verifyAuth } from '@/lib/auth'
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
+
 
 // Submit top-up request
 export async function POST(req) {
@@ -13,10 +15,14 @@ export async function POST(req) {
 
     if (!user) {
       console.log('❌ Authentication failed')
-      return new Response(
-        JSON.stringify({ error: 'Authentication required' }),
-        { status: 401 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Authentication required' }, 401)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Authentication required' }), { status: 401 })
     }
 
     console.log('✅ User authenticated:', {
@@ -25,8 +31,10 @@ export async function POST(req) {
     })
 
     console.log('📋 Parsing request body...')
-    const { amount, paymentMethod, paymentProof, transactionRef } =
-      await req.json()
+    // Decrypt request body (automatically handles both encrypted and plain requests)
+
+    const body = await decryptRequestBody(req)
+    const { amount, paymentMethod, paymentProof, transactionRef } =body
 
     console.log('📊 Request data:', {
       amount,
@@ -37,10 +45,14 @@ export async function POST(req) {
 
     if (!amount || !paymentMethod || amount <= 0) {
       console.log('❌ Invalid request data')
-      return new Response(
-        JSON.stringify({ error: 'Amount and payment method are required' }),
-        { status: 400 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Amount and payment method are required' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Amount and payment method are required' }), { status: 400 })
     }
 
     console.log('🔌 Connecting to database...')
@@ -101,8 +113,11 @@ export async function POST(req) {
       }
     })
 
-    return new Response(
-      JSON.stringify({
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
         success: true,
         message: 'Top-up request submitted successfully',
         topUp: {
@@ -112,9 +127,20 @@ export async function POST(req) {
           status: topUp.status,
           createdAt: topUp.createdAt
         }
-      }),
-      { status: 200 }
-    )
+      }, 200)
+    }
+    
+    return new Response(JSON.stringify({
+        success: true,
+        message: 'Top-up request submitted successfully',
+        topUp: {
+          id: topUp._id,
+          amount: topUp.amount,
+          points: topUp.points,
+          status: topUp.status,
+          createdAt: topUp.createdAt
+        }
+      }), { status: 200 })
   } catch (error) {
     console.error('❌ Top-up request error:', error)
     console.error('Error stack:', error.stack)
@@ -124,15 +150,22 @@ export async function POST(req) {
       code: error.code
     })
 
-    return new Response(
-      JSON.stringify({
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
         error: 'Internal server error',
         details: error.message
-      }),
-      {
+      }, 500)
+    }
+    
+    return new Response(JSON.stringify({
+        error: 'Internal server error',
+        details: error.message
+      }), {
         status: 500
-      }
-    )
+      })
   }
 }
 
@@ -141,10 +174,14 @@ export async function GET(req) {
   try {
     const user = await verifyAuth(req)
     if (!user) {
-      return new Response(
-        JSON.stringify({ error: 'Authentication required' }),
-        { status: 401 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Authentication required' }, 401)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Authentication required' }), { status: 401 })
     }
 
     await connectToDatabase()
@@ -171,6 +208,13 @@ export async function GET(req) {
     )
   } catch (error) {
     console.error('Top-up history error:', error)
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Internal server error' }, 500)
+    }
+    
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500
     })

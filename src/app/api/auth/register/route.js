@@ -2,10 +2,14 @@ import { connectToDatabase } from '@/lib/mongodb'
 import User from '@/lib/userModel'
 import bcrypt from 'bcryptjs'
 import { sendVerificationEmail } from '@/lib/emailService'
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
 
 export async function POST(req) {
   try {
-    const { username, email, password, language } = await req.json()
+    // Decrypt request body (automatically handles both encrypted and plain requests)
+    const body = await decryptRequestBody(req)
+    
+    const { username, email, password, language } = body
 
     // Input validation
     if (!username || !email || !password) {
@@ -90,13 +94,22 @@ export async function POST(req) {
       // Don't fail registration if email fails, but log the error
     }
 
+    const responseData = {
+      message:
+        'Registration successful. Please check your email to verify your account.',
+      requiresEmailVerification: true,
+      emailSent: emailResult.success
+    }
+
+    // Check if client wants encrypted response
+    const wantsEncrypted = req.headers.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse(responseData, 201)
+    }
+
     return new Response(
-      JSON.stringify({
-        message:
-          'Registration successful. Please check your email to verify your account.',
-        requiresEmailVerification: true,
-        emailSent: emailResult.success
-      }),
+      JSON.stringify(responseData),
       { status: 201 }
     )
   } catch (error) {

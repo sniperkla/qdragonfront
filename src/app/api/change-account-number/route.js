@@ -7,6 +7,8 @@ import SystemSetting from '@/lib/systemSettingModel'
 import PointTransaction from '@/lib/pointTransactionModel'
 import { verifyAuth } from '@/lib/auth'
 import { emitCustomerAccountUpdate, emitPointsUpdate } from '@/lib/websocket'
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
+
 
 export async function POST(request) {
   try {
@@ -19,7 +21,11 @@ export async function POST(request) {
       )
     }
 
-    const { licenseCode, newAccountNumber } = await request.json()
+    // Decrypt request body (automatically handles both encrypted and plain requests)
+
+
+    const body = await decryptRequestBody(request)
+    const { licenseCode, newAccountNumber } =body
 
     if (!licenseCode || !newAccountNumber) {
       return NextResponse.json(

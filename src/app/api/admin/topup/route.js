@@ -1,16 +1,22 @@
 import { connectToDatabase } from '@/lib/mongodb'
 import TopUp from '@/lib/topUpModel'
 import User from '@/lib/userModel'
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
+
 
 // Get all top-up requests (admin only)
 export async function GET(req) {
   try {
     const adminSession = req.cookies.get('admin-session')?.value
     if (adminSession !== 'authenticated') {
-      return new Response(
-        JSON.stringify({ error: 'Admin authentication required' }),
-        { status: 401 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Admin authentication required' }, 401)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Admin authentication required' }), { status: 401 })
     }
 
     const { searchParams } = new URL(req.url)
@@ -30,16 +36,31 @@ export async function GET(req) {
 
     console.log(`Admin fetching top-ups: found ${topUps.length} requests`)
 
-    return new Response(
-      JSON.stringify({
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
         success: true,
         total: topUps.length,
         requests: topUps // Frontend expects 'requests' key
-      }),
-      { status: 200 }
-    )
+      }, 200)
+    }
+    
+    return new Response(JSON.stringify({
+        success: true,
+        total: topUps.length,
+        requests: topUps // Frontend expects 'requests' key
+      }), { status: 200 })
   } catch (error) {
     console.error('Admin top-ups fetch error:', error)
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Internal server error' }, 500)
+    }
+    
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500
     })
@@ -51,27 +72,43 @@ export async function PUT(req) {
   try {
     const adminSession = req.cookies.get('admin-session')?.value
     if (adminSession !== 'authenticated') {
-      return new Response(
-        JSON.stringify({ error: 'Admin authentication required' }),
-        { status: 401 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Admin authentication required' }, 401)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Admin authentication required' }), { status: 401 })
     }
 
-    const { requestId, topUpId, action, rejectionReason } = await req.json()
+    // Decrypt request body (automatically handles both encrypted and plain requests)
+
+
+    const body = await decryptRequestBody(req)
+    const { requestId, topUpId, action, rejectionReason } =body
     const actualId = requestId || topUpId // Support both parameter names
 
     if (!actualId || !action || !['approve', 'reject'].includes(action)) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid request parameters' }),
-        { status: 400 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Invalid request parameters' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Invalid request parameters' }), { status: 400 })
     }
 
     if (action === 'reject' && !rejectionReason) {
-      return new Response(
-        JSON.stringify({ error: 'Rejection reason is required' }),
-        { status: 400 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Rejection reason is required' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Rejection reason is required' }), { status: 400 })
     }
 
     await connectToDatabase()
@@ -81,10 +118,14 @@ export async function PUT(req) {
       'username email'
     )
     if (!topUp) {
-      return new Response(
-        JSON.stringify({ error: 'Top-up request not found' }),
-        { status: 404 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Top-up request not found' }, 404)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Top-up request not found' }), { status: 404 })
     }
 
     console.log(
@@ -92,10 +133,14 @@ export async function PUT(req) {
     )
 
     if (topUp.status !== 'pending') {
-      return new Response(
-        JSON.stringify({ error: 'Top-up request already processed' }),
-        { status: 400 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Top-up request already processed' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Top-up request already processed' }), { status: 400 })
     }
 
     const updateData = {
@@ -218,13 +263,27 @@ export async function PUT(req) {
         username: topUp.username,
         status: updateData.status,
         processedBy: updateData.processedBy
-      })
+      }, topUp.userId._id.toString()) // Pass userId as second parameter
+      
+      // Also emit topup-status-updated event that client is listening for
+      const io = global.__socketIO
+      if (io) {
+        io.to(`user-${topUp.userId._id}`).emit('topup-status-updated', {
+          requestId: topUp._id.toString(),
+          status: updateData.status,
+          points: action === 'approve' ? topUp.points : 0,
+          reason: rejectionReason || undefined
+        })
+      }
     } catch (emitErr) {
       console.warn('WebSocket notification failed:', emitErr.message)
     }
 
-    return new Response(
-      JSON.stringify({
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
         success: true,
         message: `Top-up ${action}d successfully`,
         topUp: {
@@ -234,11 +293,29 @@ export async function PUT(req) {
           points: topUp.points,
           status: updateData.status
         }
-      }),
-      { status: 200 }
-    )
+      }, 200)
+    }
+    
+    return new Response(JSON.stringify({
+        success: true,
+        message: `Top-up ${action}d successfully`,
+        topUp: {
+          id: topUp._id,
+          username: topUp.username,
+          amount: topUp.amount,
+          points: topUp.points,
+          status: updateData.status
+        }
+      }), { status: 200 })
   } catch (error) {
     console.error('Admin top-up process error:', error)
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Internal server error' }, 500)
+    }
+    
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500
     })

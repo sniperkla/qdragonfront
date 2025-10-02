@@ -1,3 +1,5 @@
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
+
 import {
   emitAdminNotification,
   emitBroadcastNotification,
@@ -25,7 +27,14 @@ export async function POST(request) {
     // Verify admin authentication
     if (!(await verifyAdmin(request))) {
       console.log('❌ Admin authentication failed')
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Unauthorized' }, 401)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401
       })
     }
@@ -98,26 +107,44 @@ export async function POST(request) {
       )
     } else {
       console.log('❌ Test notifications failed to emit')
-      return new Response(
-        JSON.stringify({
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
           success: false,
           message: 'WebSocket server not available or notifications failed',
           socketInitialized: !!global.__socketIO,
           adminResult: !!adminResult,
           broadcastResult: !!broadcastResult
-        }),
-        { status: 500 }
-      )
+        }, 500)
+    }
+    
+    return new Response(JSON.stringify({
+          success: false,
+          message: 'WebSocket server not available or notifications failed',
+          socketInitialized: !!global.__socketIO,
+          adminResult: !!adminResult,
+          broadcastResult: !!broadcastResult
+        }), { status: 500 })
     }
   } catch (error) {
     console.error('❌ Error in test WebSocket API:', error)
-    return new Response(
-      JSON.stringify({
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
         error: 'Failed to send test notification',
         details: error.message,
         socketInitialized: !!global.__socketIO
-      }),
-      { status: 500 }
-    )
+      }, 500)
+    }
+    
+    return new Response(JSON.stringify({
+        error: 'Failed to send test notification',
+        details: error.message,
+        socketInitialized: !!global.__socketIO
+      }), { status: 500 })
   }
 }

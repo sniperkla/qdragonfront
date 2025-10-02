@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { connectToDatabase } from '@/lib/mongodb'
 import SystemSetting from '@/lib/systemSettingModel'
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
+
 
 export async function GET(request) {
   try {
@@ -50,7 +52,11 @@ export async function PUT(request) {
       )
     }
 
-    const { key, value, description, category } = await request.json()
+    // Decrypt request body (automatically handles both encrypted and plain requests)
+
+
+    const body = await decryptRequestBody(request)
+    const { key, value, description, category } =body
 
     if (!key || value === undefined) {
       return NextResponse.json(

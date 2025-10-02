@@ -8,6 +8,8 @@ import {
 } from '@/lib/websocket'
 import User from '@/lib/userModel'
 import { sendAdminExtensionEmail } from '@/lib/emailService'
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
+
 
 export async function POST(request) {
   try {
@@ -22,7 +24,11 @@ export async function POST(request) {
       )
     }
 
-    const { customerId, extendDays } = await request.json()
+    // Decrypt request body (automatically handles both encrypted and plain requests)
+
+
+    const body = await decryptRequestBody(request)
+    const { customerId, extendDays } =body
 
     if (!customerId || !extendDays || extendDays <= 0) {
       return NextResponse.json(

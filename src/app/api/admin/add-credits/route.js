@@ -2,6 +2,8 @@ import { connectToDatabase } from '@/lib/mongodb'
 import User from '@/lib/userModel'
 import PointTransaction from '@/lib/pointTransactionModel'
 import { emitPointsUpdate } from '@/lib/websocket'
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
+
 
 export async function POST(request) {
   try {
@@ -18,7 +20,8 @@ export async function POST(request) {
     }
 
     // Parse request body
-    const body = await request.json()
+    // Decrypt request body (automatically handles both encrypted and plain requests)
+    const body = await decryptRequestBody(request)
     const { username, credits, reason } = body
 
     // Validate required fields

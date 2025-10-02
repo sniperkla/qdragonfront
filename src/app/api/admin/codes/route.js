@@ -10,6 +10,8 @@ import {
   emitNotificationToAdminAndClient
 } from '@/lib/websocket'
 import { sendLicenseActivatedEmail } from '@/lib/emailService'
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
+
 
 // Get all code requests (admin only)
 export async function GET(req) {
@@ -17,10 +19,14 @@ export async function GET(req) {
     // Check admin authentication via cookie
     const adminSession = req.cookies.get('admin-session')?.value
     if (adminSession !== 'authenticated') {
-      return new Response(
-        JSON.stringify({ error: 'Admin authentication required' }),
-        { status: 401 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Admin authentication required' }, 401)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Admin authentication required' }), { status: 401 })
     }
 
     const { searchParams } = new URL(req.url)
@@ -42,16 +48,31 @@ export async function GET(req) {
       .sort({ createdAt: -1 })
       .limit(100)
 
-    return new Response(
-      JSON.stringify({
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
         success: true,
         total: codeRequests.length,
         codes: codeRequests
-      }),
-      { status: 200 }
-    )
+      }, 200)
+    }
+    
+    return new Response(JSON.stringify({
+        success: true,
+        total: codeRequests.length,
+        codes: codeRequests
+      }), { status: 200 })
   } catch (error) {
     console.error('Admin codes fetch error:', error)
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Internal server error' }, 500)
+    }
+    
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500
     })
@@ -64,19 +85,31 @@ export async function PUT(req) {
     // Check admin authentication via cookie
     const adminSession = req.cookies.get('admin-session')?.value
     if (adminSession !== 'authenticated') {
-      return new Response(
-        JSON.stringify({ error: 'Admin authentication required' }),
-        { status: 401 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Admin authentication required' }, 401)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Admin authentication required' }), { status: 401 })
     }
 
-    const { codeId, status, paymentMethod, paymentId } = await req.json()
+    // Decrypt request body (automatically handles both encrypted and plain requests)
+
+
+    const body = await decryptRequestBody(req)
+    const { codeId, status, paymentMethod, paymentId } =body
 
     if (!codeId || !status) {
-      return new Response(
-        JSON.stringify({ error: 'Code ID and status are required' }),
-        { status: 400 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Code ID and status are required' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Code ID and status are required' }), { status: 400 })
     }
 
     await connectToDatabase()
@@ -103,7 +136,14 @@ export async function PUT(req) {
     ).populate('userId', 'username')
 
     if (!codeRequest) {
-      return new Response(JSON.stringify({ error: 'Code not found' }), {
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Code not found' }, 404)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Code not found' }), {
         status: 404
       })
     }
@@ -222,18 +262,35 @@ export async function PUT(req) {
       console.warn('WebSocket emission failed (non-fatal):', emitErr.message)
     }
 
-    return new Response(
-      JSON.stringify({
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
         success: true,
         message: 'Code status updated successfully',
         code: codeRequest,
         customerAccountCreated: status === 'activated' ? true : false,
         customerAccount: customerAccountData
-      }),
-      { status: 200 }
-    )
+      }, 200)
+    }
+    
+    return new Response(JSON.stringify({
+        success: true,
+        message: 'Code status updated successfully',
+        code: codeRequest,
+        customerAccountCreated: status === 'activated' ? true : false,
+        customerAccount: customerAccountData
+      }), { status: 200 })
   } catch (error) {
     console.error('Admin code update error:', error)
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Internal server error' }, 500)
+    }
+    
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500
     })
@@ -246,16 +303,31 @@ export async function DELETE(req) {
     // Check admin authentication via cookie
     const adminSession = req.cookies.get('admin-session')?.value
     if (adminSession !== 'authenticated') {
-      return new Response(
-        JSON.stringify({ error: 'Admin authentication required' }),
-        { status: 401 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Admin authentication required' }, 401)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Admin authentication required' }), { status: 401 })
     }
 
-    const { codeId } = await req.json()
+    // Decrypt request body (automatically handles both encrypted and plain requests)
+
+
+    const body = await decryptRequestBody(req)
+    const { codeId } =body
 
     if (!codeId) {
-      return new Response(JSON.stringify({ error: 'Code ID is required' }), {
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Code ID is required' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Code ID is required' }), {
         status: 400
       })
     }
@@ -265,14 +337,28 @@ export async function DELETE(req) {
     // Fetch first (to retain user reference) then delete
     const codeToDelete = await CodeRequest.findById(codeId)
     if (!codeToDelete) {
-      return new Response(JSON.stringify({ error: 'Code not found' }), {
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Code not found' }, 404)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Code not found' }), {
         status: 404
       })
     }
     const deletedCode = await CodeRequest.findByIdAndDelete(codeId)
 
     if (!deletedCode) {
-      return new Response(JSON.stringify({ error: 'Code not found' }), {
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Code not found' }, 404)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Code not found' }), {
         status: 404
       })
     }
@@ -333,16 +419,31 @@ export async function DELETE(req) {
       )
     }
 
-    return new Response(
-      JSON.stringify({
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
         success: true,
         message: 'Code deleted successfully',
         code: deletedCode
-      }),
-      { status: 200 }
-    )
+      }, 200)
+    }
+    
+    return new Response(JSON.stringify({
+        success: true,
+        message: 'Code deleted successfully',
+        code: deletedCode
+      }), { status: 200 })
   } catch (error) {
     console.error('Admin code delete error:', error)
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Internal server error' }, 500)
+    }
+    
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500
     })

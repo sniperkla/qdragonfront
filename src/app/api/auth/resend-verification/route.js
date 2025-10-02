@@ -1,13 +1,25 @@
 import { connectToDatabase } from '@/lib/mongodb'
 import User from '@/lib/userModel'
 import { sendVerificationEmail } from '@/lib/emailService'
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
+
 
 export async function POST(req) {
   try {
-    const { email, language } = await req.json()
+    // Decrypt request body (automatically handles both encrypted and plain requests)
+
+    const body = await decryptRequestBody(req)
+    const { email, language } =body
 
     if (!email) {
-      return new Response(JSON.stringify({ error: 'Email is required' }), {
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Email is required' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Email is required' }), {
         status: 400
       })
     }
@@ -17,16 +29,27 @@ export async function POST(req) {
     const user = await User.findOne({ email })
 
     if (!user) {
-      return new Response(JSON.stringify({ error: 'User not found' }), {
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'User not found' }, 404)
+    }
+    
+    return new Response(JSON.stringify({ error: 'User not found' }), {
         status: 404
       })
     }
 
     if (user.isEmailVerified) {
-      return new Response(
-        JSON.stringify({ error: 'Email is already verified' }),
-        { status: 400 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Email is already verified' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Email is already verified' }), { status: 400 })
     }
 
     // Generate new verification token
@@ -48,22 +71,41 @@ export async function POST(req) {
 
     if (!emailResult.success) {
       console.error('Failed to send verification email:', emailResult.error)
-      return new Response(
-        JSON.stringify({
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
           error: 'Failed to send verification email. Please try again later.'
-        }),
-        { status: 500 }
-      )
+        }, 500)
+    }
+    
+    return new Response(JSON.stringify({
+          error: 'Failed to send verification email. Please try again later.'
+        }), { status: 500 })
     }
 
-    return new Response(
-      JSON.stringify({
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
         message: 'Verification email sent successfully'
-      }),
-      { status: 200 }
-    )
+      }, 200)
+    }
+    
+    return new Response(JSON.stringify({
+        message: 'Verification email sent successfully'
+      }), { status: 200 })
   } catch (error) {
     console.error('Resend verification error:', error)
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Internal server error' }, 500)
+    }
+    
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500
     })

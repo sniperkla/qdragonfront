@@ -249,16 +249,30 @@ export async function emitTopUpRequestUpdate(requestData) {
   }
 }
 
-// Emit top-up processed event to admin
-export async function emitTopUpProcessed(topUpData) {
+// Emit top-up processed event to admin and user
+export async function emitTopUpProcessed(topUpData, userId) {
   try {
     const io = getWebSocketInstance()
     if (!io) {
       return null
     }
 
-    const roomSize = io.sockets.adapter.rooms.get('admin')?.size || 0
+    // Emit to admin room
+    const adminRoomSize = io.sockets.adapter.rooms.get('admin')?.size || 0
     io.to('admin').emit('topup-processed', topUpData)
+    
+    // Emit to user room if userId provided
+    if (userId) {
+      const userRoomSize = io.sockets.adapter.rooms.get(`user-${userId}`)?.size || 0
+      io.to(`user-${userId}`).emit('topup-processed', topUpData)
+      
+      // Fallback broadcast if user not connected
+      if (userRoomSize === 0) {
+        const broadcastPayload = { ...topUpData, userId, _broadcast: true }
+        io.emit('topup-processed-broadcast', broadcastPayload)
+      }
+    }
+    
     return true
   } catch (error) {
     console.error('WebSocket emitTopUpProcessed error:', error)

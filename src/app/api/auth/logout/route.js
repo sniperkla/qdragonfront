@@ -1,3 +1,5 @@
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
+
 export async function POST(req) {
   try {
     // Create response
@@ -15,6 +17,13 @@ export async function POST(req) {
     
   } catch (error) {
     console.error('Logout error:', error);
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Internal server error' }, 500)
+    }
+    
     return new Response(JSON.stringify({ error: 'Internal server error' }), { status: 500 });
   }
 }

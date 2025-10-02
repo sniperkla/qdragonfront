@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useTranslation } from '../../hooks/useTranslation'
 import { useDispatch, useSelector } from 'react-redux'
 import { useRouter } from 'next/navigation'
+import { encryptedFetch } from '@/lib/clientEncryption'
 import {
   registerStart,
   registerSuccess,
@@ -65,8 +66,8 @@ export default function RegisterPage() {
     try {
       dispatch(registerStart())
 
-      // Call the actual registration API with email verification
-      const response = await fetch('/api/auth/register', {
+      // Call the actual registration API with email verification (encrypted)
+      const data = await encryptedFetch('/api/auth/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -79,41 +80,30 @@ export default function RegisterPage() {
         })
       })
 
-      const data = await response.json()
-
-      if (response.ok) {
-        // Show success message - redirect to email verification page
-        dispatch(
-          registerSuccess({
-            username: formData.username,
-            email: formData.email
-          })
-        )
-
-        // Comprehensive production debugging
-        debugLogger.log('Registration successful, preparing redirect', {
+      // Show success message - redirect to email verification page
+      dispatch(
+        registerSuccess({
           username: formData.username,
-          email: formData.email,
-          environment: process.env.NODE_ENV,
-          currentUrl:
-            typeof window !== 'undefined' ? window.location.href : 'server'
+          email: formData.email
         })
+      )
 
-        // Redirect to email verification page (simplified)
-  const targetUrl = `/verify-email?email=${encodeURIComponent(formData.email)}&username=${encodeURIComponent(formData.username)}&lang=${language}`
-        debugLogger.log('Redirecting to verify-email', { targetUrl })
-        router.push(targetUrl)
-      } else {
-        // Registration failed
-        dispatch(
-          registerFailure(
-            data.error || 'Registration failed. Please try again.'
-          )
-        )
-      }
+      // Comprehensive production debugging
+      debugLogger.log('Registration successful, preparing redirect', {
+        username: formData.username,
+        email: formData.email,
+        environment: process.env.NODE_ENV,
+        currentUrl:
+          typeof window !== 'undefined' ? window.location.href : 'server'
+      })
+
+      // Redirect to email verification page (simplified)
+const targetUrl = `/verify-email?email=${encodeURIComponent(formData.email)}&username=${encodeURIComponent(formData.username)}&lang=${language}`
+      debugLogger.log('Redirecting to verify-email', { targetUrl })
+      router.push(targetUrl)
     } catch (error) {
-      debugLogger.error('Registration network/error', error)
-      dispatch(registerFailure(data?.error || 'Registration failed. Please try again.'))
+      debugLogger.error('Registration error', error)
+      dispatch(registerFailure(error.message || 'Registration failed. Please try again.'))
     }
   }
 

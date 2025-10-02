@@ -3,16 +3,22 @@ import { connectToDatabase } from '@/lib/mongodb'
 import CodeRequest from '@/lib/codeRequestModel'
 import ExtensionRequest from '@/lib/extensionRequestModel'
 import TopUp from '@/lib/topUpModel'
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
+
 
 // Returns combined history of purchases (code requests), extension requests, and top-up requests for the authenticated user
 export async function GET(req) {
   try {
     const auth = verifyAuth(req)
     if (!auth) {
-      return new Response(
-        JSON.stringify({ error: 'Authentication required' }),
-        { status: 401 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Authentication required' }, 401)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Authentication required' }), { status: 401 })
     }
 
     await connectToDatabase()
@@ -81,8 +87,11 @@ export async function GET(req) {
       rejectionReason: t.rejectionReason || null
     }))
 
-    return new Response(
-      JSON.stringify({
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
         success: true,
         purchases: purchaseHistory,
         extensions: extensionHistory,
@@ -90,11 +99,27 @@ export async function GET(req) {
         totalPurchases: purchaseHistory.length,
         totalExtensions: extensionHistory.length,
         totalTopups: topupHistory.length
-      }),
-      { status: 200 }
-    )
+      }, 200)
+    }
+    
+    return new Response(JSON.stringify({
+        success: true,
+        purchases: purchaseHistory,
+        extensions: extensionHistory,
+        topups: topupHistory,
+        totalPurchases: purchaseHistory.length,
+        totalExtensions: extensionHistory.length,
+        totalTopups: topupHistory.length
+      }), { status: 200 })
   } catch (error) {
     console.error('History API error:', error)
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Internal server error' }, 500)
+    }
+    
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500
     })

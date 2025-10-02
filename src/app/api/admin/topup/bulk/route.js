@@ -1,38 +1,60 @@
 import { connectToDatabase } from '@/lib/mongodb'
 import TopUp from '@/lib/topUpModel'
 import User from '@/lib/userModel'
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
+
 
 export async function POST(req) {
   try {
     const adminSession = req.cookies.get('admin-session')?.value
     if (adminSession !== 'authenticated') {
-      return new Response(
-        JSON.stringify({ error: 'Admin authentication required' }),
-        { status: 401 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Admin authentication required' }, 401)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Admin authentication required' }), { status: 401 })
     }
 
-    const { action, requestIds, rejectionReason } = await req.json()
+    // Decrypt request body (automatically handles both encrypted and plain requests)
+
+
+    const body = await decryptRequestBody(req)
+    const { action, requestIds, rejectionReason } =body
 
     if (!action || !Array.isArray(requestIds) || requestIds.length === 0) {
-      return new Response(
-        JSON.stringify({ error: 'Action and request IDs are required' }),
-        { status: 400 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Action and request IDs are required' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Action and request IDs are required' }), { status: 400 })
     }
 
     if (!['approve', 'reject'].includes(action)) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid action. Must be approve or reject' }),
-        { status: 400 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Invalid action. Must be approve or reject' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Invalid action. Must be approve or reject' }), { status: 400 })
     }
 
     if (action === 'reject' && !rejectionReason?.trim()) {
-      return new Response(
-        JSON.stringify({ error: 'Rejection reason is required for bulk reject' }),
-        { status: 400 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Rejection reason is required for bulk reject' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Rejection reason is required for bulk reject' }), { status: 400 })
     }
 
     await connectToDatabase()
@@ -44,10 +66,14 @@ export async function POST(req) {
     }).populate('userId', 'username email')
 
     if (topUps.length === 0) {
-      return new Response(
-        JSON.stringify({ error: 'No pending top-up requests found for the given IDs' }),
-        { status: 404 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'No pending top-up requests found for the given IDs' }, 404)
+    }
+    
+    return new Response(JSON.stringify({ error: 'No pending top-up requests found for the given IDs' }), { status: 404 })
     }
 
     const processedResults = []
@@ -190,10 +216,27 @@ export async function POST(req) {
 
     console.log(`✅ Bulk ${action} completed: ${processedResults.length} processed, ${errors.length} errors`)
 
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse(response, 200)
+    }
+    
     return new Response(JSON.stringify(response), { status: 200 })
 
   } catch (error) {
     console.error('❌ Bulk top-up processing error:', error)
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ 
+      error: 'Internal server error',
+      details: error.message 
+    }, 500)
+    }
+    
     return new Response(JSON.stringify({ 
       error: 'Internal server error',
       details: error.message 

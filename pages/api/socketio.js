@@ -21,7 +21,13 @@ export function initializeSocketServer(httpServer) {
       origin: (origin, callback) => {
         // Allow localhost in dev, and reflect any origin in production if not explicitly set
         const allowedDev = ['http://localhost:3000', 'http://127.0.0.1:3000']
-        const configuredProd = process.env.NEXT_PUBLIC_APP_URL
+        console.log('kuy  process.env.NODE_ENV', process.env.NODE_ENV)
+        const configuredProd =
+          process.env.NODE_ENV === 'production'
+            ? process.env.NEXT_PUBLIC_APP_URL
+            : 'http://localhost:3000'
+
+        console.log('chketc', configuredProd)
         if (!origin) return callback(null, true) // Same-origin / server-side
         if (allowedDev.includes(origin)) return callback(null, true)
         if (configuredProd && origin === configuredProd)

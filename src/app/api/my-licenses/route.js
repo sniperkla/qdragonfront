@@ -4,16 +4,22 @@ import CodeRequest from '@/lib/codeRequestModel'
 import CustomerAccount from '@/lib/customerAccountModel'
 import ExtensionRequest from '@/lib/extensionRequestModel'
 import User from '@/lib/userModel'
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
+
 
 // Get user's licenses (unified view of codes and customer accounts)
 export async function GET(req) {
   try {
     const authData = verifyAuth(req)
     if (!authData) {
-      return new Response(
-        JSON.stringify({ error: 'Authentication required' }),
-        { status: 401 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Authentication required' }, 401)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Authentication required' }), { status: 401 })
     }
 
     await connectToDatabase()
@@ -21,7 +27,14 @@ export async function GET(req) {
     // Get user info
     const user = await User.findById(authData.id)
     if (!user) {
-      return new Response(JSON.stringify({ error: 'User not found' }), {
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'User not found' }, 404)
+    }
+    
+    return new Response(JSON.stringify({ error: 'User not found' }), {
         status: 404
       })
     }
@@ -157,15 +170,29 @@ export async function GET(req) {
       customerAccountCount: customerAccounts.length
     })
 
-    return new Response(
-      JSON.stringify({
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
         success: true,
         licenses
-      }),
-      { status: 200 }
-    )
+      }, 200)
+    }
+    
+    return new Response(JSON.stringify({
+        success: true,
+        licenses
+      }), { status: 200 })
   } catch (error) {
     console.error('Error fetching licenses:', error)
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Internal server error' }, 500)
+    }
+    
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500
     })

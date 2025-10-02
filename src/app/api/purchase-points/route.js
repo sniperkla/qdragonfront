@@ -4,33 +4,74 @@ import User from '@/lib/userModel'
 import CodeRequest from '@/lib/codeRequestModel'
 import PlanSetting from '@/lib/planSettingModel'
 import { emitCodesUpdate, emitAdminNotification } from '@/lib/websocket'
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
+
 
 // Purchase & instantly activate a license using points
 export async function POST(req) {
   try {
     const authData = verifyAuth(req)
     if (!authData) {
-      return new Response(JSON.stringify({ error: 'Authentication required' }), { status: 401 })
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Authentication required' }, 401)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Authentication required' }), { status: 401 })
     }
 
-    const { accountNumber, platform, plan, pointsUsed } = await req.json()
+    // Decrypt request body (automatically handles both encrypted and plain requests)
+
+
+    const body = await decryptRequestBody(req)
+    const { accountNumber, platform, plan, pointsUsed } =body
     if (!accountNumber || !platform || !plan) {
-      return new Response(JSON.stringify({ error: 'Missing required fields' }), { status: 400 })
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Missing required fields' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Missing required fields' }), { status: 400 })
     }
     if (accountNumber.length < 4) {
-      return new Response(JSON.stringify({ error: 'Account number too short' }), { status: 400 })
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Account number too short' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Account number too short' }), { status: 400 })
     }
 
     await connectToDatabase()
 
     const user = await User.findById(authData.id)
     if (!user) {
-      return new Response(JSON.stringify({ error: 'User not found' }), { status: 404 })
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'User not found' }, 404)
+    }
+    
+    return new Response(JSON.stringify({ error: 'User not found' }), { status: 404 })
     }
 
     const planDays = plan === 'lifetime' ? 'lifetime' : parseInt(plan, 10)
     if (planDays !== 'lifetime' && (isNaN(planDays) || planDays <= 0)) {
-      return new Response(JSON.stringify({ error: 'Invalid plan selected' }), { status: 400 })
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Invalid plan selected' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Invalid plan selected' }), { status: 400 })
     }
 
     // Find dynamic plan
@@ -39,15 +80,26 @@ export async function POST(req) {
       : { days: planDays, isActive: true }
     const planSetting = await PlanSetting.findOne(planQuery)
     if (!planSetting) {
-      return new Response(JSON.stringify({ error: 'Plan not available' }), { status: 400 })
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Plan not available' }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Plan not available' }), { status: 400 })
     }
 
     const requiredPoints = planSetting.points
     if (user.points < requiredPoints) {
-      return new Response(
-        JSON.stringify({ error: 'Insufficient points', required: requiredPoints, current: user.points }),
-        { status: 400 }
-      )
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Insufficient points', required: requiredPoints, current: user.points }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: 'Insufficient points', required: requiredPoints, current: user.points }), { status: 400 })
     }
 
     // Deduct points
@@ -96,8 +148,11 @@ export async function POST(req) {
     }
 
     // Format Thai-style date if needed on frontend; provide ISO here
-    return new Response(
-      JSON.stringify({
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
         success: true,
         license: {
           code: licenseCode,
@@ -107,11 +162,29 @@ export async function POST(req) {
           expireDate: expiresAt,
           source: 'points'
         }
-      }),
-      { status: 200 }
-    )
+      }, 200)
+    }
+    
+    return new Response(JSON.stringify({
+        success: true,
+        license: {
+          code: licenseCode,
+          plan: planSetting.days,
+          isLifetime: planSetting.isLifetime,
+          remainingPoints: user.points,
+          expireDate: expiresAt,
+          source: 'points'
+        }
+      }), { status: 200 })
   } catch (error) {
     console.error('purchase-points error:', error)
+    // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'Internal server error' }, 500)
+    }
+    
     return new Response(JSON.stringify({ error: 'Internal server error' }), { status: 500 })
   }
 }

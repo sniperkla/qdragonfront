@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslation } from '../../hooks/useTranslation'
+import { encryptedFetch } from '@/lib/clientEncryption'
 
 export default function AdminPage() {
   const { t, language, changeLanguage } = useTranslation()
@@ -245,7 +246,7 @@ export default function AdminPage() {
   useEffect(() => {
     const checkAdminAuth = async () => {
       try {
-        const response = await fetch('/api/admin/verify', {
+        const response = await encryptedFetch('/api/admin/verify', {
           credentials: 'include'
         })
         if (response.ok) {
@@ -332,11 +333,11 @@ export default function AdminPage() {
     setLoading(true)
 
     try {
-      const response = await fetch('/api/admin/login', {
+      const response = await encryptedFetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ adminKey })
+        body: { adminKey }
       })
 
       if (response.ok) {
@@ -359,7 +360,7 @@ export default function AdminPage() {
     console.log('🔄 fetchAllCodes called - refreshing codes table...')
     setLoadingCodes(true)
     try {
-      const response = await fetch('/api/admin/codes', {
+      const response = await encryptedFetch('/api/admin/codes', {
         credentials: 'include'
       })
       if (response.ok) {
@@ -384,7 +385,7 @@ export default function AdminPage() {
     console.log('🔄 fetchAllCustomers called - refreshing customers table...')
     setLoadingCustomers(true)
     try {
-      const response = await fetch('/api/admin/customers', {
+      const response = await encryptedFetch('/api/admin/customers', {
         credentials: 'include'
       })
       if (response.ok) {
@@ -407,15 +408,15 @@ export default function AdminPage() {
     setUpdating((prev) => ({ ...prev, [codeId]: true }))
 
     try {
-      const response = await fetch('/api/admin/codes', {
+      const response = await encryptedFetch('/api/admin/codes', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
+        body: {
           codeId,
           status: newStatus,
           paymentMethod: newStatus === 'paid' ? 'admin_confirmed' : undefined
-        })
+        }
       })
 
       if (response.ok) {
@@ -463,14 +464,14 @@ export default function AdminPage() {
     setUpdating((prev) => ({ ...prev, [accountId]: true }))
 
     try {
-      const response = await fetch('/api/admin/customers', {
+      const response = await encryptedFetch('/api/admin/customers', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
+        body: {
           accountId,
           status: newStatus
-        })
+        }
       })
 
       if (response.ok) {
@@ -567,11 +568,11 @@ export default function AdminPage() {
       if (!window.confirm(confirmMsg)) return
     }
     try {
-      const response = await fetch('/api/admin/customers/bulk', {
+      const response = await encryptedFetch('/api/admin/customers/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ action, ids: selectedCustomerIds })
+        body: { action, ids: selectedCustomerIds }
       })
       const data = await response.json()
       if (response.ok) {
@@ -636,13 +637,13 @@ export default function AdminPage() {
     try {
       const endpoint =
         type === 'code' ? '/api/admin/codes' : '/api/admin/customers'
-      const response = await fetch(endpoint, {
+      const response = await encryptedFetch(endpoint, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
+        body: {
           [type === 'code' ? 'codeId' : 'accountId']: id
-        })
+        }
       })
 
       if (response.ok) {
@@ -674,7 +675,7 @@ export default function AdminPage() {
   const fetchExtensionRequests = async () => {
     setLoadingExtensions(true)
     try {
-      const response = await fetch('/api/admin/extension-requests', {
+      const response = await encryptedFetch('/api/admin/extension-requests', {
         credentials: 'include'
       })
       if (response.ok) {
@@ -692,7 +693,7 @@ export default function AdminPage() {
   const fetchTopUpRequests = async () => {
     setLoadingTopUps(true)
     try {
-      const response = await fetch('/api/admin/topup', {
+      const response = await encryptedFetch('/api/admin/topup', {
         credentials: 'include'
       })
       if (response.ok) {
@@ -714,7 +715,7 @@ export default function AdminPage() {
   const fetchPlanSettings = async () => {
     setLoadingPlans(true)
     try {
-      const response = await fetch('/api/admin/plan-settings', {
+      const response = await encryptedFetch('/api/admin/plan-settings', {
         credentials: 'include'
       })
       if (response.ok) {
@@ -793,11 +794,11 @@ export default function AdminPage() {
     }
 
     try {
-      const response = await fetch(url, {
+      const response = await encryptedFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(body)
+        body: body
       })
 
       const data = await response.json()
@@ -824,11 +825,11 @@ export default function AdminPage() {
     }
 
     try {
-      const response = await fetch('/api/admin/plan-settings', {
+      const response = await encryptedFetch('/api/admin/plan-settings', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ planId })
+        body: { planId }
       })
 
       const data = await response.json()
@@ -847,7 +848,7 @@ export default function AdminPage() {
   const fetchSystemSettings = async () => {
     setLoadingSettings(true)
     try {
-      const response = await fetch('/api/admin/system-settings', {
+      const response = await encryptedFetch('/api/admin/system-settings', {
         credentials: 'include'
       })
       if (response.ok) {
@@ -868,16 +869,16 @@ export default function AdminPage() {
   const updateSystemSetting = async (key, value) => {
     try {
       const setting = systemSettings.find(s => s.key === key)
-      const response = await fetch('/api/admin/system-settings', {
+      const response = await encryptedFetch('/api/admin/system-settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
+        body: {
           key,
           value,
           description: setting?.description || '',
           category: setting?.category || 'general'
-        })
+        }
       })
 
       const data = await response.json()
@@ -894,7 +895,7 @@ export default function AdminPage() {
 
   const initializeSystemSettings = async () => {
     try {
-      const response = await fetch('/api/admin/system-settings', {
+      const response = await encryptedFetch('/api/admin/system-settings', {
         method: 'POST',
         credentials: 'include'
       })
@@ -914,14 +915,14 @@ export default function AdminPage() {
   const approveTopUp = async (requestId) => {
     setProcessingTopUp((prev) => ({ ...prev, [requestId]: true }))
     try {
-      const response = await fetch('/api/admin/topup', {
+      const response = await encryptedFetch('/api/admin/topup', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
+        body: {
           requestId,
           action: 'approve'
-        })
+        }
       })
 
       const data = await response.json()
@@ -982,14 +983,14 @@ export default function AdminPage() {
         return newState
       })
 
-      const response = await fetch('/api/admin/topup/bulk', {
+      const response = await encryptedFetch('/api/admin/topup/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
+        body: {
           action: 'approve',
           requestIds: selectedTopUpIds
-        })
+        }
       })
 
       const data = await response.json()
@@ -1031,15 +1032,15 @@ export default function AdminPage() {
         return newState
       })
 
-      const response = await fetch('/api/admin/topup/bulk', {
+      const response = await encryptedFetch('/api/admin/topup/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
+        body: {
           action: 'reject',
           requestIds: bulkTopUpRejectModal.selectedIds,
           rejectionReason: bulkTopUpRejectModal.reason
-        })
+        }
       })
 
       const data = await response.json()
@@ -1082,15 +1083,15 @@ export default function AdminPage() {
       [topUpRejectModal.requestId]: true
     }))
     try {
-      const response = await fetch('/api/admin/topup', {
+      const response = await encryptedFetch('/api/admin/topup', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
+        body: {
           requestId: topUpRejectModal.requestId,
           action: 'reject',
           rejectionReason: topUpRejectModal.reason
-        })
+        }
       })
 
       const data = await response.json()
@@ -1119,14 +1120,14 @@ export default function AdminPage() {
   const approveExtension = async (requestId) => {
     setProcessingExtension((prev) => ({ ...prev, [requestId]: true }))
     try {
-      const response = await fetch('/api/admin/extension-requests', {
+      const response = await encryptedFetch('/api/admin/extension-requests', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
+        body: {
           requestId,
           action: 'approve'
-        })
+        }
       })
 
       const data = await response.json()
@@ -1180,15 +1181,15 @@ export default function AdminPage() {
       [rejectionModal.requestId]: true
     }))
     try {
-      const response = await fetch('/api/admin/extension-requests', {
+      const response = await encryptedFetch('/api/admin/extension-requests', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
+        body: {
           requestId: rejectionModal.requestId,
           action: 'reject',
           rejectionReason: rejectionModal.reason
-        })
+        }
       })
 
       const data = await response.json()
@@ -1246,14 +1247,14 @@ export default function AdminPage() {
     setExtendModal((prev) => ({ ...prev, extendingCode: true }))
 
     try {
-      const response = await fetch('/api/admin/extend-customer', {
+      const response = await encryptedFetch('/api/admin/extend-customer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
+        body: {
           customerId: extendModal.customerId,
           extendDays: daysToExtend
-        })
+        }
       })
 
       const data = await response.json()
@@ -1291,11 +1292,11 @@ export default function AdminPage() {
     setCreatingAccount(true)
 
     try {
-      const response = await fetch('/api/admin/create-account', {
+      const response = await encryptedFetch('/api/admin/create-account', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(manualAccountForm)
+        body: manualAccountForm
       })
 
       const data = await response.json()
@@ -1612,7 +1613,7 @@ export default function AdminPage() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                {language === 'th' ? 'ตั้งค่าแผน' : 'Plan Settings'} ({planSettings.length})
+                {language === 'th' ? 'ตั้งค่าแผน' : 'Plan Settings'}
               </button>
               <button
                 onClick={() => setActiveTab('system-settings')}
@@ -3852,14 +3853,14 @@ export default function AdminPage() {
               setAddingCredits(true)
               
               try {
-                const response = await fetch('/api/admin/add-credits', {
+                const response = await encryptedFetch('/api/admin/add-credits', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
+                  body: {
                     username: addCreditsForm.username,
                     credits: credits,
                     reason: addCreditsForm.reason
-                  })
+                  }
                 })
 
                 const data = await response.json()

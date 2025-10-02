@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import mongoose from 'mongoose'
 import CustomerAccount from '../../../../lib/customerAccountModel'
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
+
 // WebSocket imports removed
 
 // Admin authentication middleware
@@ -59,7 +61,9 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await request.json()
+    // Decrypt request body (automatically handles both encrypted and plain requests)
+    const body = await decryptRequestBody(request)
+    
     const {
       username,
       platform,

@@ -1,8 +1,10 @@
 import { connectToDatabase } from '@/lib/mongodb'
 import PlanSetting from '@/lib/planSettingModel'
+import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
+
 
 // Public endpoint to fetch active plans (no auth required for display)
-export async function GET() {
+export async function GET(req) {
 	try {
 		await connectToDatabase()
 
@@ -29,16 +31,24 @@ export async function GET() {
 			pricePerDay: p.isLifetime ? null : Number((p.price / p.days).toFixed(4))
 		}))
 
-		return new Response(
-			JSON.stringify({ success: true, plans: serialized }),
-			{ status: 200 }
-		)
+		// Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ success: true, plans: serialized }, 200)
+    }
+    
+    return new Response(JSON.stringify({ success: true, plans: serialized }), { status: 200 })
 	} catch (error) {
 		console.error('Failed to fetch plans:', error)
-		return new Response(
-			JSON.stringify({ success: false, error: 'Failed to fetch plans' }),
-			{ status: 500 }
-		)
+		// Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ success: false, error: 'Failed to fetch plans' }, 500)
+    }
+    
+    return new Response(JSON.stringify({ success: false, error: 'Failed to fetch plans' }), { status: 500 })
 	}
 }
 
