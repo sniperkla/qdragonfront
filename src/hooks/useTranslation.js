@@ -348,7 +348,33 @@ const translations = {
       'Bulk suspend processed: {success} success, {skipped} skipped',
     bulk_delete_processed:
       'Bulk delete processed: {success} success, {skipped} skipped',
-    processing_bulk: 'Processing bulk action...'
+    processing_bulk: 'Processing bulk action...',
+    
+    // Additional mobile and i18n fixes
+    your_credits: 'Your Credits',
+    you_have: 'You have',
+    insufficient_points: 'Insufficient Points',
+    ssl_encryption: 'SSL Encryption',
+    change_account_btn: 'Change Account',
+    payment_method: 'Payment Method',
+    code_copied: 'Code copied',
+    required_credits: 'Required Credits',
+    current_credits: 'Current credits',
+    confirm_change: 'Confirm Change',
+    close_notification: 'Close notification',
+    purchase_details: 'Purchase Details',
+    submit_request: 'Submit Request',
+    invalid_date: 'Invalid date',
+    credits: 'credits',
+    crd_short: 'CRD',
+    top_up: 'Top Up',
+    top_up_credits: 'Top Up Credits',
+    enter_amount: 'Enter amount',
+    amount_in_thb: 'Amount (THB)',
+    topup_subtitle: 'Add credits to extend your licenses',
+    topup_notice: 'Credits will be added after admin approval',
+    buy: 'Buy',
+    extend_btn: 'Extend'
   },
 
   th: {
@@ -688,7 +714,33 @@ const translations = {
       'ลบ {count} บัญชีที่ถูกระงับหรือไม่? การกระทำนี้ไม่สามารถย้อนกลับ',
     bulk_suspend_processed: 'ระงับแบบกลุ่ม: สำเร็จ {success} ข้าม {skipped}',
     bulk_delete_processed: 'ลบแบบกลุ่ม: สำเร็จ {success} ข้าม {skipped}',
-    processing_bulk: 'กำลังประมวลผลแบบกลุ่ม...'
+    processing_bulk: 'กำลังประมวลผลแบบกลุ่ม...',
+    
+    // Additional mobile and i18n fixes
+    your_credits: 'เครดิตของคุณ',
+    you_have: 'คุณมี',
+    insufficient_points: 'เครดิตไม่เพียงพอ',
+    ssl_encryption: 'การเข้ารหัส SSL',
+    change_account_btn: 'เปลี่ยนบัญชี',
+    payment_method: 'วิธีการชำระเงิน',
+    code_copied: 'คัดลอกโค้ดแล้ว',
+    required_credits: 'เครดิตที่จำเป็น',
+    current_credits: 'เครดิตปัจจุบัน',
+    confirm_change: 'ยืนยันการเปลี่ยน',
+    close_notification: 'ปิดการแจ้งเตือน',
+    purchase_details: 'รายละเอียดการซื้อ',
+    submit_request: 'ส่งคำขอ',
+    invalid_date: 'วันที่ไม่ถูกต้อง',
+    credits: 'เครดิต',
+    crd_short: 'เครดิต',
+    top_up: 'เติมเงิน',
+    top_up_credits: 'เติมเครดิต',
+    enter_amount: 'กรอกจำนวน',
+    amount_in_thb: 'จำนวนเงิน (บาท)',
+    topup_subtitle: 'เพิ่มเครดิตเพื่อขยายใบอนุญาต',
+    topup_notice: 'เครดิตจะถูกเพิ่มหลังจากผู้ดูแลระบบอนุมัติ',
+    buy: 'ซื้อ',
+    extend_btn: 'ขยาย'
   }
 }
 

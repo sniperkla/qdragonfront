@@ -58,6 +58,10 @@ export default function LandingPage() {
   const [myCodes, setMyCodes] = useState([])
   const [loadingCodes, setLoadingCodes] = useState(false)
 
+  // Collapsible card state for mobile
+  const [expandedCards, setExpandedCards] = useState({})
+  const [isExpiringSoonExpanded, setIsExpiringSoonExpanded] = useState(false)
+
   // Extend code state
   const [showExtendModal, setShowExtendModal] = useState(false)
   const [selectedCode, setSelectedCode] = useState(null)
@@ -176,19 +180,19 @@ export default function LandingPage() {
         credentials: 'include',
         cache: 'no-store'
       })
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch user data')
       }
-      
+
       const data = await response.json()
-      
+
       // Validate response has user data
       if (!data || !data.user) {
         // console.error('Invalid user data response:', data)
         return
       }
-      
+
       dispatch(
         loginSuccess({
           id: data.user.id,
@@ -263,9 +267,11 @@ export default function LandingPage() {
     try {
       // Fetch unified licenses (with encryption)
       // Fetching from /api/my-licenses
-      const licensesData = await encryptedFetch('/api/my-licenses', {
+      const response = await encryptedFetch('/api/my-licenses', {
         credentials: 'include'
       })
+
+      const licensesData = await response.json()
 
       if (licensesData.licenses) {
         // console.log(
@@ -301,9 +307,9 @@ export default function LandingPage() {
       const response = await encryptedFetch('/api/plans?ts=' + Date.now(), {
         cache: 'no-store'
       })
-      
+
       const data = await response.json()
-      
+
       if (response.ok && Array.isArray(data.plans)) {
         // console.log('[Plans] Loaded', data.plans.length, 'plans')
         setPlans(data.plans)
@@ -442,9 +448,9 @@ export default function LandingPage() {
         credentials: 'include',
         cache: 'no-store'
       })
-      
+
       const data = await response.json()
-      
+
       setPurchaseHistory(data.purchases || [])
       setExtensionHistory(data.extensions || [])
       setTopUpHistory(data.topups || [])
@@ -504,22 +510,23 @@ export default function LandingPage() {
           // console.log('⚠️ attemptJoin: user is null/undefined (from ref)')
           return
         }
-        
+
         // console.log('🔍 User object for join (from ref):', {
         //   id: currentUser.id,
         //   _id: currentUser._id,
         //   name: currentUser.name
         // })
-        
+
         const idsToTry = []
         if (currentUser.id) idsToTry.push(currentUser.id)
-        if (currentUser._id && currentUser._id !== currentUser.id) idsToTry.push(currentUser._id)
-        
+        if (currentUser._id && currentUser._id !== currentUser.id)
+          idsToTry.push(currentUser._id)
+
         if (idsToTry.length === 0) {
           // console.error('❌ No user IDs found to join room!')
           return
         }
-        
+
         idsToTry.forEach((val) => {
           // console.log('🔗 Attempting join-user for:', val, '(type:', typeof val, ')')
           s.emit('join-user', val)
@@ -760,20 +767,20 @@ export default function LandingPage() {
   // Re-emit join when user changes AFTER socket established
   useEffect(() => {
     if (!socket || !wsConnected) {
-      // console.log('⏸️ Skip re-join: socket or wsConnected not ready', { 
-      //   hasSocket: !!socket, 
-      //   wsConnected 
+      // console.log('⏸️ Skip re-join: socket or wsConnected not ready', {
+      //   hasSocket: !!socket,
+      //   wsConnected
       // })
       return
     }
-    
+
     if (!user) {
       // console.log('⏸️ Skip re-join: user not available yet')
       return
     }
-    
+
     // console.log('🔄 User data available, attempting to join rooms...')
-    
+
     if (user?.id) {
       // console.log('🔄 Re-joining with user.id:', user.id)
       socket.emit('join-user', user.id)
@@ -967,8 +974,10 @@ export default function LandingPage() {
   const handleExtendLicense = (license) => {
     setSelectedCode(license)
     // Set default to first available non-lifetime plan or '30'
-    const firstNonLifetimePlan = plans.find(p => !p.isLifetime)
-    setExtendPlan(firstNonLifetimePlan ? firstNonLifetimePlan.days.toString() : '30')
+    const firstNonLifetimePlan = plans.find((p) => !p.isLifetime)
+    setExtendPlan(
+      firstNonLifetimePlan ? firstNonLifetimePlan.days.toString() : '30'
+    )
     setShowExtendModal(true)
   }
 
@@ -992,7 +1001,7 @@ export default function LandingPage() {
           licenseCode: selectedCode.code
         }
       })
-      
+
       const data = await response.json()
 
       if (data.success || data.status) {
@@ -1005,8 +1014,12 @@ export default function LandingPage() {
             () => {
               setShowExtendModal(false)
               setSelectedCode(null)
-              const firstNonLifetimePlan = plans.find(p => !p.isLifetime)
-              setExtendPlan(firstNonLifetimePlan ? firstNonLifetimePlan.days.toString() : '30')
+              const firstNonLifetimePlan = plans.find((p) => !p.isLifetime)
+              setExtendPlan(
+                firstNonLifetimePlan
+                  ? firstNonLifetimePlan.days.toString()
+                  : '30'
+              )
               fetchMyCodes() // Refresh the codes list
               refreshUserData() // Refresh user data to get updated points
               fetchHistory() // Refresh extension history immediately
@@ -1021,8 +1034,12 @@ export default function LandingPage() {
             () => {
               setShowExtendModal(false)
               setSelectedCode(null)
-              const firstNonLifetimePlan = plans.find(p => !p.isLifetime)
-              setExtendPlan(firstNonLifetimePlan ? firstNonLifetimePlan.days.toString() : '30')
+              const firstNonLifetimePlan = plans.find((p) => !p.isLifetime)
+              setExtendPlan(
+                firstNonLifetimePlan
+                  ? firstNonLifetimePlan.days.toString()
+                  : '30'
+              )
               fetchMyCodes() // Refresh the codes list
             }
           )
@@ -1062,7 +1079,7 @@ export default function LandingPage() {
       const response = await encryptedFetch('/api/change-account-number', {
         credentials: 'include'
       })
-      
+
       const data = await response.json()
 
       if (!data.success) {
@@ -1129,28 +1146,28 @@ export default function LandingPage() {
           newAccountNumber: changeAccountForm.newAccountNumber
         }
       })
-      
+
       const data = await response.json()
 
       showModalAlert(
-          `${language === 'th' ? 'เปลี่ยนหมายเลขบัญชีสำเร็จ!' : 'Account Number Changed Successfully!'}\n\n${language === 'th' ? 'ใบอนุญาต' : 'License'}: ${data.data.licenseCode}\n${language === 'th' ? 'หมายเลขเดิม' : 'Old number'}: ${data.data.oldAccountNumber}\n${language === 'th' ? 'หมายเลขใหม่' : 'New number'}: ${data.data.newAccountNumber}\n${language === 'th' ? 'เครดิตที่ใช้' : 'Credits used'}: ${data.data.creditsDeducted} ${language === 'th' ? 'เครดิต' : 'credits'}\n${language === 'th' ? 'เครดิตคงเหลือ' : 'Remaining credits'}: ${data.data.remainingCredits} ${language === 'th' ? 'เครดิต' : 'credits'}`,
-          'success',
-          language === 'th' ? 'เปลี่ยนหมายเลขบัญชีสำเร็จ' : 'Change Successful',
-          () => {
-            setShowChangeAccountModal(false)
-            setChangeAccountForm({
-              licenseCode: '',
-              currentAccountNumber: '',
-              newAccountNumber: '',
-              cost: 1000
-            })
-            fetchMyCodes() // Refresh licenses
-            refreshUserData() // Refresh points
-          }
-        )
+        `${language === 'th' ? 'เปลี่ยนหมายเลขบัญชีสำเร็จ!' : 'Account Number Changed Successfully!'}\n\n${language === 'th' ? 'ใบอนุญาต' : 'License'}: ${data.data.licenseCode}\n${language === 'th' ? 'หมายเลขเดิม' : 'Old number'}: ${data.data.oldAccountNumber}\n${language === 'th' ? 'หมายเลขใหม่' : 'New number'}: ${data.data.newAccountNumber}\n${language === 'th' ? 'เครดิตที่ใช้' : 'Credits used'}: ${data.data.creditsDeducted} ${language === 'th' ? 'เครดิต' : 'credits'}\n${language === 'th' ? 'เครดิตคงเหลือ' : 'Remaining credits'}: ${data.data.remainingCredits} ${language === 'th' ? 'เครดิต' : 'credits'}`,
+        'success',
+        language === 'th' ? 'เปลี่ยนหมายเลขบัญชีสำเร็จ' : 'Change Successful',
+        () => {
+          setShowChangeAccountModal(false)
+          setChangeAccountForm({
+            licenseCode: '',
+            currentAccountNumber: '',
+            newAccountNumber: '',
+            cost: 1000
+          })
+          fetchMyCodes() // Refresh licenses
+          refreshUserData() // Refresh points
+        }
+      )
     } catch (error) {
       console.error('Error changing account number:', error)
-      
+
       // Check if it's an insufficient credits error
       if (error.required && error.current) {
         showModalAlert(
@@ -1158,7 +1175,10 @@ export default function LandingPage() {
           'error'
         )
       } else {
-        showModalAlert(error.message || 'Failed to change account number', 'error')
+        showModalAlert(
+          error.message || 'Failed to change account number',
+          'error'
+        )
       }
     } finally {
       setChangingAccount(false)
@@ -1193,7 +1213,7 @@ export default function LandingPage() {
           plan: codeForm.plan
         }
       })
-      
+
       const data = await response.json()
 
       if (data.success || data.license) {
@@ -1233,7 +1253,7 @@ export default function LandingPage() {
           transactionRef: ''
         }
       })
-      
+
       const data = await response.json()
 
       showModalAlert(
@@ -1307,43 +1327,44 @@ export default function LandingPage() {
           pointsUsed: requiredPoints
         }
       })
-      
+
       const data = await response.json()
 
       dispatch(
-          loginSuccess({
-            ...user,
-            points: normalizePoints(data.license.remainingPoints)
-          })
-        )
-        setGeneratedCode(data.license.code)
-        fetchMyCodes()
-
-        const planLabel = selectedPlan.isLifetime
-          ? language === 'th'
-            ? 'ตลอดชีพ'
-            : 'Lifetime'
-          : `${selectedPlan.days} ${language === 'th' ? 'วัน' : 'days'}`
-
-        showModalAlert(
-          `${language === 'th' ? '🎉 ซื้อและเปิดใช้งานใบอนุญาตสำเร็จ!' : '🎉 License purchased and activated successfully!'}\n\n${language === 'th' ? 'รหัสใบอนุญาต' : 'License Code'}: ${data.license.code}\n${language === 'th' ? 'แพลน' : 'Plan'}: ${planLabel}\n${language === 'th' ? 'เครดิตที่ใช้' : 'Credits used'}: ${requiredPoints}\n${language === 'th' ? 'เครดิตคงเหลือ' : 'Remaining credits'}: ${data.license.remainingPoints}\n${language === 'th' ? 'สถานะ' : 'Status'}: ${language === 'th' ? '✅ เปิดใช้งานแล้ว' : '✅ Activated'}\n\n${language === 'th' ? '🚀 บัญชีของคุณพร้อมใช้งานทันที!' : '🚀 Your account is ready to use immediately!'}`,
-          'success',
-          language === 'th' ? 'ซื้อใบอนุญาต' : 'License Activated'
-        )
-        setRecentPointsLicense({
-          code: data.license.code,
-          plan: data.license.plan,
-          remainingPoints: data.license.remainingPoints,
-          expiresAtThai: data.license.expireDateThai
+        loginSuccess({
+          ...user,
+          points: normalizePoints(data.license.remainingPoints)
         })
-        const acctEl = document.getElementById('pointsAccountNumber')
-        if (acctEl) acctEl.value = ''
+      )
+      setGeneratedCode(data.license.code)
+      fetchMyCodes()
+
+      const planLabel = selectedPlan.isLifetime
+        ? language === 'th'
+          ? 'ตลอดชีพ'
+          : 'Lifetime'
+        : `${selectedPlan.days} ${language === 'th' ? 'วัน' : 'days'}`
+
+      showModalAlert(
+        `${language === 'th' ? '🎉 ซื้อและเปิดใช้งานใบอนุญาตสำเร็จ!' : '🎉 License purchased and activated successfully!'}\n\n${language === 'th' ? 'รหัสใบอนุญาต' : 'License Code'}: ${data.license.code}\n${language === 'th' ? 'แพลน' : 'Plan'}: ${planLabel}\n${language === 'th' ? 'เครดิตที่ใช้' : 'Credits used'}: ${requiredPoints}\n${language === 'th' ? 'เครดิตคงเหลือ' : 'Remaining credits'}: ${data.license.remainingPoints}\n${language === 'th' ? 'สถานะ' : 'Status'}: ${language === 'th' ? '✅ เปิดใช้งานแล้ว' : '✅ Activated'}\n\n${language === 'th' ? '🚀 บัญชีของคุณพร้อมใช้งานทันที!' : '🚀 Your account is ready to use immediately!'}`,
+        'success',
+        language === 'th' ? 'ซื้อใบอนุญาต' : 'License Activated'
+      )
+      setRecentPointsLicense({
+        code: data.license.code,
+        plan: data.license.plan,
+        remainingPoints: data.license.remainingPoints,
+        expiresAtThai: data.license.expireDateThai
+      })
+      const acctEl = document.getElementById('pointsAccountNumber')
+      if (acctEl) acctEl.value = ''
     } catch (error) {
       console.error('Error purchasing with points:', error)
       showModalAlert(
-        error.message || (language === 'th'
-          ? 'เกิดข้อผิดพลาดในการเชื่อมต่อ'
-          : 'Network error. Please try again.'),
+        error.message ||
+          (language === 'th'
+            ? 'เกิดข้อผิดพลาดในการเชื่อมต่อ'
+            : 'Network error. Please try again.'),
         'error'
       )
     } finally {
@@ -1370,36 +1391,75 @@ export default function LandingPage() {
   return (
     <>
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 pb-8">
-        {/* Navigation Bar */}
+        {/* Navigation Bar - Redesigned for Mobile */}
         <nav className="bg-white shadow-lg sticky top-0 z-40">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-col sm:flex-row justify-between items-center py-3 sm:py-0 sm:h-16 gap-3 sm:gap-0">
-              <div className="flex items-center">
-                <h1 className="text-lg sm:text-xl font-bold text-gray-900">
-                  {t('dashboard')}
-                </h1>
+          <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center py-3 sm:py-0 sm:h-16">
+              {/* Left: Dashboard Title with Icon */}
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center shadow-md">
+                  <svg
+                    className="w-4 h-4 sm:w-5 sm:h-5 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <h1 className="text-sm sm:text-xl font-bold text-gray-900">
+                    {t('dashboard')}
+                  </h1>
+                  <p className="text-[10px] sm:text-xs text-gray-500 hidden sm:block">
+                    {t('welcome')}, {user?.name}
+                  </p>
+                </div>
               </div>
-              <div className="flex items-center flex-wrap justify-center gap-2 sm:space-x-4">
+
+              {/* Right: Actions */}
+              <div className="flex items-center gap-2 sm:gap-3">
                 {/* Language Toggle */}
-                <div className="flex gap-1">
+                <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
                   {['en', 'th'].map((l) => (
                     <button
                       key={l}
                       onClick={() => changeLanguage(l)}
-                      className={`px-3 py-1.5 text-xs sm:text-sm rounded-md font-semibold transition-colors ${language === l ? 'bg-yellow-400 text-black' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                      className={`px-2 sm:px-3 py-1 text-[10px] sm:text-sm rounded-md font-bold transition-all duration-200 ${
+                        language === l
+                          ? 'bg-gradient-to-r from-yellow-400 to-orange-400 text-black shadow-md scale-105'
+                          : 'bg-transparent text-gray-600 hover:text-gray-900'
+                      }`}
                     >
                       {l.toUpperCase()}
                     </button>
                   ))}
                 </div>
-                <span className="text-gray-700 text-sm sm:text-base hidden sm:inline">
-                  {t('welcome')}, {user?.name}
-                </span>
+
+                {/* Logout Button - Redesigned for Mobile */}
                 <button
                   onClick={handleLogout}
-                  className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg transition duration-200 text-sm sm:text-base"
+                  className="group relative bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-3 sm:px-5 py-1.5 sm:py-2 rounded-lg sm:rounded-xl transition-all duration-200 text-xs sm:text-base font-medium sm:font-semibold shadow-md hover:shadow-lg flex items-center gap-1 sm:gap-2"
                 >
-                  {t('logout')}
+                  <svg
+                    className="w-3.5 h-3.5 sm:w-4 sm:h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                    />
+                  </svg>
+                  <span className="hidden sm:inline">{t('logout')}</span>
                 </button>
               </div>
             </div>
@@ -1407,7 +1467,7 @@ export default function LandingPage() {
         </nav>
 
         {/* Main Content */}
-        <div className="max-w-7xl mx-auto py-6 sm:py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto py-4 sm:py-6 lg:py-12 px-3 sm:px-6 lg:px-8">
           {/* Welcome Section */}
           <div className="text-center mb-8 sm:mb-12">
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-3 sm:mb-4">
@@ -1483,7 +1543,7 @@ export default function LandingPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6 mb-6 lg:mb-8">
                   {/* Account Number Input */}
                   <div className="relative">
                     <label className="block text-purple-200 text-sm font-semibold mb-3 flex items-center">
@@ -1898,33 +1958,6 @@ export default function LandingPage() {
                       {language === 'th' ? 'เครดิต' : 'CRD'}
                     </span>
                   </div>
-                  <button
-                    onClick={() => refreshUserData()}
-                    className="group relative bg-gradient-to-r from-purple-500 via-purple-600 to-indigo-600 hover:from-purple-600 hover:via-indigo-600 hover:to-purple-700 text-white px-4 py-2 rounded-xl transition-all duration-300 flex items-center gap-2 shadow-lg hover:shadow-xl hover:shadow-purple-500/50 transform hover:-translate-y-0.5 hover:scale-105 overflow-hidden"
-                  >
-                    {/* Animated background shimmer */}
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-1000"></div>
-
-                    {/* Icon with rotation animation */}
-                    <svg
-                      className="w-4 h-4 relative group-hover:rotate-180 transition-transform duration-500"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2.5"
-                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                      />
-                    </svg>
-
-                    {/* Text */}
-                    <span className="relative font-semibold text-sm">
-                      {language === 'th' ? 'รีเฟรช' : 'Refresh'}
-                    </span>
-                  </button>
                 </div>
               </div>
 
@@ -2414,51 +2447,6 @@ export default function LandingPage() {
             <h2 className="text-2xl font-bold text-gray-900">
               {t('my_trading_licenses') || t('license_header')}
             </h2>
-            <button
-              onClick={fetchMyCodes}
-              disabled={loadingCodes}
-              className="group relative bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-white font-semibold px-6 py-3 rounded-xl transition-all duration-300 flex items-center shadow-lg hover:shadow-xl hover:shadow-yellow-500/50 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
-            >
-              {/* Animated background shimmer */}
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-1000"></div>
-
-              {loadingCodes ? (
-                <svg
-                  className="animate-spin w-5 h-5 mr-2 relative"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-              ) : (
-                <svg
-                  className="w-5 h-5 mr-2 relative group-hover:rotate-180 transition-transform duration-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2.5"
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  ></path>
-                </svg>
-              )}
-              <span className="relative">{t('refresh')}</span>
-            </button>
           </div>
 
           {/* Quick Status Overview */}
@@ -2540,169 +2528,25 @@ export default function LandingPage() {
           ) : (
             <>
               {/* Mobile Card View */}
-              <div className="block lg:hidden space-y-4">
+              <div className="block lg:hidden space-y-3">
                 {myCodes.map((code) => {
-                  const timeRemaining = code.status === 'activated' ? getTimeRemaining(code) : null
+                  const timeRemaining =
+                    code.status === 'activated' ? getTimeRemaining(code) : null
+                  const isExpanded = expandedCards[code._id] || false
+                  
                   return (
-                    <div key={code._id} className="bg-white rounded-lg shadow-md border border-gray-200 p-4">
-                      {/* License Code */}
-                      <div className="flex justify-between items-start mb-3">
-                        <div className="font-mono text-sm sm:text-base text-blue-600 font-bold break-all flex-1 mr-2">
-                          {code.code}
-                        </div>
-                        <span
-                          className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${
-                            code.status === 'activated'
-                              ? 'bg-green-100 text-green-800'
-                              : code.status === 'paid'
-                                ? 'bg-blue-100 text-blue-800'
-                                : code.status === 'pending_payment'
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-red-100 text-red-800'
-                          }`}
-                        >
-                          {code.status.replace('_', ' ').toUpperCase()}
-                        </span>
-                      </div>
-
-                      {/* Info Grid */}
-                      <div className="space-y-2 mb-3">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">{t('platform_header')}:</span>
-                          <span className="text-gray-900 font-medium capitalize">{code.platform}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">{t('account_header')}:</span>
-                          <span className="text-gray-900 font-medium">{code.accountNumber}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">{t('plan_header')}:</span>
-                          <span className="text-gray-900 font-medium">
-                            {code.cumulativePlanDays && code.cumulativePlanDays > code.plan ? (
-                              <>{code.plan} {t('days')} (+{code.cumulativePlanDays - code.plan}) = {code.cumulativePlanDays} {t('days')}</>
-                            ) : (
-                              <>{code.plan} {t('days')}</>
-                            )}
-                          </span>
-                        </div>
-                        {code.status === 'activated' && timeRemaining && (
-                          <>
-                            <div className="flex justify-between text-sm">
-                              <span className="text-gray-600">{t('expires_header')}:</span>
-                              <span className="text-gray-900 text-xs">
-                                {(() => {
-                                  let expiryDate = null
-                                  if (code.customerAccount?.expireDate) {
-                                    expiryDate = parseThaiDate(code.customerAccount.expireDate)
-                                  } else if (code.expireDate) {
-                                    expiryDate = parseThaiDate(code.expireDate)
-                                  } else if (code.expiresAt) {
-                                    expiryDate = new Date(code.expiresAt)
-                                  }
-                                  return expiryDate && !isNaN(expiryDate.getTime()) ? expiryDate.toLocaleDateString() : 'N/A'
-                                })()}
-                              </span>
-                            </div>
-                            <div className="flex justify-between text-sm">
-                              <span className="text-gray-600">{t('time_left_header')}:</span>
-                              <span className={`font-semibold ${timeRemaining.expired ? 'text-red-600' : timeRemaining.days < 7 ? 'text-orange-600' : 'text-green-600'}`}>
-                                {timeRemaining.expired ? t('expired') : `${timeRemaining.days}d ${timeRemaining.hours}h ${timeRemaining.minutes}m`}
-                              </span>
-                            </div>
-                          </>
-                        )}
-                      </div>
-
-                      {/* Actions */}
-                      <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-200">
-                        <button
-                          onClick={() => handleExtendLicense(code)}
-                          disabled={code.status !== 'activated'}
-                          className="flex-1 min-w-[120px] bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition"
-                        >
-                          🔄 {t('extend')}
-                        </button>
-                        <button
-                          onClick={() => handleChangeAccount(code)}
-                          disabled={code.status !== 'activated'}
-                          className="flex-1 min-w-[120px] bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition"
-                        >
-                          🔄 {t('change_account')}
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-
-              {/* Desktop Table View */}
-              <div className="hidden lg:block overflow-x-auto">
-              <table className="w-full table-auto">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                      {t('license_header')}
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                      {t('platform_header')}
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                      {t('account_header')}
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                      {t('plan_header')}
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                      {t('status_header')}
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                      {t('expires_header')}
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                      {t('time_left_header')}
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                      {t('actions_header')}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {myCodes.map((code) => {
-                    return (
-                      <tr key={code._id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 font-mono text-sm text-blue-600 font-bold">
-                          {code.code}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-900 capitalize">
-                          {code.platform}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-900">
-                          {code.accountNumber}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-900">
-                          {code.cumulativePlanDays &&
-                          code.cumulativePlanDays > code.plan ? (
-                            <div className="flex flex-col leading-tight">
-                              <span>
-                                {code.plan} {t('days') || 'days'}
-                                <span className="text-xs text-gray-500 ml-1">
-                                  (+{code.cumulativePlanDays - code.plan})
-                                </span>
-                              </span>
-                              <span className="text-xs text-gray-500">
-                                = {code.cumulativePlanDays}{' '}
-                                {t('days') || 'days'}
-                              </span>
-                            </div>
-                          ) : (
-                            <span>
-                              {code.plan} {t('days') || 'days'}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
+                    <div
+                      key={code._id}
+                      className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden"
+                    >
+                      {/* Compact Header - Always Visible */}
+                      <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="font-mono text-xs text-blue-600 font-bold break-all flex-1 mr-2">
+                            {code.code}
+                          </div>
                           <span
-                            className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${
                               code.status === 'activated'
                                 ? 'bg-green-100 text-green-800'
                                 : code.status === 'paid'
@@ -2714,155 +2558,351 @@ export default function LandingPage() {
                           >
                             {code.status.replace('_', ' ').toUpperCase()}
                           </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-500">
-                          {code.status === 'activated'
-                            ? (() => {
-                                // Prioritize customer account expiry date with better error handling
-                                let expiryDate = null
-                                let dateSource = ''
-                                let rawDate = ''
+                        </div>
+                        
+                        {/* Quick Info */}
+                        <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
+                          <span className="capitalize">{code.platform}</span>
+                          {code.status === 'activated' && timeRemaining && (
+                            <span className={`font-semibold ${timeRemaining.expired ? 'text-red-600' : timeRemaining.days < 7 ? 'text-orange-600' : 'text-green-600'}`}>
+                              {timeRemaining.expired
+                                ? t('expired')
+                                : `${timeRemaining.days}d ${timeRemaining.hours}h ${timeRemaining.minutes}m`}
+                            </span>
+                          )}
+                        </div>
+                        
+                        {/* Expand/Collapse Button */}
+                        <button
+                          onClick={() => setExpandedCards(prev => ({ ...prev, [code._id]: !prev[code._id] }))}
+                          className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-white rounded-lg text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                        >
+                          <span>{isExpanded ? (language === 'th' ? 'ซ่อนรายละเอียด' : 'Hide Details') : (language === 'th' ? 'ดูรายละเอียด' : 'Show Details')}</span>
+                          <svg
+                            className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                      </div>
 
-                                if (code.customerAccount?.expireDate) {
-                                  rawDate = code.customerAccount.expireDate
-                                  expiryDate = parseThaiDate(rawDate)
-                                  dateSource = '(Customer Account)'
-                                } else if (code.expireDate) {
-                                  rawDate = code.expireDate
-                                  expiryDate = parseThaiDate(rawDate)
-                                  dateSource = '(Code)'
-                                } else if (code.expiresAt) {
-                                  rawDate = code.expiresAt
-                                  expiryDate = new Date(rawDate)
-                                  dateSource = '(Original)'
-                                }
+                      {/* Expandable Details */}
+                      {isExpanded && (
+                        <div className="p-3 border-t border-gray-100 animate-fade-in">
+                          {/* Info Grid */}
+                          <div className="space-y-2 mb-3">
+                            <div className="flex justify-between items-center text-sm gap-2">
+                              <span className="text-gray-600 whitespace-nowrap">
+                                {t('account_header')}:
+                              </span>
+                              <span className="text-gray-900 font-medium text-right break-all">
+                                {code.accountNumber}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-start text-sm gap-2">
+                              <span className="text-gray-600 whitespace-nowrap">
+                                {t('plan_header')}:
+                              </span>
+                              <span className="text-gray-900 font-medium text-right">
+                                {code.cumulativePlanDays &&
+                                code.cumulativePlanDays > code.plan ? (
+                                  <>
+                                    {code.plan} {t('days')} (+
+                                    {code.cumulativePlanDays - code.plan}) ={' '}
+                                    {code.cumulativePlanDays} {t('days')}
+                                  </>
+                                ) : (
+                                  <>
+                                    {code.plan} {t('days')}
+                                  </>
+                                )}
+                              </span>
+                            </div>
+                            {code.status === 'activated' && timeRemaining && (
+                              <>
+                                <div className="flex justify-between items-center text-sm gap-2">
+                                  <span className="text-gray-600 whitespace-nowrap">
+                                    {t('expires_header')}:
+                                  </span>
+                                  <span className="text-gray-900 text-xs text-right">
+                                    {(() => {
+                                      let expiryDate = null
+                                      if (code.customerAccount?.expireDate) {
+                                        expiryDate = parseThaiDate(
+                                          code.customerAccount.expireDate
+                                        )
+                                      } else if (code.expireDate) {
+                                        expiryDate = parseThaiDate(code.expireDate)
+                                      } else if (code.expiresAt) {
+                                        expiryDate = new Date(code.expiresAt)
+                                      }
+                                      return expiryDate &&
+                                        !isNaN(expiryDate.getTime())
+                                        ? expiryDate.toLocaleDateString()
+                                        : 'N/A'
+                                    })()}
+                                  </span>
+                                </div>
+                              </>
+                            )}
+                          </div>
 
-                                let displayDate = 'No date available'
-                                if (
-                                  expiryDate &&
-                                  !isNaN(expiryDate.getTime())
-                                ) {
-                                  displayDate = expiryDate.toLocaleDateString()
-                                } else if (rawDate) {
-                                  displayDate = `Invalid: ${rawDate.substring(0, 20)}...`
-                                }
+                          {/* Actions */}
+                          <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-200">
+                            <button
+                              onClick={() => handleExtendLicense(code)}
+                              disabled={code.status !== 'activated'}
+                              className="flex-1 min-w-[120px] bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition"
+                            >
+                              {t('extend')}
+                            </button>
+                            <button
+                              onClick={() => handleChangeAccount(code)}
+                              disabled={code.status !== 'activated'}
+                              className="flex-1 min-w-[120px] bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition"
+                            >
+                              {t('change_account_btn')}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
 
+              {/* Desktop Table View */}
+              <div className="hidden lg:block overflow-x-auto">
+                <table className="w-full table-auto">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                        {t('license_header')}
+                      </th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                        {t('platform_header')}
+                      </th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                        {t('account_header')}
+                      </th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                        {t('plan_header')}
+                      </th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                        {t('status_header')}
+                      </th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                        {t('expires_header')}
+                      </th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                        {t('time_left_header')}
+                      </th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                        {t('actions_header')}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {myCodes.map((code) => {
+                      return (
+                        <tr key={code._id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 font-mono text-sm text-blue-600 font-bold">
+                            {code.code}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-900 capitalize">
+                            {code.platform}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-900">
+                            {code.accountNumber}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-900">
+                            {code.cumulativePlanDays &&
+                            code.cumulativePlanDays > code.plan ? (
+                              <div className="flex flex-col leading-tight">
+                                <span>
+                                  {code.plan} {t('days') || 'days'}
+                                  <span className="text-xs text-gray-500 ml-1">
+                                    (+{code.cumulativePlanDays - code.plan})
+                                  </span>
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  = {code.cumulativePlanDays}{' '}
+                                  {t('days') || 'days'}
+                                </span>
+                              </div>
+                            ) : (
+                              <span>
+                                {code.plan} {t('days') || 'days'}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                code.status === 'activated'
+                                  ? 'bg-green-100 text-green-800'
+                                  : code.status === 'paid'
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : code.status === 'pending_payment'
+                                      ? 'bg-yellow-100 text-yellow-800'
+                                      : 'bg-red-100 text-red-800'
+                              }`}
+                            >
+                              {code.status.replace('_', ' ').toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-500">
+                            {code.status === 'activated'
+                              ? (() => {
+                                  // Prioritize customer account expiry date with better error handling
+                                  let expiryDate = null
+                                  let dateSource = ''
+                                  let rawDate = ''
+
+                                  if (code.customerAccount?.expireDate) {
+                                    rawDate = code.customerAccount.expireDate
+                                    expiryDate = parseThaiDate(rawDate)
+                                    dateSource = '(Customer Account)'
+                                  } else if (code.expireDate) {
+                                    rawDate = code.expireDate
+                                    expiryDate = parseThaiDate(rawDate)
+                                    dateSource = '(Code)'
+                                  } else if (code.expiresAt) {
+                                    rawDate = code.expiresAt
+                                    expiryDate = new Date(rawDate)
+                                    dateSource = '(Original)'
+                                  }
+
+                                  let displayDate = 'No date available'
+                                  if (
+                                    expiryDate &&
+                                    !isNaN(expiryDate.getTime())
+                                  ) {
+                                    displayDate =
+                                      expiryDate.toLocaleDateString()
+                                  } else if (rawDate) {
+                                    displayDate = `Invalid: ${rawDate.substring(0, 20)}...`
+                                  }
+
+                                  return (
+                                    <div>
+                                      <div
+                                        className={
+                                          expiryDate &&
+                                          !isNaN(expiryDate.getTime())
+                                            ? ''
+                                            : 'text-red-500'
+                                        }
+                                      >
+                                        {displayDate}
+                                      </div>
+                                      {dateSource && (
+                                        <div className="text-xs text-gray-400">
+                                          {dateSource}
+                                        </div>
+                                      )}
+                                      {(!expiryDate ||
+                                        isNaN(expiryDate.getTime())) &&
+                                        rawDate && (
+                                          <div
+                                            className="text-xs text-red-400"
+                                            title={rawDate}
+                                          >
+                                            Raw: {rawDate}
+                                          </div>
+                                        )}
+                                    </div>
+                                  )
+                                })()
+                              : code.status === 'pending_payment'
+                                ? t('pay_to_activate')
+                                : '-'}
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            {code.status === 'activated' ? (
+                              (() => {
+                                const timeRemaining = getTimeRemaining(code)
                                 return (
                                   <div>
                                     <div
-                                      className={
-                                        expiryDate &&
-                                        !isNaN(expiryDate.getTime())
-                                          ? ''
-                                          : 'text-red-500'
-                                      }
+                                      className={`font-medium ${
+                                        timeRemaining.expired
+                                          ? 'text-red-600'
+                                          : timeRemaining.days < 7
+                                            ? 'text-orange-600'
+                                            : timeRemaining.days < 30
+                                              ? 'text-yellow-600'
+                                              : 'text-green-600'
+                                      }`}
                                     >
-                                      {displayDate}
+                                      {timeRemaining.timeLeft}
                                     </div>
-                                    {dateSource && (
-                                      <div className="text-xs text-gray-400">
-                                        {dateSource}
-                                      </div>
-                                    )}
-                                    {(!expiryDate ||
-                                      isNaN(expiryDate.getTime())) &&
-                                      rawDate && (
-                                        <div
-                                          className="text-xs text-red-400"
-                                          title={rawDate}
-                                        >
-                                          Raw: {rawDate}
+                                    {!timeRemaining.expired &&
+                                      timeRemaining.days > 0 && (
+                                        <div className="text-xs text-gray-500">
+                                          {timeRemaining.days} day
+                                          {timeRemaining.days !== 1
+                                            ? 's'
+                                            : ''}{' '}
+                                          left
                                         </div>
                                       )}
                                   </div>
                                 )
                               })()
-                            : code.status === 'pending_payment'
-                              ? t('pay_to_activate')
-                              : '-'}
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          {code.status === 'activated' ? (
-                            (() => {
-                              const timeRemaining = getTimeRemaining(code)
-                              return (
-                                <div>
-                                  <div
-                                    className={`font-medium ${
-                                      timeRemaining.expired
-                                        ? 'text-red-600'
-                                        : timeRemaining.days < 7
-                                          ? 'text-orange-600'
-                                          : timeRemaining.days < 30
-                                            ? 'text-yellow-600'
-                                            : 'text-green-600'
-                                    }`}
+                            ) : code.status === 'pending_payment' ? (
+                              <span className="text-gray-400 text-xs">
+                                {t('pay_to_see_countdown')}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-col gap-1">
+                              {code.status === 'activated' && (
+                                <>
+                                  <button
+                                    onClick={() => handleExtendLicense(code)}
+                                    className="px-3 py-1 rounded text-xs transition duration-200 bg-green-500 hover:bg-green-600 text-white"
                                   >
-                                    {timeRemaining.timeLeft}
-                                  </div>
-                                  {!timeRemaining.expired &&
-                                    timeRemaining.days > 0 && (
-                                      <div className="text-xs text-gray-500">
-                                        {timeRemaining.days} day
-                                        {timeRemaining.days !== 1
-                                          ? 's'
-                                          : ''}{' '}
-                                        left
-                                      </div>
-                                    )}
-                                </div>
-                              )
-                            })()
-                          ) : code.status === 'pending_payment' ? (
-                            <span className="text-gray-400 text-xs">
-                              {t('pay_to_see_countdown')}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-col gap-1">
-                            {code.status === 'activated' && (
-                              <>
-                                <button
-                                  onClick={() => handleExtendLicense(code)}
-                                  className="px-3 py-1 rounded text-xs transition duration-200 bg-green-500 hover:bg-green-600 text-white"
-                                >
-                                  {t('extend')}
-                                </button>
-                                <button
-                                  onClick={() => handleChangeAccount(code)}
-                                  className="px-3 py-1 rounded text-xs transition duration-200 bg-blue-500 hover:bg-blue-600 text-white"
-                                >
-                                  {language === 'th'
-                                    ? 'เปลี่ยนบัญชี'
-                                    : 'Change Account'}
-                                </button>
-                              </>
-                            )}
-                            {code.status === 'pending_payment' && (
-                              <span className="text-xs text-gray-400">
-                                {t('pay_to_activate')}
-                              </span>
-                            )}
-                            {code.status === 'expired' && (
-                              <span className="text-xs text-red-400">
-                                {t('expired')}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+                                    {t('extend')}
+                                  </button>
+                                  <button
+                                    onClick={() => handleChangeAccount(code)}
+                                    className="px-3 py-1 rounded text-xs transition duration-200 bg-blue-500 hover:bg-blue-600 text-white"
+                                  >
+                                    {language === 'th'
+                                      ? 'เปลี่ยนบัญชี'
+                                      : 'Change Account'}
+                                  </button>
+                                </>
+                              )}
+                              {code.status === 'pending_payment' && (
+                                <span className="text-xs text-gray-400">
+                                  {t('pay_to_activate')}
+                                </span>
+                              )}
+                              {code.status === 'expired' && (
+                                <span className="text-xs text-red-400">
+                                  {t('expired')}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </>
           )}
 
-          {/* Expiring Soon Alert */}
+          {/* Expiring Soon Alert - Collapsible on Mobile */}
           {myCodes.length > 0 &&
             (() => {
               const activeLicenses = myCodes.filter(
@@ -2876,57 +2916,122 @@ export default function LandingPage() {
               if (expiringSoon.length === 0) return null
 
               return (
-                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
-                  <h3 className="text-lg font-semibold text-orange-800 mb-3 flex items-center">
-                    <svg
-                      className="w-5 h-5 mr-2"
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                    {t('licenses_expiring_soon')}
-                  </h3>
-                  <div className="space-y-2">
-                    {expiringSoon.map((license) => {
-                      const timeRemaining = getTimeRemaining(license)
-                      return (
-                        <div
-                          key={license._id}
-                          className="flex items-center justify-between bg-white rounded p-3"
-                        >
-                          <div className="flex items-center space-x-3">
-                            <span className="font-mono text-sm font-semibold text-blue-600">
-                              {license.code}
-                            </span>
-                            <span className="text-sm text-gray-600">
-                              {license.platform} • {license.accountNumber}
-                            </span>
-                          </div>
-                          <div className="flex items-center space-x-3">
-                            <span
-                              className={`text-sm font-medium ${
-                                timeRemaining.days <= 1
-                                  ? 'text-red-600'
-                                  : 'text-orange-600'
-                              }`}
-                            >
-                              {timeRemaining.timeLeft}
-                            </span>
-                            <button
-                              onClick={() => handleExtendLicense(license)}
-                              className="px-3 py-1 rounded text-xs bg-orange-500 hover:bg-orange-600 text-white transition duration-200"
-                            >
-                              {t('extend_now')}
-                            </button>
-                          </div>
+                <div className="bg-gradient-to-r from-orange-50 to-amber-50 border-2 border-orange-200 rounded-xl sm:rounded-2xl overflow-hidden mb-6 shadow-md">
+                  {/* Header - Always Visible on Mobile, clickable dropdown trigger */}
+                  <button
+                    onClick={() => setIsExpiringSoonExpanded(!isExpiringSoonExpanded)}
+                    className="w-full sm:cursor-default"
+                  >
+                    <div className="p-3 sm:p-4 flex items-center justify-between hover:bg-orange-100/50 sm:hover:bg-transparent transition-colors">
+                      <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-orange-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <svg
+                            className="w-4 h-4 sm:w-5 sm:h-5 text-white"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
                         </div>
-                      )
-                    })}
+                        <div className="text-left">
+                          <h3 className="text-sm sm:text-lg font-bold text-orange-800">
+                            {t('licenses_expiring_soon')}
+                          </h3>
+                          <p className="text-xs text-orange-600 mt-0.5">
+                            {expiringSoon.length} {language === 'th' ? 'ใบอนุญาต' : 'license(s)'}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {/* Chevron - Only on mobile */}
+                      <div className="block sm:hidden">
+                        <svg
+                          className={`w-5 h-5 text-orange-600 transition-transform ${isExpiringSoonExpanded ? 'rotate-180' : ''}`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Content - Collapsible on Mobile, Always Visible on Desktop */}
+                  <div className={`${isExpiringSoonExpanded ? 'block' : 'hidden'} sm:block border-t border-orange-200`}>
+                    <div className="p-3 sm:p-4 space-y-2 bg-white/50">
+                      {expiringSoon.map((license) => {
+                        const timeRemaining = getTimeRemaining(license)
+                        return (
+                          <div
+                            key={license._id}
+                            className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 shadow-sm border border-orange-100 hover:shadow-md transition-shadow"
+                          >
+                            {/* Mobile Layout */}
+                            <div className="block sm:hidden space-y-2">
+                              <div className="flex items-start justify-between gap-2">
+                                <span className="font-mono text-xs font-bold text-blue-600 break-all flex-1">
+                                  {license.code}
+                                </span>
+                                <span
+                                  className={`text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap ${
+                                    timeRemaining.days <= 1
+                                      ? 'bg-red-100 text-red-700'
+                                      : 'bg-orange-100 text-orange-700'
+                                  }`}
+                                >
+                                  {timeRemaining.timeLeft}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between text-xs text-gray-600">
+                                <span className="capitalize">{license.platform}</span>
+                                <span className="text-gray-400">•</span>
+                                <span className="break-all">{license.accountNumber}</span>
+                              </div>
+                              <button
+                                onClick={() => handleExtendLicense(license)}
+                                className="w-full px-3 py-2 rounded-lg text-xs font-medium bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white transition shadow-sm"
+                              >
+                                {t('extend_now')}
+                              </button>
+                            </div>
+
+                            {/* Desktop Layout */}
+                            <div className="hidden sm:flex items-center justify-between">
+                              <div className="flex items-center space-x-3 flex-1">
+                                <span className="font-mono text-sm font-semibold text-blue-600">
+                                  {license.code}
+                                </span>
+                                <span className="text-sm text-gray-600">
+                                  {license.platform} • {license.accountNumber}
+                                </span>
+                              </div>
+                              <div className="flex items-center space-x-3">
+                                <span
+                                  className={`text-sm font-medium ${
+                                    timeRemaining.days <= 1
+                                      ? 'text-red-600'
+                                      : 'text-orange-600'
+                                  }`}
+                                >
+                                  {timeRemaining.timeLeft}
+                                </span>
+                                <button
+                                  onClick={() => handleExtendLicense(license)}
+                                  className="px-3 py-1 rounded text-xs bg-orange-500 hover:bg-orange-600 text-white transition duration-200"
+                                >
+                                  {t('extend_now')}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
                 </div>
               )
@@ -2967,63 +3072,20 @@ export default function LandingPage() {
                 </p>
               </div>
             </div>
-            <button
-              onClick={fetchHistory}
-              disabled={historyLoading}
-              className="group relative bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-white font-semibold px-4 py-2 sm:px-6 sm:py-3 rounded-xl transition-all duration-300 flex items-center shadow-lg hover:shadow-xl hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
-            >
-              {historyLoading ? (
-                <svg
-                  className="animate-spin w-4 h-4 sm:w-5 sm:h-5 mr-2"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-              ) : (
-                <svg
-                  className="w-4 h-4 sm:w-5 sm:h-5 mr-2 group-hover:rotate-180 transition-transform duration-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  />
-                </svg>
-              )}
-              <span className="hidden sm:inline">{t('refresh')}</span>
-              <span className="inline sm:hidden">🔄</span>
-            </button>
           </div>
 
-          {/* Tab Navigation */}
-          <div className="flex flex-wrap gap-2 mb-6 bg-white rounded-xl p-2 shadow-inner">
+          {/* Tab Navigation - Slim on Mobile, Normal on Desktop */}
+          <div className="flex flex-wrap gap-1.5 sm:gap-2 mb-6 bg-white rounded-lg sm:rounded-xl p-1.5 sm:p-2 shadow-inner">
             <button
               onClick={() => setActiveHistoryTab('purchases')}
-              className={`flex-1 min-w-[100px] sm:min-w-[140px] px-3 sm:px-4 py-2 sm:py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-base ${
+              className={`flex-1 min-w-[80px] sm:min-w-[140px] px-2 sm:px-4 py-1.5 sm:py-3 rounded-md sm:rounded-lg font-medium sm:font-semibold transition-all duration-200 sm:duration-300 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-base ${
                 activeHistoryTab === 'purchases'
-                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg scale-105'
-                  : 'bg-transparent text-gray-600 hover:bg-gray-100'
+                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md sm:shadow-lg sm:scale-105'
+                  : 'bg-transparent text-gray-600 hover:bg-gray-50 sm:hover:bg-gray-100'
               }`}
             >
               <svg
-                className="w-4 h-4 sm:w-5 sm:h-5"
+                className="w-3.5 h-3.5 sm:w-5 sm:h-5"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -3036,11 +3098,13 @@ export default function LandingPage() {
                 />
               </svg>
               <span className="hidden sm:inline">{t('purchase_history')}</span>
-              <span className="inline sm:hidden">{language === 'th' ? 'ซื้อ' : 'Buy'}</span>
+              <span className="inline sm:hidden">
+                {language === 'th' ? 'ซื้อ' : 'Buy'}
+              </span>
               <span
-                className={`text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full ${
+                className={`text-xs px-1 sm:px-2 py-0.5 sm:py-1 rounded-full font-semibold ${
                   activeHistoryTab === 'purchases'
-                    ? 'bg-white/20'
+                    ? 'bg-white/20 text-white'
                     : 'bg-blue-100 text-blue-700'
                 }`}
               >
@@ -3050,14 +3114,14 @@ export default function LandingPage() {
 
             <button
               onClick={() => setActiveHistoryTab('extensions')}
-              className={`flex-1 min-w-[100px] sm:min-w-[140px] px-3 sm:px-4 py-2 sm:py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-base ${
+              className={`flex-1 min-w-[80px] sm:min-w-[140px] px-2 sm:px-4 py-1.5 sm:py-3 rounded-md sm:rounded-lg font-medium sm:font-semibold transition-all duration-200 sm:duration-300 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-base ${
                 activeHistoryTab === 'extensions'
-                  ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg scale-105'
-                  : 'bg-transparent text-gray-600 hover:bg-gray-100'
+                  ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-md sm:shadow-lg sm:scale-105'
+                  : 'bg-transparent text-gray-600 hover:bg-gray-50 sm:hover:bg-gray-100'
               }`}
             >
               <svg
-                className="w-4 h-4 sm:w-5 sm:h-5"
+                className="w-3.5 h-3.5 sm:w-5 sm:h-5"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -3070,11 +3134,13 @@ export default function LandingPage() {
                 />
               </svg>
               <span className="hidden sm:inline">{t('extension_history')}</span>
-              <span className="inline sm:hidden">{language === 'th' ? 'ขยาย' : 'Ext'}</span>
+              <span className="inline sm:hidden">
+                {language === 'th' ? 'ขยาย' : 'Ext'}
+              </span>
               <span
-                className={`text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full ${
+                className={`text-xs px-1 sm:px-2 py-0.5 sm:py-1 rounded-full font-semibold ${
                   activeHistoryTab === 'extensions'
-                    ? 'bg-white/20'
+                    ? 'bg-white/20 text-white'
                     : 'bg-purple-100 text-purple-700'
                 }`}
               >
@@ -3084,14 +3150,14 @@ export default function LandingPage() {
 
             <button
               onClick={() => setActiveHistoryTab('topups')}
-              className={`flex-1 min-w-[100px] sm:min-w-[140px] px-3 sm:px-4 py-2 sm:py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-base ${
+              className={`flex-1 min-w-[80px] sm:min-w-[140px] px-2 sm:px-4 py-1.5 sm:py-3 rounded-md sm:rounded-lg font-medium sm:font-semibold transition-all duration-200 sm:duration-300 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-base ${
                 activeHistoryTab === 'topups'
-                  ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg scale-105'
-                  : 'bg-transparent text-gray-600 hover:bg-gray-100'
+                  ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-md sm:shadow-lg sm:scale-105'
+                  : 'bg-transparent text-gray-600 hover:bg-gray-50 sm:hover:bg-gray-100'
               }`}
             >
               <svg
-                className="w-4 h-4 sm:w-5 sm:h-5"
+                className="w-3.5 h-3.5 sm:w-5 sm:h-5"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -3103,11 +3169,11 @@ export default function LandingPage() {
                   d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                 />
               </svg>
-              <span>{language === 'th' ? 'เติมเครดิต' : 'Top-ups'}</span>
+              <span className="whitespace-nowrap">{language === 'th' ? 'เติมเครดิต' : 'Top-ups'}</span>
               <span
-                className={`text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full ${
+                className={`text-xs px-1 sm:px-2 py-0.5 sm:py-1 rounded-full font-semibold ${
                   activeHistoryTab === 'topups'
-                    ? 'bg-white/20'
+                    ? 'bg-white/20 text-white'
                     : 'bg-green-100 text-green-700'
                 }`}
               >
@@ -3780,8 +3846,14 @@ export default function LandingPage() {
                   onClick={() => {
                     setShowExtendModal(false)
                     setSelectedCode(null)
-                    const firstNonLifetimePlan = plans.find(p => !p.isLifetime)
-                    setExtendPlan(firstNonLifetimePlan ? firstNonLifetimePlan.days.toString() : '30')
+                    const firstNonLifetimePlan = plans.find(
+                      (p) => !p.isLifetime
+                    )
+                    setExtendPlan(
+                      firstNonLifetimePlan
+                        ? firstNonLifetimePlan.days.toString()
+                        : '30'
+                    )
                   }}
                   className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-4 rounded-lg transition duration-200"
                 >
@@ -4040,7 +4112,7 @@ export default function LandingPage() {
       )}
 
       {/* Notifications */}
-      <div className="fixed top-4 right-4 z-50 flex flex-col space-y-2 w-80">
+      <div className="fixed top-4 right-2 sm:right-4 z-50 flex flex-col space-y-2 w-72 sm:w-80 max-w-[calc(100vw-1rem)]">
         {notifications.map((notification) => {
           const baseColor =
             notification.type === 'success'

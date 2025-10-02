@@ -56,6 +56,33 @@ body:lang(th) {
   font-family: var(--font-noto-thai), 'Noto Sans Thai', 'Sarabun', 'Kanit', sans-serif !important;
 }
 
+/* Better Thai text rendering and spacing */
+:lang(th), [lang="th"], .thai-text {
+  font-family: 'Noto Sans Thai', 'Sarabun', 'Kanit', sans-serif;
+  letter-spacing: 0.01em;
+  word-spacing: 0.05em;
+  line-height: 1.6;
+}
+
+/* Prevent text overflow in cards */
+.break-word {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+/* Fix font rendering for mixed Thai/English content */
+.text-mixed {
+  font-feature-settings: "kern" 1, "liga" 1;
+  text-rendering: optimizeLegibility;
+}
+
+/* Ensure colon and punctuation spacing */
+span.text-gray-600::after, .label-text::after {
+  padding-right: 0.25em;
+}
+
 /* Ensure all page containers cover full height */
 #__next {
   min-height: 100vh;
@@ -165,4 +192,119 @@ html, body, #__next, [data-reactroot] {
 
 .animate-notif-shrink-5s {
   animation: notif-shrink 5s linear forwards;
+}
+
+/* Mobile Responsiveness Fixes */
+/* Collapsible card animation */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+/* Mobile-specific optimizations */
+@media (max-width: 640px) {
+  /* Prevent horizontal scroll */
+  body {
+    overflow-x: hidden;
+  }
+  
+  /* Make tables scrollable on mobile */
+  table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Reduce padding on mobile */
+  .px-4, .px-6, .px-8 {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+  
+  /* Stack form inputs on mobile */
+  .grid-cols-3, .grid-cols-2 {
+    grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
+  }
+  
+  /* Reduce text sizes slightly on mobile */
+  h1 {
+    font-size: 1.5rem !important;
+  }
+  
+  h2 {
+    font-size: 1.25rem !important;
+  }
+  
+  h3 {
+    font-size: 1.125rem !important;
+  }
+  
+  /* Make buttons full width on mobile */
+  button:not(.inline-button) {
+    width: 100%;
+  }
+  
+  /* Adjust card padding */
+  .card, [class*="rounded-"] {
+    padding: 1rem !important;
+  }
+  
+  /* Fix modal width on mobile */
+  .max-w-md, .max-w-lg, .max-w-xl {
+    max-width: calc(100vw - 2rem) !important;
+  }
+  
+  /* Ensure inputs don't zoom on iOS */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+  
+  /* Mobile-optimized buttons - minimum touch target */
+  button:not(.icon-only) {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 12px 16px;
+  }
+  
+  /* Better mobile form fields */
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  input[type="password"],
+  select {
+    min-height: 48px;
+    padding: 12px 16px !important;
+  }
+  
+  /* Mobile modal improvements */
+  .modal-container {
+    max-width: calc(100vw - 1rem);
+    margin: 0.5rem;
+  }
+  
+  /* Card stacking on mobile */
+  .grid:not(.no-stack) {
+    grid-template-columns: 1fr !important;
+  }
+  
+  /* Better mobile spacing */
+  .section-padding {
+    padding: 1rem;
+  }
+  
+  /* Touch-friendly links */
+  a, button {
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+  }
 }

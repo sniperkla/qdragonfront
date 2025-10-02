@@ -9,7 +9,7 @@ const KEY_LENGTH = 32
 
 // Get encryption key from environment variable
 // In production, use a strong secret key stored in environment variables
-const ENCRYPTION_KEY = process.env.ENCRYPTION_SECRET_KEY || 'your-32-character-secret-key!!'
+const ENCRYPTION_KEY = process.env.ENCRYPTION_SECRET_KEY || process.env.ENCRYPTION_KEY || 'your-32-character-secret-key!!'
 
 /**
  * Derive a key from the secret using PBKDF2

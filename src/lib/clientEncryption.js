@@ -5,7 +5,7 @@
 
 // Use the same secret key (should match server-side in production)
 // In production, this could be exchanged during authentication
-const ENCRYPTION_KEY = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'your-32-character-secret-key!!'
+const ENCRYPTION_KEY = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || process.env.NEXT_PUBLIC_ENCRYPTION_SECRET_KEY || 'your-32-character-secret-key!!'
 
 /**
  * Convert string to ArrayBuffer

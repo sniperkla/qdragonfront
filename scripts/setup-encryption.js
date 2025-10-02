@@ -5,7 +5,7 @@
  * 
  * This script helps you:
  * 1. Generate secure encryption keys
- * 2. Update your .env.local file
+ * 2. Update your .env.production file
  * 3. Test encryption functionality
  * 
  * Usage: node scripts/setup-encryption.js
@@ -29,15 +29,65 @@ console.log('\nClient Key (NEXT_PUBLIC_ENCRYPTION_KEY):')
 console.log(clientKey)
 console.log()
 
-// Check if .env.local exists
-const envPath = path.join(process.cwd(), '.env.local')
+// Check if .env.production exists
+const envPath = path.join(process.cwd(), '.env.production')
 const envExists = fs.existsSync(envPath)
 
 if (envExists) {
-  console.log('⚠️  .env.local file already exists')
-  console.log('   Please manually add these keys to your .env.local file:\n')
+  console.log('📄 .env.production file exists')
+  
+  // Read existing content
+  let existingContent = fs.readFileSync(envPath, 'utf8')
+  
+  // Check if ENCRYPTION_KEY already exists
+  if (existingContent.includes('ENCRYPTION_KEY=')) {
+    console.log('⚠️  ENCRYPTION_KEY already exists in .env.production')
+    console.log('   Current value will be replaced...\n')
+    
+    // Replace existing ENCRYPTION_KEY
+    existingContent = existingContent.replace(
+      /ENCRYPTION_KEY=.*/g,
+      `ENCRYPTION_KEY="${serverKey}"`
+    )
+    
+    fs.writeFileSync(envPath, existingContent)
+    console.log('✅ ENCRYPTION_KEY updated successfully!')
+  } else {
+    console.log('   Adding ENCRYPTION_KEY to existing file...\n')
+    
+    // Append to existing file
+    const appendContent = `\n# Encryption Key (Generated ${new Date().toISOString()})\n# ⚠️ IMPORTANT: Keep this key secret!\nENCRYPTION_KEY="${serverKey}"\n`
+    
+    fs.appendFileSync(envPath, appendContent)
+    console.log('✅ ENCRYPTION_KEY added successfully!')
+  }
 } else {
-  console.log('📄 Creating .env.local file...\n')
+  console.log('📄 Creating new .env.production file...\n')
+  
+  const newEnvContent = `# Q-Dragon Production Environment
+# Generated ${new Date().toISOString()}
+
+MONGODB_URI="mongodb://localhost:27017/qdragon"
+JWT_SECRET="change-this-in-production"
+
+# Encryption Key
+# ⚠️ IMPORTANT: Keep this key secret!
+ENCRYPTION_KEY="${serverKey}"
+
+# Email Configuration
+EMAIL_USER="your-email@gmail.com"
+EMAIL_PASSWORD="your-app-password"
+
+# Admin Configuration
+ADMIN_KEY="your-admin-key"
+
+# Public URLs
+NEXT_PUBLIC_BASE_URL="https://yourdomain.com"
+NEXT_PUBLIC_APP_URL="https://yourdomain.com"
+`
+  
+  fs.writeFileSync(envPath, newEnvContent)
+  console.log('✅ .env.production file created successfully!')
 }
 
 const envContent = `
@@ -51,13 +101,10 @@ ENCRYPTION_SECRET_KEY=${serverKey}
 NEXT_PUBLIC_ENCRYPTION_KEY=${clientKey}
 `
 
-if (!envExists) {
-  fs.writeFileSync(envPath, envContent)
-  console.log('✅ .env.local file created successfully!')
-} else {
-  console.log('Add these lines to your .env.local:')
-  console.log(envContent)
-}
+console.log('\n📋 Generated Keys:\n')
+console.log('ENCRYPTION_KEY (added to .env.production):')
+console.log(serverKey)
+console.log()
 
 console.log('\n📋 Next Steps:\n')
 console.log('1. ✅ Encryption keys generated')
