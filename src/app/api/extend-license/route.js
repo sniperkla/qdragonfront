@@ -3,6 +3,7 @@ import { connectToDatabase } from '@/lib/mongodb'
 import CodeRequest from '@/lib/codeRequestModel'
 import CustomerAccount from '@/lib/customerAccountModel'
 import User from '@/lib/userModel'
+import SystemSetting from '@/lib/systemSettingModel'
 import mongoose from 'mongoose'
 import {
   emitCodesUpdate,
@@ -106,18 +107,36 @@ export async function POST(request) {
         }), { status: 400 })
     }
 
-    if (parseInt(actualExtendDays) > 365) {
+    await connectToDatabase()
+
+    // Check if extension feature is enabled
+    const isExtensionEnabled = await SystemSetting.getSetting('license_extension_enabled', true)
+    if (!isExtensionEnabled) {
       // Check if client wants encrypted response
     const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
     
     if (wantsEncrypted) {
-      return createEncryptedResponse({ error: 'Maximum extension is 365 days' }, 400)
+      return createEncryptedResponse({ error: 'License extension feature is currently disabled' }, 403)
     }
     
-    return new Response(JSON.stringify({ error: 'Maximum extension is 365 days' }), { status: 400 })
+    return new Response(JSON.stringify({ error: 'License extension feature is currently disabled' }), { status: 403 })
     }
 
-    await connectToDatabase()
+    // Get extension cost per day and max days from settings
+    const costPerDay = await SystemSetting.getSetting('license_extension_cost_per_day', 1)
+    const maxDaysPerExtension = await SystemSetting.getSetting('license_extension_max_days', 365)
+
+    // Validate extension days against max limit
+    if (parseInt(actualExtendDays) > maxDaysPerExtension) {
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: `Maximum extension is ${maxDaysPerExtension} days` }, 400)
+    }
+    
+    return new Response(JSON.stringify({ error: `Maximum extension is ${maxDaysPerExtension} days` }), { status: 400 })
+    }
 
     // Verify user exists
     const user = await User.findById(authData.id)
@@ -144,15 +163,38 @@ export async function POST(request) {
     let customerAccount = null
     let licenseCode = providedLicenseCode
 
-    // Use source information to determine which model to query first
-    if (source === 'codeRequest') {
-      // This is a CodeRequest-based license
+    // Primary: Look up CustomerAccount directly by ID
+    if (source === 'customerAccount' || !source) {
+      customerAccount = await CustomerAccount.findById(codeId)
+
+      if (customerAccount) {
+        // Verify this customer account belongs to the current user
+        if (customerAccount.user !== user.username) {
+          console.log('Customer account does not belong to user:', {
+            accountUser: customerAccount.user,
+            currentUser: user.username
+          })
+          // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'License not found or access denied' }, 404)
+    }
+    
+    return new Response(JSON.stringify({ error: 'License not found or access denied' }), { status: 404 })
+        }
+        licenseCode = customerAccount.license
+      }
+    }
+
+    // Fallback: Try CodeRequest for legacy licenses
+    if (!customerAccount && source === 'codeRequest') {
       licenseRequest = await CodeRequest.findOne({
         _id: codeId,
         userId: authData.id
       })
       console.log(
-        'License request found:',
+        'Legacy CodeRequest found:',
         licenseRequest
           ? {
               id: licenseRequest._id,
@@ -190,12 +232,11 @@ export async function POST(request) {
       customerAccount = await CustomerAccount.findOne({
         license: licenseRequest.code
       })
-    } else if (source === 'customerAccount') {
-      // This is a CustomerAccount-only license
-      customerAccount = await CustomerAccount.findById(codeId)
+    }
 
-      if (!customerAccount) {
-        // Check if client wants encrypted response
+    // If still not found, return error
+    if (!customerAccount && !licenseRequest) {
+      // Check if client wants encrypted response
     const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
     
     if (wantsEncrypted) {
@@ -203,78 +244,6 @@ export async function POST(request) {
     }
     
     return new Response(JSON.stringify({ error: 'License not found or access denied' }), { status: 404 })
-      }
-
-      // Verify this customer account belongs to the current user
-      if (customerAccount.user !== user.username) {
-        console.log('Customer account does not belong to user:', {
-          accountUser: customerAccount.user,
-          currentUser: user.username
-        })
-        // Check if client wants encrypted response
-    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
-    
-    if (wantsEncrypted) {
-      return createEncryptedResponse({ error: 'License not found or access denied' }, 404)
-    }
-    
-    return new Response(JSON.stringify({ error: 'License not found or access denied' }), { status: 404 })
-      }
-
-      licenseCode = customerAccount.license
-    } else {
-      // Fallback: try both approaches (for backward compatibility)
-      licenseRequest = await CodeRequest.findOne({
-        _id: codeId,
-        userId: authData.id
-      })
-
-      if (licenseRequest) {
-        if (licenseRequest.status !== 'activated') {
-          // Check if client wants encrypted response
-    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
-    
-    if (wantsEncrypted) {
-      return createEncryptedResponse({
-              error: 'Only activated licenses can be extended'
-            }, 400)
-    }
-    
-    return new Response(JSON.stringify({
-              error: 'Only activated licenses can be extended'
-            }), { status: 400 })
-        }
-        licenseCode = licenseRequest.code
-        customerAccount = await CustomerAccount.findOne({
-          license: licenseRequest.code
-        })
-      } else {
-        customerAccount = await CustomerAccount.findById(codeId)
-        if (customerAccount && customerAccount.user !== user.username) {
-          // Check if client wants encrypted response
-    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
-    
-    if (wantsEncrypted) {
-      return createEncryptedResponse({ error: 'License not found or access denied' }, 404)
-    }
-    
-    return new Response(JSON.stringify({ error: 'License not found or access denied' }), { status: 404 })
-        }
-        if (customerAccount) {
-          licenseCode = customerAccount.license
-        }
-      }
-
-      if (!licenseRequest && !customerAccount) {
-        // Check if client wants encrypted response
-    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
-    
-    if (wantsEncrypted) {
-      return createEncryptedResponse({ error: 'License not found or access denied' }, 404)
-    }
-    
-    return new Response(JSON.stringify({ error: 'License not found or access denied' }), { status: 404 })
-      }
     }
     console.log('Customer account lookup:', {
       searchedLicense: licenseCode,
@@ -287,26 +256,14 @@ export async function POST(request) {
         : 'Not found'
     })
 
-    // Handle missing customer account
+    // Handle missing customer account (should rarely happen with new system)
     let workingCustomerAccount = customerAccount
 
-    if (!workingCustomerAccount) {
-      console.log('Customer account not found for license:', licenseCode)
-      console.log('License status:', licenseRequest?.status || 'No CodeRequest')
-
-      // Debug: Check existing accounts
-      const totalAccounts = await CustomerAccount.countDocuments()
-      console.log('Total customer accounts in database:', totalAccounts)
-
-      if (totalAccounts > 0) {
-        const sampleAccounts = await CustomerAccount.find({})
-          .limit(3)
-          .select('license user status')
-        console.log('Sample customer accounts:', sampleAccounts)
-      }
-
-      // Only allow extension for activated licenses (if we have a licenseRequest)
-      if (licenseRequest && licenseRequest.status !== 'activated') {
+    if (!workingCustomerAccount && licenseRequest) {
+      console.log('Legacy license without customer account detected:', licenseCode)
+      
+      // Only allow extension for activated licenses
+      if (licenseRequest.status !== 'activated') {
         // Check if client wants encrypted response
     const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
     
@@ -321,25 +278,8 @@ export async function POST(request) {
           }), { status: 400 })
       }
 
-      // If we don't have a licenseRequest but reached here, it means we only have customer account
-      // In this case, we should not create a missing customer account since it should already exist
-      if (!licenseRequest) {
-        // Check if client wants encrypted response
-    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
-    
-    if (wantsEncrypted) {
-      return createEncryptedResponse({
-            error: 'License configuration error. Please contact support.'
-          }, 500)
-    }
-    
-    return new Response(JSON.stringify({
-            error: 'License configuration error. Please contact support.'
-          }), { status: 500 })
-      }
-
-      // Create missing customer account for activated license
-      console.log('Creating missing customer account for activated license')
+      // Create customer account for legacy activated license
+      console.log('Creating customer account for legacy activated license')
       try {
         const originalExpiryDate = new Date(
           licenseRequest.expiresAt || Date.now()
@@ -361,11 +301,11 @@ export async function POST(request) {
 
         await workingCustomerAccount.save()
         console.log(
-          'Created missing customer account:',
+          'Created customer account for legacy license:',
           workingCustomerAccount._id
         )
       } catch (createError) {
-        console.error('Failed to create missing customer account:', createError)
+        console.error('Failed to create customer account:', createError)
         // Check if client wants encrypted response
     const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
     
@@ -379,6 +319,21 @@ export async function POST(request) {
             error: 'Failed to create customer account. Please contact support.'
           }), { status: 500 })
       }
+    } else if (!workingCustomerAccount) {
+      // No customer account and no legacy code request
+      console.error('No customer account found and no legacy code request to migrate')
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
+          error: 'License configuration error. Please contact support.'
+        }, 500)
+    }
+    
+    return new Response(JSON.stringify({
+          error: 'License configuration error. Please contact support.'
+        }), { status: 500 })
     }
 
     // Check if account is still valid (not expired or suspended)
@@ -440,20 +395,26 @@ export async function POST(request) {
     return new Response(JSON.stringify({ error: 'Invalid expiry date format' }), { status: 500 })
     }
 
-    // Check if user has enough points (1 point = 1 day)
-    const requiredPoints = parseInt(actualExtendDays)
+    // Check if user has enough points (cost per day * days)
+    const requiredPoints = parseInt(actualExtendDays) * costPerDay
     if (user.points < requiredPoints) {
       // Check if client wants encrypted response
     const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
     
     if (wantsEncrypted) {
       return createEncryptedResponse({
-          error: `Insufficient points. You need ${requiredPoints} points but have only ${user.points} points.`
+          error: `Insufficient points. You need ${requiredPoints} points but have only ${user.points} points.`,
+          required: requiredPoints,
+          current: user.points,
+          costPerDay: costPerDay
         }, 400)
     }
     
     return new Response(JSON.stringify({
-          error: `Insufficient points. You need ${requiredPoints} points but have only ${user.points} points.`
+          error: `Insufficient points. You need ${requiredPoints} points but have only ${user.points} points.`,
+          required: requiredPoints,
+          current: user.points,
+          costPerDay: costPerDay
         }), { status: 400 })
     }
 
@@ -590,6 +551,7 @@ export async function POST(request) {
         newExpiry: newExpiryFormatted,
         extendedDays: parseInt(actualExtendDays),
         pointsUsed: requiredPoints,
+        costPerDay: costPerDay,
         remainingPoints: user.points,
         status: 'completed',
         extensionHistoryId: extensionHistoryRecord
@@ -618,5 +580,73 @@ export async function POST(request) {
     return new Response(JSON.stringify({
         error: 'Failed to extend license: ' + error.message
       }), { status: 500 })
+  }
+}
+
+// GET endpoint to fetch extension settings
+export async function GET(request) {
+  try {
+    const authData = verifyAuth(request)
+    if (!authData) {
+      // Check if client wants encrypted response
+      const wantsEncrypted = request?.headers?.get('X-Encrypted') === 'true'
+      
+      if (wantsEncrypted) {
+        return createEncryptedResponse({ error: 'Authentication required' }, 401)
+      }
+      
+      return new Response(JSON.stringify({ error: 'Authentication required' }), { status: 401 })
+    }
+
+    await connectToDatabase()
+
+    // Get extension settings
+    const isEnabled = await SystemSetting.getSetting('license_extension_enabled', true)
+    const costPerDay = await SystemSetting.getSetting('license_extension_cost_per_day', 1)
+    const maxDays = await SystemSetting.getSetting('license_extension_max_days', 365)
+
+    // Get user's current credits
+    const user = await User.findById(authData.id)
+
+    // Check if client wants encrypted response
+    const wantsEncrypted = request?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
+        success: true,
+        data: {
+          enabled: isEnabled,
+          costPerDay: costPerDay,
+          maxDays: maxDays,
+          userCredits: user ? user.points : 0
+        }
+      }, 200)
+    }
+    
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        enabled: isEnabled,
+        costPerDay: costPerDay,
+        maxDays: maxDays,
+        userCredits: user ? user.points : 0
+      }
+    }), { status: 200 })
+  } catch (error) {
+    console.error('Error fetching extension settings:', error)
+    // Check if client wants encrypted response
+    const wantsEncrypted = request?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({
+        error: 'Failed to fetch settings',
+        details: error.message
+      }, 500)
+    }
+    
+    return new Response(JSON.stringify({
+      error: 'Failed to fetch settings',
+      details: error.message
+    }), { status: 500 })
   }
 }

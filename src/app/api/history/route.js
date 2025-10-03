@@ -1,8 +1,9 @@
 import { verifyAuth } from '@/lib/auth'
 import { connectToDatabase } from '@/lib/mongodb'
-import CodeRequest from '@/lib/codeRequestModel'
+import CustomerAccount from '@/lib/customerAccountModel'
 import ExtensionRequest from '@/lib/extensionRequestModel'
 import TopUp from '@/lib/topUpModel'
+import User from '@/lib/userModel'
 import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
 
 
@@ -23,9 +24,25 @@ export async function GET(req) {
 
     await connectToDatabase()
 
-    // Fetch purchases (CodeRequests)
-    const purchases = await CodeRequest.find({ userId: auth.id })
-      .sort({ createdAt: -1 })
+    // Get user info for username lookup
+    const user = await User.findById(auth.id)
+    if (!user) {
+      // Check if client wants encrypted response
+    const wantsEncrypted = req?.headers?.get('X-Encrypted') === 'true'
+    
+    if (wantsEncrypted) {
+      return createEncryptedResponse({ error: 'User not found' }, 404)
+    }
+    
+    return new Response(JSON.stringify({ error: 'User not found' }), { status: 404 })
+    }
+
+    // Fetch purchases (CustomerAccounts created by user)
+    const purchases = await CustomerAccount.find({ 
+      user: user.username,
+      adminGenerated: false // Only user-created purchases
+    })
+      .sort({ activatedAt: -1 })
       .lean()
 
     // Fetch extension requests
@@ -38,21 +55,20 @@ export async function GET(req) {
       .sort({ createdAt: -1 })
       .lean()
 
-    // Normalize purchase items
+    // Normalize purchase items (from CustomerAccount)
     const purchaseHistory = purchases.map((p) => ({
       type: 'purchase',
       id: p._id.toString(),
-      licenseCode: p.code,
+      licenseCode: p.license,
       accountNumber: p.accountNumber,
       platform: p.platform,
       planDays: p.plan,
-      price: p.price,
-      currency: p.currency || 'THB',
-      status: p.status,
+      price: null, // CustomerAccount doesn't store price
+      currency: 'THB',
+      status: p.status === 'valid' ? 'activated' : p.status,
       createdAt: p.createdAt,
-      paidAt: p.paidAt,
       activatedAt: p.activatedAt,
-      expiresAt: p.expiresAt
+      expireDate: p.expireDate
     }))
 
     // Normalize extension items

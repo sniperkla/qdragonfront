@@ -264,13 +264,14 @@ function VerifyEmailContent() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition duration-200 pl-12 text-white placeholder-white/60"
+                  className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition duration-200 pl-10 sm:pl-12 text-white placeholder-white/60"
                   placeholder="Your email address"
+                  style={{ fontSize: '16px' }}
                   readOnly
                 />
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none">
                   <svg
-                    className="h-5 w-5 text-white/60"
+                    className="h-4 w-4 sm:h-5 sm:w-5 text-white/60"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -300,12 +301,13 @@ function VerifyEmailContent() {
                   value={verificationCode}
                   onChange={(e) => setVerificationCode(e.target.value)}
                   required
-                  className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition duration-200 pl-12 text-white placeholder-white/60"
+                  className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition duration-200 pl-10 sm:pl-12 text-white placeholder-white/60"
                   placeholder={t('enter_verification_code')}
+                  style={{ fontSize: '16px' }}
                 />
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none">
                   <svg
-                    className="h-5 w-5 text-white/60"
+                    className="h-4 w-4 sm:h-5 sm:w-5 text-white/60"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"

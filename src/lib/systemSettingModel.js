@@ -64,6 +64,24 @@ SystemSettingSchema.statics.seedDefaultSettings = async function() {
       value: true,
       description: 'Enable/disable account number change feature',
       category: 'features'
+    },
+    {
+      key: 'license_extension_cost_per_day',
+      value: 1,
+      description: 'Cost in credits per day for license extension (1 credit = 1 day by default)',
+      category: 'pricing'
+    },
+    {
+      key: 'license_extension_enabled',
+      value: true,
+      description: 'Enable/disable license extension feature',
+      category: 'features'
+    },
+    {
+      key: 'license_extension_max_days',
+      value: 365,
+      description: 'Maximum days allowed per extension request',
+      category: 'limits'
     }
   ]
 

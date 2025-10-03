@@ -70,14 +70,14 @@ export async function POST(request) {
       )
     }
 
-    // Find the license - first try CodeRequest (primary source)
-    const codeRequest = await CodeRequest.findOne({
-      userId: authData.id,
-      code: licenseCode
+    // Find the license - CustomerAccount is now primary source
+    const customerAccount = await CustomerAccount.findOne({
+      license: licenseCode,
+      user: user.username
     })
 
-    if (!codeRequest) {
-      console.error('License not found in CodeRequest:', {
+    if (!customerAccount) {
+      console.error('License not found in CustomerAccount:', {
         userId: authData.id,
         licenseCode,
         username: user.username
@@ -88,14 +88,14 @@ export async function POST(request) {
       )
     }
 
-    // Check if new account number is already in use for this user in CodeRequest
-    const existingCodeRequest = await CodeRequest.findOne({
-      userId: authData.id,
+    // Check if new account number is already in use for this user in CustomerAccount
+    const existingCustomerAccount = await CustomerAccount.findOne({
+      user: user.username,
       accountNumber: newAccountNumber,
-      code: { $ne: licenseCode } // Different license
+      license: { $ne: licenseCode } // Different license
     })
 
-    if (existingCodeRequest) {
+    if (existingCustomerAccount) {
       return NextResponse.json(
         { error: 'This account number is already in use with another license' },
         { status: 400 }
@@ -103,29 +103,27 @@ export async function POST(request) {
     }
 
     // Store old account number for transaction record
-    const oldAccountNumber = codeRequest.accountNumber
+    const oldAccountNumber = customerAccount.accountNumber
 
     // Deduct credits from user
     user.points -= changeCost
     await user.save()
 
-    // Update CodeRequest (primary)
-    codeRequest.accountNumber = newAccountNumber
-    await codeRequest.save()
-    console.log('Updated CodeRequest account number for license:', licenseCode)
+    // Update CustomerAccount (primary)
+    customerAccount.accountNumber = newAccountNumber
+    await customerAccount.save()
+    console.log('Updated CustomerAccount account number for license:', licenseCode)
 
-    // Also update CustomerAccount if it exists
-    const customerAccount = await CustomerAccount.findOne({
-      license: licenseCode,
-      user: user.username
+    // Also update CodeRequest if it exists (for legacy data)
+    const codeRequest = await CodeRequest.findOne({
+      userId: authData.id,
+      code: licenseCode
     })
     
-    if (customerAccount) {
-      customerAccount.accountNumber = newAccountNumber
-      await customerAccount.save()
-      console.log('Updated CustomerAccount account number for license:', licenseCode)
-    } else {
-      console.log('No CustomerAccount found for license:', licenseCode, '(this is OK)')
+    if (codeRequest) {
+      codeRequest.accountNumber = newAccountNumber
+      await codeRequest.save()
+      console.log('Updated legacy CodeRequest account number for license:', licenseCode)
     }
 
     // Record the transaction

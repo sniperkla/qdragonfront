@@ -1,9 +1,9 @@
 import { verifyAuth } from '@/lib/auth'
 import { connectToDatabase } from '@/lib/mongodb'
 import User from '@/lib/userModel'
-import CodeRequest from '@/lib/codeRequestModel'
+import CustomerAccount from '@/lib/customerAccountModel'
 import PlanSetting from '@/lib/planSettingModel'
-import { emitCodesUpdate, emitAdminNotification } from '@/lib/websocket'
+import { emitCodesUpdate, emitAdminNotification, emitCustomerAccountUpdate } from '@/lib/websocket'
 import { decryptRequestBody, createEncryptedResponse } from '@/lib/encryptionMiddleware'
 
 
@@ -115,34 +115,59 @@ export async function POST(req) {
     }
     const licenseCode = generateLicenseCode()
 
-    // Create activated code request (points-based instant activation)
-    const expiresAt = planSetting.isLifetime
-      ? new Date(Date.now() + 50 * 365 * 24 * 60 * 60 * 1000)
-      : new Date(Date.now() + planSetting.days * 24 * 60 * 60 * 1000)
+    // Calculate expire date
+    const now = new Date()
+    const expireDate = planSetting.isLifetime
+      ? new Date(now.getTime() + 50 * 365 * 24 * 60 * 60 * 1000)
+      : new Date(now.getTime() + planSetting.days * 24 * 60 * 60 * 1000)
 
-    const codeDoc = new CodeRequest({
-      userId: user._id,
-      username: user.username,
-      accountNumber,
-      platform,
+    // Format expire date as "DD/MM/YYYY HH:mm" in Thai Buddhist calendar
+    const day = expireDate.getDate().toString().padStart(2, '0')
+    const month = (expireDate.getMonth() + 1).toString().padStart(2, '0')
+    const year = expireDate.getFullYear() + 543 // Thai Buddhist year
+    const hours = expireDate.getHours().toString().padStart(2, '0')
+    const minutes = expireDate.getMinutes().toString().padStart(2, '0')
+    const formattedExpireDate = `${day}/${month}/${year} ${hours}:${minutes}`
+
+    // Create CustomerAccount directly (no CodeRequest)
+    const customerAccount = new CustomerAccount({
+      user: user.username,
+      license: licenseCode,
+      expireDate: formattedExpireDate,
+      status: 'valid',
+      platform: platform,
+      accountNumber: accountNumber,
       plan: planSetting.isLifetime ? 999999 : planSetting.days,
-      code: licenseCode,
-      price: 0, // Points purchase has no direct USD price recorded here
-      status: 'activated',
-      expiresAt,
-      source: 'points'
+      isDemo: false,
+      createdBy: 'user',
+      adminGenerated: false,
+      activatedAt: now
     })
-    await codeDoc.save()
+    await customerAccount.save()
+
+    console.log('CustomerAccount created via points purchase:', {
+      username: user.username,
+      license: licenseCode,
+      plan: planSetting.isLifetime ? 'Lifetime' : `${planSetting.days} days`,
+      expireDate: formattedExpireDate,
+      pointsUsed: requiredPoints,
+      remainingPoints: user.points
+    })
 
     // Emit websocket updates (non-fatal)
     try {
+      await emitCustomerAccountUpdate(user._id.toString(), {
+        type: 'created',
+        license: licenseCode,
+        expireDate: formattedExpireDate,
+        plan: planSetting.days
+      })
       await emitCodesUpdate(user._id.toString(), {
         action: 'points-purchase',
-        codeId: codeDoc._id.toString(),
         license: licenseCode,
         status: 'activated'
       })
-      await emitAdminNotification(`Points license activated: ${licenseCode}`, 'success')
+      await emitAdminNotification(`Points license activated: ${licenseCode} (${user.username})`, 'success')
     } catch (wsErr) {
       console.warn('WebSocket emission failed (purchase-points):', wsErr.message)
     }
@@ -159,7 +184,7 @@ export async function POST(req) {
           plan: planSetting.days,
           isLifetime: planSetting.isLifetime,
           remainingPoints: user.points,
-          expireDate: expiresAt,
+          expireDate: formattedExpireDate,
           source: 'points'
         }
       }, 200)
@@ -172,7 +197,7 @@ export async function POST(req) {
           plan: planSetting.days,
           isLifetime: planSetting.isLifetime,
           remainingPoints: user.points,
-          expireDate: expiresAt,
+          expireDate: formattedExpireDate,
           source: 'points'
         }
       }), { status: 200 })

@@ -262,7 +262,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 to-purple-900 flex items-center justify-center p-4 overflow-y-auto relative">
+    <div className="min-h-screen login-container bg-gradient-to-br from-blue-900 to-purple-900 flex flex-col items-center justify-start py-4 px-4 overflow-y-auto relative">
       {/* Background Image */}
       <div className="fixed inset-0 w-full h-full">
         <img
@@ -286,7 +286,7 @@ export default function LoginPage() {
 
       {/* Login Card (blur and dim if checking auth) */}
       <div
-        className={`relative z-10 max-w-md w-full bg-white/5 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/30 ring-1 ring-white/20 transition-all ${checkingAuth ? 'opacity-40 pointer-events-none scale-[0.98]' : 'opacity-100'} `}
+        className={`relative z-10 max-w-md w-full bg-white/5 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/30 ring-1 ring-white/20 transition-all my-auto ${checkingAuth ? 'opacity-40 pointer-events-none scale-[0.98]' : 'opacity-100'} `}
       >
         {/* Header */}
         <div className="text-center pt-6 sm:pt-8 pb-4 sm:pb-6 px-6 sm:px-8">
@@ -341,12 +341,13 @@ export default function LoginPage() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
-                  className="w-full px-4 py-3 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition duration-200 pl-12 text-sm sm:text-base text-white placeholder-white/60 bg-white/10 backdrop-blur-sm"
+                  className="w-full px-4 py-3 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition duration-200 pl-10 sm:pl-12 text-sm sm:text-base text-white placeholder-white/60 bg-white/10 backdrop-blur-sm"
                   placeholder={t('username_placeholder')}
+                  style={{ fontSize: '16px' }}
                 />
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none z-10">
                   <svg
-                    className="h-5 w-5 text-gray-400"
+                    className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-400"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -376,12 +377,13 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="w-full px-4 py-3 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition duration-200 pl-12 text-sm sm:text-base text-white placeholder-white/60 bg-white/10 backdrop-blur-sm"
+                  className="w-full px-4 py-3 border border-white/30 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition duration-200 pl-10 sm:pl-12 text-sm sm:text-base text-white placeholder-white/60 bg-white/10 backdrop-blur-sm"
                   placeholder={t('password_placeholder')}
+                  style={{ fontSize: '16px' }}
                 />
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none z-10">
                   <svg
-                    className="h-5 w-5 text-gray-400"
+                    className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-400"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"

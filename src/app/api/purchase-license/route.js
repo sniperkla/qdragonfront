@@ -1,10 +1,10 @@
 import { verifyAuth } from '@/lib/auth'
 import { connectToDatabase } from '@/lib/mongodb'
-import CodeRequest from '@/lib/codeRequestModel'
+import CustomerAccount from '@/lib/customerAccountModel'
 import User from '@/lib/userModel'
 import PlanSetting from '@/lib/planSettingModel'
 import {
-  emitNewCodeGenerated,
+  emitCustomerAccountUpdate,
   emitAdminNotification,
   emitCodesUpdate
 } from '@/lib/websocket'
@@ -124,24 +124,37 @@ export async function POST(req) {
       })
     }
 
-    // Save the license purchase request to database
-    const licenseRequest = new CodeRequest({
-      userId: authData.id,
-      username: user.username,
-      accountNumber,
-      platform,
-      plan: planSetting.days,
-      code: licenseCode,
-      price: planSetting.price,
-      status: 'pending_payment',
-      // Handle lifetime: set expiry far in future (e.g., +50 years) if isLifetime
-      expiresAt: planSetting.isLifetime
-        ? new Date(Date.now() + 50 * 365 * 24 * 60 * 60 * 1000)
-        : new Date(Date.now() + planSetting.days * 24 * 60 * 60 * 1000)
-    })
-    await licenseRequest.save()
+    // Calculate expire date
+    const now = new Date()
+    const expireDate = planSetting.isLifetime
+      ? new Date(now.getTime() + 50 * 365 * 24 * 60 * 60 * 1000)
+      : new Date(now.getTime() + planSetting.days * 24 * 60 * 60 * 1000)
 
-    console.log('License purchase initiated:', {
+    // Format expire date as "DD/MM/YYYY HH:mm" in Thai Buddhist calendar
+    const day = expireDate.getDate().toString().padStart(2, '0')
+    const month = (expireDate.getMonth() + 1).toString().padStart(2, '0')
+    const year = expireDate.getFullYear() + 543 // Thai Buddhist year
+    const hours = expireDate.getHours().toString().padStart(2, '0')
+    const minutes = expireDate.getMinutes().toString().padStart(2, '0')
+    const formattedExpireDate = `${day}/${month}/${year} ${hours}:${minutes}`
+
+    // Create CustomerAccount directly (instant activation for purchases)
+    const customerAccount = new CustomerAccount({
+      user: user.username,
+      license: licenseCode,
+      expireDate: formattedExpireDate,
+      status: 'valid',
+      platform: platform,
+      accountNumber: accountNumber,
+      plan: planSetting.isLifetime ? 999999 : planSetting.days,
+      isDemo: false,
+      createdBy: 'user',
+      adminGenerated: false,
+      activatedAt: now
+    })
+    await customerAccount.save()
+
+    console.log('CustomerAccount created via license purchase:', {
       userId: authData.id,
       username: user.username,
       accountNumber,
@@ -149,23 +162,20 @@ export async function POST(req) {
       plan: `${planSetting.isLifetime ? 'Lifetime' : planSetting.days + ' days'}`,
       license: licenseCode,
       price: planSetting.price,
-      status: 'pending_payment'
+      expireDate: formattedExpireDate,
+      status: 'valid'
     })
 
     // Emit WebSocket events so admin dashboard updates in real time
     try {
-      await emitNewCodeGenerated({
-        codeId: licenseRequest._id.toString(),
-        code: licenseCode,
-        username: user.username,
-        accountNumber,
-        platform,
-        plan: planSetting.days,
-        status: 'pending_payment',
-        createdAt: licenseRequest.createdAt
+      await emitCustomerAccountUpdate(authData.id, {
+        type: 'created',
+        license: licenseCode,
+        expireDate: formattedExpireDate,
+        plan: planSetting.days
       })
       await emitAdminNotification(
-        `New license purchase: ${licenseCode} (${planSetting.isLifetime ? 'Lifetime' : planSetting.days + 'd'})`,
+        `New license purchased: ${licenseCode} by ${user.username} (${planSetting.isLifetime ? 'Lifetime' : planSetting.days + 'd'})`,
         'info'
       )
     } catch (wsErr) {
@@ -179,9 +189,8 @@ export async function POST(req) {
     try {
       await emitCodesUpdate(authData.id, {
         action: 'purchase-created',
-        codeId: licenseRequest._id.toString(),
         license: licenseCode,
-        status: 'pending_payment'
+        status: 'valid'
       })
     } catch (userEmitErr) {
       console.warn(
@@ -197,7 +206,8 @@ export async function POST(req) {
           licenseCode,
           planDays: planSetting.days,
           price: planSetting.price,
-          status: 'pending_payment',
+          status: 'activated',
+          expireDate: formattedExpireDate,
           currency: 'THB',
           language: user.preferredLanguage || 'en'
         })
@@ -221,9 +231,10 @@ export async function POST(req) {
         plan: planSetting.days,
         price: planSetting.price,
         currency: 'THB',
-        status: 'pending_payment',
+        status: 'valid',
+        expireDate: formattedExpireDate,
         message:
-          'License purchase initiated successfully. Please proceed to payment.'
+          'License purchased and activated successfully!'
       }, 200)
     }
     
@@ -235,9 +246,10 @@ export async function POST(req) {
         plan: planSetting.days,
         price: planSetting.price,
         currency: 'THB',
-        status: 'pending_payment',
+        status: 'valid',
+        expireDate: formattedExpireDate,
         message:
-          'License purchase initiated successfully. Please proceed to payment.'
+          'License purchased and activated successfully!'
       }), { status: 200 })
   } catch (error) {
     console.error('License purchase error:', error)

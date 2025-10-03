@@ -1,5 +1,6 @@
 'use client'
 
+import React from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useCallback, useRef } from 'react'
@@ -803,6 +804,11 @@ export default function LandingPage() {
   }, [])
 
   // Parse Thai date format to JavaScript Date with fallback handling
+  // Helper function to check if license is active (valid or activated)
+  const isActiveLicense = (license) => {
+    return license.status === 'valid' || license.status === 'activated'
+  }
+
   const parseThaiDate = (dateString) => {
     if (!dateString) {
       console.warn('Empty date string provided to parseThaiDate')
@@ -1574,12 +1580,13 @@ export default function LandingPage() {
                           }
                         }}
                         placeholder={t('enter_account_number_placeholder')}
-                        className="w-full px-4 py-3 pl-11 rounded-xl bg-white/95 backdrop-blur-sm text-gray-900 placeholder-gray-500 border border-white/20 focus:ring-2 focus:ring-purple-300 focus:border-transparent focus:bg-white transition-all duration-300 shadow-lg"
+                        className="w-full px-4 py-3 pl-10 sm:pl-12 rounded-xl bg-white/95 backdrop-blur-sm text-gray-900 placeholder-gray-500 border border-white/20 focus:ring-2 focus:ring-purple-300 focus:border-transparent focus:bg-white transition-all duration-300 shadow-lg"
+                        style={{ fontSize: '16px' }}
                         required
                       />
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none">
                         <svg
-                          className="w-5 h-5 text-gray-400"
+                          className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400"
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -1618,7 +1625,8 @@ export default function LandingPage() {
                         name="platform"
                         value={codeForm.platform}
                         onChange={handleCodeFormChange}
-                        className="w-full px-4 py-3 pl-11 rounded-xl bg-white/95 backdrop-blur-sm text-gray-900 border border-white/20 focus:ring-2 focus:ring-purple-300 focus:border-transparent focus:bg-white transition-all duration-300 shadow-lg appearance-none"
+                        className="w-full px-4 py-3 pl-10 sm:pl-12 rounded-xl bg-white/95 backdrop-blur-sm text-gray-900 border border-white/20 focus:ring-2 focus:ring-purple-300 focus:border-transparent focus:bg-white transition-all duration-300 shadow-lg appearance-none"
+                        style={{ fontSize: '16px' }}
                       >
                         <option value="exness">Exness</option>
                         <option value="xm">XM</option>
@@ -1627,9 +1635,9 @@ export default function LandingPage() {
                         <option value="fxpro">FxPro</option>
                         <option value="other">Other</option>
                       </select>
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none">
                         <svg
-                          className="w-5 h-5 text-gray-400"
+                          className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400"
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -1683,15 +1691,16 @@ export default function LandingPage() {
                         name="plan"
                         value={codeForm.plan}
                         onChange={handleCodeFormChange}
-                        className="w-full px-4 py-3 pl-11 rounded-xl bg-white/95 backdrop-blur-sm text-gray-900 border border-white/20 focus:ring-2 focus:ring-purple-300 focus:border-transparent focus:bg-white transition-all duration-300 shadow-lg appearance-none"
+                        className="w-full px-4 py-3 pl-10 sm:pl-12 rounded-xl bg-white/95 backdrop-blur-sm text-gray-900 border border-white/20 focus:ring-2 focus:ring-purple-300 focus:border-transparent focus:bg-white transition-all duration-300 shadow-lg appearance-none"
+                        style={{ fontSize: '16px' }}
                       >
                         <option value="30">30 Days - $99</option>
                         <option value="60">60 Days - $189</option>
                         <option value="90">90 Days - $269</option>
                       </select>
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none">
                         <svg
-                          className="w-5 h-5 text-gray-400"
+                          className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400"
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -1953,7 +1962,7 @@ export default function LandingPage() {
                     {language === 'th' ? 'เครดิตของคุณ' : 'Your Credits'}
                   </p>
                   <div className="text-4xl font-black text-white mb-2">
-                    {user?.points || 0}
+                    {(user?.points || 0).toLocaleString()}
                     <span className="text-lg font-semibold ml-2 opacity-80">
                       {language === 'th' ? 'เครดิต' : 'CRD'}
                     </span>
@@ -2127,10 +2136,10 @@ export default function LandingPage() {
                           </svg>
                           <span>
                             {language === 'th' ? 'ต้องการ' : 'Needs'}{' '}
-                            <strong>{selected.points}</strong>{' '}
+                            <strong>{selected.points.toLocaleString()}</strong>{' '}
                             {language === 'th' ? 'เครดิต' : 'pts'} •{' '}
                             {language === 'th' ? 'คุณมี' : 'You have'}{' '}
-                            <strong>{user?.points || 0}</strong>
+                            <strong>{(user?.points || 0).toLocaleString()}</strong>
                           </span>
                         </div>
                       )
@@ -2449,12 +2458,147 @@ export default function LandingPage() {
             </h2>
           </div>
 
+          {/* Expiring Soon Alert - Collapsible on Mobile */}
+          {myCodes.length > 0 &&
+            (() => {
+              const activeLicenses = myCodes.filter(
+                (code) => isActiveLicense(code)
+              )
+              const expiringSoon = activeLicenses.filter((code) => {
+                const timeRemaining = getTimeRemaining(code)
+                return !timeRemaining.expired && timeRemaining.days < 7
+              })
+
+              if (expiringSoon.length === 0) return null
+
+              return (
+                <div className="bg-gradient-to-r from-orange-50 to-amber-50 border-2 border-orange-200 rounded-xl sm:rounded-2xl overflow-hidden mb-6 shadow-md">
+                  {/* Header - Always Visible on Mobile, clickable dropdown trigger */}
+                  <button
+                    onClick={() => setIsExpiringSoonExpanded(!isExpiringSoonExpanded)}
+                    className="w-full sm:cursor-default"
+                  >
+                    <div className="p-3 sm:p-4 flex items-center justify-between hover:bg-orange-100/50 sm:hover:bg-transparent transition-colors">
+                      <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-orange-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <svg
+                            className="w-4 h-4 sm:w-5 sm:h-5 text-white"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </div>
+                        <div className="text-left">
+                          <h3 className="text-sm sm:text-lg font-bold text-orange-800">
+                            {t('licenses_expiring_soon')}
+                          </h3>
+                          <p className="text-xs text-orange-600 mt-0.5">
+                            {expiringSoon.length} {language === 'th' ? 'ใบอนุญาต' : 'license(s)'}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {/* Chevron - Only on mobile */}
+                      <div className="block sm:hidden">
+                        <svg
+                          className={`w-5 h-5 text-orange-600 transition-transform ${isExpiringSoonExpanded ? 'rotate-180' : ''}`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Content - Collapsible on Mobile, Always Visible on Desktop */}
+                  <div className={`${isExpiringSoonExpanded ? 'block' : 'hidden'} sm:block border-t border-orange-200`}>
+                    <div className="p-3 sm:p-4 space-y-2 bg-white/50">
+                      {expiringSoon.map((license) => {
+                        const timeRemaining = getTimeRemaining(license)
+                        return (
+                          <div
+                            key={license._id}
+                            className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 shadow-sm border border-orange-100 hover:shadow-md transition-shadow"
+                          >
+                            {/* Mobile Layout */}
+                            <div className="block sm:hidden space-y-2">
+                              <div className="flex items-start justify-between gap-2">
+                                <span className="font-mono text-xs font-bold text-blue-600 break-all flex-1">
+                                  {license.code}
+                                </span>
+                                <span
+                                  className={`text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap ${
+                                    timeRemaining.days <= 1
+                                      ? 'bg-red-100 text-red-700'
+                                      : 'bg-orange-100 text-orange-700'
+                                  }`}
+                                >
+                                  {timeRemaining.timeLeft}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between text-xs text-gray-600">
+                                <span className="capitalize">{license.platform}</span>
+                                <span className="text-gray-400">•</span>
+                                <span className="break-all">{license.accountNumber}</span>
+                              </div>
+                              <button
+                                onClick={() => handleExtendLicense(license)}
+                                className="w-full px-3 py-2 rounded-lg text-xs font-medium bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white transition shadow-sm"
+                              >
+                                {t('extend_now')}
+                              </button>
+                            </div>
+
+                            {/* Desktop Layout */}
+                            <div className="hidden sm:flex items-center justify-between">
+                              <div className="flex items-center space-x-3 flex-1">
+                                <span className="font-mono text-sm font-semibold text-blue-600">
+                                  {license.code}
+                                </span>
+                                <span className="text-sm text-gray-600">
+                                  {license.platform} • {license.accountNumber}
+                                </span>
+                              </div>
+                              <div className="flex items-center space-x-3">
+                                <span
+                                  className={`text-sm font-medium ${
+                                    timeRemaining.days <= 1
+                                      ? 'text-red-600'
+                                      : 'text-orange-600'
+                                  }`}
+                                >
+                                  {timeRemaining.timeLeft}
+                                </span>
+                                <button
+                                  onClick={() => handleExtendLicense(license)}
+                                  className="px-3 py-1 rounded text-xs bg-orange-500 hover:bg-orange-600 text-white transition duration-200"
+                                >
+                                  {t('extend_now')}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+
           {/* Quick Status Overview */}
           {myCodes.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
               <div className="bg-green-50 rounded-lg p-3 sm:p-4">
                 <div className="text-xl sm:text-2xl font-bold text-green-600">
-                  {myCodes.filter((code) => code.status === 'activated').length}
+                  {myCodes.filter((code) => isActiveLicense(code)).length}
                 </div>
                 <div className="text-xs sm:text-sm text-green-700">
                   {t('active_licenses')}
@@ -2488,7 +2632,7 @@ export default function LandingPage() {
                 <div className="text-xl sm:text-2xl font-bold text-blue-600">
                   {(() => {
                     const activeLicenses = myCodes.filter(
-                      (code) => code.status === 'activated'
+                      (code) => isActiveLicense(code)
                     )
                     if (activeLicenses.length === 0) return '0'
 
@@ -2901,141 +3045,6 @@ export default function LandingPage() {
               </div>
             </>
           )}
-
-          {/* Expiring Soon Alert - Collapsible on Mobile */}
-          {myCodes.length > 0 &&
-            (() => {
-              const activeLicenses = myCodes.filter(
-                (code) => code.status === 'activated'
-              )
-              const expiringSoon = activeLicenses.filter((code) => {
-                const timeRemaining = getTimeRemaining(code)
-                return !timeRemaining.expired && timeRemaining.days < 7
-              })
-
-              if (expiringSoon.length === 0) return null
-
-              return (
-                <div className="bg-gradient-to-r from-orange-50 to-amber-50 border-2 border-orange-200 rounded-xl sm:rounded-2xl overflow-hidden mb-6 shadow-md">
-                  {/* Header - Always Visible on Mobile, clickable dropdown trigger */}
-                  <button
-                    onClick={() => setIsExpiringSoonExpanded(!isExpiringSoonExpanded)}
-                    className="w-full sm:cursor-default"
-                  >
-                    <div className="p-3 sm:p-4 flex items-center justify-between hover:bg-orange-100/50 sm:hover:bg-transparent transition-colors">
-                      <div className="flex items-center gap-2 sm:gap-3">
-                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-orange-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                          <svg
-                            className="w-4 h-4 sm:w-5 sm:h-5 text-white"
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        </div>
-                        <div className="text-left">
-                          <h3 className="text-sm sm:text-lg font-bold text-orange-800">
-                            {t('licenses_expiring_soon')}
-                          </h3>
-                          <p className="text-xs text-orange-600 mt-0.5">
-                            {expiringSoon.length} {language === 'th' ? 'ใบอนุญาต' : 'license(s)'}
-                          </p>
-                        </div>
-                      </div>
-                      
-                      {/* Chevron - Only on mobile */}
-                      <div className="block sm:hidden">
-                        <svg
-                          className={`w-5 h-5 text-orange-600 transition-transform ${isExpiringSoonExpanded ? 'rotate-180' : ''}`}
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </div>
-                    </div>
-                  </button>
-
-                  {/* Content - Collapsible on Mobile, Always Visible on Desktop */}
-                  <div className={`${isExpiringSoonExpanded ? 'block' : 'hidden'} sm:block border-t border-orange-200`}>
-                    <div className="p-3 sm:p-4 space-y-2 bg-white/50">
-                      {expiringSoon.map((license) => {
-                        const timeRemaining = getTimeRemaining(license)
-                        return (
-                          <div
-                            key={license._id}
-                            className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 shadow-sm border border-orange-100 hover:shadow-md transition-shadow"
-                          >
-                            {/* Mobile Layout */}
-                            <div className="block sm:hidden space-y-2">
-                              <div className="flex items-start justify-between gap-2">
-                                <span className="font-mono text-xs font-bold text-blue-600 break-all flex-1">
-                                  {license.code}
-                                </span>
-                                <span
-                                  className={`text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap ${
-                                    timeRemaining.days <= 1
-                                      ? 'bg-red-100 text-red-700'
-                                      : 'bg-orange-100 text-orange-700'
-                                  }`}
-                                >
-                                  {timeRemaining.timeLeft}
-                                </span>
-                              </div>
-                              <div className="flex items-center justify-between text-xs text-gray-600">
-                                <span className="capitalize">{license.platform}</span>
-                                <span className="text-gray-400">•</span>
-                                <span className="break-all">{license.accountNumber}</span>
-                              </div>
-                              <button
-                                onClick={() => handleExtendLicense(license)}
-                                className="w-full px-3 py-2 rounded-lg text-xs font-medium bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white transition shadow-sm"
-                              >
-                                {t('extend_now')}
-                              </button>
-                            </div>
-
-                            {/* Desktop Layout */}
-                            <div className="hidden sm:flex items-center justify-between">
-                              <div className="flex items-center space-x-3 flex-1">
-                                <span className="font-mono text-sm font-semibold text-blue-600">
-                                  {license.code}
-                                </span>
-                                <span className="text-sm text-gray-600">
-                                  {license.platform} • {license.accountNumber}
-                                </span>
-                              </div>
-                              <div className="flex items-center space-x-3">
-                                <span
-                                  className={`text-sm font-medium ${
-                                    timeRemaining.days <= 1
-                                      ? 'text-red-600'
-                                      : 'text-orange-600'
-                                  }`}
-                                >
-                                  {timeRemaining.timeLeft}
-                                </span>
-                                <button
-                                  onClick={() => handleExtendLicense(license)}
-                                  className="px-3 py-1 rounded text-xs bg-orange-500 hover:bg-orange-600 text-white transition duration-200"
-                                >
-                                  {t('extend_now')}
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                </div>
-              )
-            })()}
         </div>
 
         {/* History Section - Redesigned */}
@@ -3456,8 +3465,8 @@ export default function LandingPage() {
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {topUpHistory.map((item) => (
-                          <>
-                            <tr key={item.id} className="hover:bg-gray-50">
+                          <React.Fragment key={item.id}>
+                            <tr className="hover:bg-gray-50">
                               <td className="px-4 py-3 text-sm font-semibold text-green-600">
                                 ฿{item.amount.toFixed(2)}
                               </td>
@@ -3523,7 +3532,7 @@ export default function LandingPage() {
                                       >
                                         <path
                                           fillRule="evenodd"
-                                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v3a1 1 0 102 0V6a1 1 0 00-1-1z"
                                           clipRule="evenodd"
                                         />
                                       </svg>
@@ -3541,7 +3550,7 @@ export default function LandingPage() {
                                   </td>
                                 </tr>
                               )}
-                          </>
+                          </React.Fragment>
                         ))}
                       </tbody>
                     </table>
@@ -3778,7 +3787,7 @@ export default function LandingPage() {
                   <span
                     className={`text-lg font-bold ${user?.points >= parseInt(extendPlan) ? 'text-green-600' : 'text-red-600'}`}
                   >
-                    {user?.points || 0}{' '}
+                    {(user?.points || 0).toLocaleString()}{' '}
                     {language === 'th' ? 'เครดิต' : 'Credits'}
                   </span>
                 </div>
@@ -3962,7 +3971,7 @@ export default function LandingPage() {
                         {language === 'th'
                           ? 'เครดิตปัจจุบัน'
                           : 'Current credits'}
-                        : <strong>{user?.points || 0}</strong>{' '}
+                        : <strong>{(user?.points || 0).toLocaleString()}</strong>{' '}
                         {language === 'th' ? 'เครดิต' : 'credits'}
                       </li>
                       <li>
@@ -4043,8 +4052,8 @@ export default function LandingPage() {
                   </p>
                   <p className="text-xs text-red-500 mt-1">
                     {language === 'th'
-                      ? `คุณต้องการอีก ${changeAccountForm.cost - (user?.points || 0)} เครดิต กรุณาเติมเครดิตก่อน`
-                      : `You need ${changeAccountForm.cost - (user?.points || 0)} more credits. Please top up first.`}
+                      ? `คุณต้องการอีก ${(changeAccountForm.cost - (user?.points || 0)).toLocaleString()} เครดิต กรุณาเติมเครดิตก่อน`
+                      : `You need ${(changeAccountForm.cost - (user?.points || 0)).toLocaleString()} more credits. Please top up first.`}
                   </p>
                 </div>
               )}
